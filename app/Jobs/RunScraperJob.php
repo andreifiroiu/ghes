@@ -10,6 +10,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class RunScraperJob implements ShouldQueue
 {
@@ -38,6 +40,29 @@ class RunScraperJob implements ShouldQueue
 
     public function handle(ScraperOrchestrator $orchestrator): void
     {
-        $orchestrator->runSource($this->cityKey, $this->sourceConfig['adapter']);
+        $adapter = $this->sourceConfig['adapter'];
+
+        Log::info('RunScraperJob: starting', [
+            'city' => $this->cityKey,
+            'adapter' => $adapter,
+            'attempt' => $this->attempts(),
+        ]);
+
+        $saved = $orchestrator->runSource($this->cityKey, $adapter);
+
+        Log::info('RunScraperJob: finished', [
+            'city' => $this->cityKey,
+            'adapter' => $adapter,
+            'events_saved' => $saved,
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('RunScraperJob: failed permanently', [
+            'city' => $this->cityKey,
+            'adapter' => $this->sourceConfig['adapter'] ?? 'unknown',
+            'error' => $e->getMessage(),
+        ]);
     }
 }

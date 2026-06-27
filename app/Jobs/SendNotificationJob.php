@@ -11,6 +11,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SendNotificationJob implements ShouldQueue
 {
@@ -32,8 +34,27 @@ class SendNotificationJob implements ShouldQueue
 
     public function handle(NotificationDispatcher $dispatcher): void
     {
+        Log::info('SendNotificationJob: sending', [
+            'notification_id' => $this->notificationId,
+            'attempt' => $this->attempts(),
+        ]);
+
         $notification = Notification::findOrFail($this->notificationId);
 
         $dispatcher->dispatch($notification);
+
+        Log::info('SendNotificationJob: sent', [
+            'notification_id' => $this->notificationId,
+            'user_id' => $notification->user_id,
+            'channel' => $notification->channel->value,
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('SendNotificationJob: failed permanently', [
+            'notification_id' => $this->notificationId,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

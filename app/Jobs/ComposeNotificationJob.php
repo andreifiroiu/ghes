@@ -12,6 +12,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ComposeNotificationJob implements ShouldQueue
 {
@@ -30,12 +32,33 @@ class ComposeNotificationJob implements ShouldQueue
 
     public function handle(NotificationComposer $composer, NotificationDispatcher $dispatcher): void
     {
+        Log::info('ComposeNotificationJob: composing', ['user_id' => $this->userId]);
+
         $user = User::findOrFail($this->userId);
 
         $notification = $composer->compose($user);
 
         if ($notification !== null) {
+            Log::info('ComposeNotificationJob: composed, dispatching send', [
+                'user_id' => $this->userId,
+                'notification_id' => $notification->id,
+            ]);
+
             SendNotificationJob::dispatch($notification->id);
+
+            return;
         }
+
+        Log::info('ComposeNotificationJob: nothing to send (no events matched)', [
+            'user_id' => $this->userId,
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('ComposeNotificationJob: failed permanently', [
+            'user_id' => $this->userId,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

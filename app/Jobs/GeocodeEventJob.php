@@ -11,6 +11,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class GeocodeEventJob implements ShouldQueue
 {
@@ -32,8 +34,24 @@ class GeocodeEventJob implements ShouldQueue
 
     public function handle(EventEnricher $enricher): void
     {
+        Log::info('GeocodeEventJob: geocoding', ['event_id' => $this->eventId]);
+
         $event = Event::findOrFail($this->eventId);
 
         $enricher->enrichGeocoding($event);
+
+        Log::info('GeocodeEventJob: done', [
+            'event_id' => $this->eventId,
+            'latitude' => $event->latitude,
+            'longitude' => $event->longitude,
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('GeocodeEventJob: failed permanently', [
+            'event_id' => $this->eventId,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

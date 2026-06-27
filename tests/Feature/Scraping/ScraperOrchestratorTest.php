@@ -122,7 +122,9 @@ describe('getEnabledSources', function () {
         foreach ($sources as $source) {
             expect($source['enabled'])->toBeTrue()
                 ->and($source)->toHaveKey('adapter')
-                ->and($source)->toHaveKey('url');
+                // Parameterized HTML scrapers carry a 'url'; API-based ones (eventbrite,
+                // meetup, google_events) carry 'params' instead. Either is valid.
+                ->and(isset($source['url']) || isset($source['params']))->toBeTrue();
         }
     });
 
