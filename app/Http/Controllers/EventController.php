@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\Reaction;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -44,6 +47,34 @@ class EventController extends Controller
         return Inertia::render('Events/Show', [
             'event' => new EventResource($event),
         ]);
+    }
+
+    public function saved(Request $request): Response
+    {
+        return Inertia::render('Dashboard/SavedEvents', [
+            'events' => EventResource::collection($this->savedEventsFor($request->user()))->resolve(),
+        ]);
+    }
+
+    public function apiSaved(Request $request): JsonResponse
+    {
+        return EventResource::collection($this->savedEventsFor($request->user()))->response();
+    }
+
+    /**
+     * Upcoming events the user has bookmarked, soonest first.
+     *
+     * @return Collection<int, Event>
+     */
+    private function savedEventsFor(User $user): Collection
+    {
+        $savedEventIds = $user->reactions()
+            ->where('reaction', Reaction::Saved)
+            ->pluck('event_id');
+
+        return Event::whereIn('id', $savedEventIds)
+            ->orderBy('starts_at')
+            ->get();
     }
 
     public function apiIndex(Request $request): JsonResponse

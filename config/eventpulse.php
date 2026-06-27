@@ -144,7 +144,6 @@ return [
                 ['adapter' => 'teatru_national_tm', 'url' => 'https://www.tntm.ro/',                                   'enabled' => true, 'interval_hours' => 24],
                 ['adapter' => 'entertix', 'url' => 'https://www.entertix.ro/evenimente', 'city_filter' => 'Timișoara', 'enabled' => true, 'interval_hours' => 8],
                 ['adapter' => 'visit_timisoara', 'url' => 'https://visit-timisoara.com/events-activities/',         'enabled' => true, 'interval_hours' => 12],
-                ['adapter' => 'radio_timisoara', 'url' => 'https://www.radiotimisoara.ro/agenda-evenimente',        'enabled' => true, 'interval_hours' => 12],
                 ['adapter' => 'meetup',          'url' => 'https://www.meetup.com/find/ro--timisoara/',             'enabled' => true, 'interval_hours' => 6],
                 [
                     'adapter' => 'facebook_events',

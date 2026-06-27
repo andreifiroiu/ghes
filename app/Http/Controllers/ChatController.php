@@ -8,6 +8,7 @@ use App\Http\Requests\ChatRequest;
 use App\Http\Resources\ChatMessageResource;
 use App\Services\Chat\OnboardingAgent;
 use App\Services\Chat\ProfileGenerator;
+use App\Services\Chat\ProfileUpdateAgent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,6 +19,7 @@ class ChatController extends Controller
     public function __construct(
         private readonly OnboardingAgent $onboardingAgent,
         private readonly ProfileGenerator $profileGenerator,
+        private readonly ProfileUpdateAgent $profileUpdateAgent,
     ) {}
 
     /**
@@ -124,6 +126,94 @@ class ChatController extends Controller
             'success' => true,
             'profile' => $merged,
             'redirectTo' => route('dashboard'),
+        ]);
+    }
+
+    /**
+     * Show the ongoing profile-update chat page.
+     */
+    public function profileChat(Request $request): Response
+    {
+        $user = $request->user();
+
+        $messages = $user->chatMessages()
+            ->where('context', 'profile_update')
+            ->orderBy('created_at')
+            ->get();
+
+        if ($messages->isEmpty()) {
+            $welcome = $user->chatMessages()->create([
+                'role' => 'assistant',
+                'content' => 'Salut! Spune-mi ce s-a schimbat — ce să adaug, să scot sau să ajustez în preferințele tale.',
+                'context' => 'profile_update',
+            ]);
+            $messages = collect([$welcome]);
+        }
+
+        return Inertia::render('Dashboard/ProfileChat', [
+            'messages' => ChatMessageResource::collection($messages)->resolve(),
+        ]);
+    }
+
+    /**
+     * Handle a profile-update chat message.
+     */
+    public function profileChatStore(ChatRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $user = $request->user();
+
+        $userMsg = $user->chatMessages()->create([
+            'role' => 'user',
+            'content' => $validated['message'],
+            'context' => 'profile_update',
+        ]);
+
+        $responseText = $this->profileUpdateAgent->respond($user, $validated['message']);
+
+        $assistantMsg = $user->chatMessages()->create([
+            'role' => 'assistant',
+            'content' => $responseText,
+            'context' => 'profile_update',
+        ]);
+
+        return response()->json([
+            'userMessage' => new ChatMessageResource($userMsg),
+            'assistantMessage' => new ChatMessageResource($assistantMsg),
+        ]);
+    }
+
+    /**
+     * Apply the profile changes inferred from the profile-update conversation.
+     */
+    public function applyProfileUpdate(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $changes = $this->profileGenerator->generateFromChat($user, 'profile_update');
+
+        if ($changes === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nu am putut detecta modificări. Continuă conversația.',
+            ], 422);
+        }
+
+        $existingProfile = $user->interest_profile ?? [];
+        $merged = $this->profileGenerator->mergeProfiles($existingProfile, $changes);
+
+        $city = $merged['city'] ?? $user->city;
+        unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times']);
+
+        $user->update([
+            'interest_profile' => $merged,
+            'city' => is_string($city) ? $city : $user->city,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'profile' => $merged,
+            'redirectTo' => route('profile.show'),
         ]);
     }
 }

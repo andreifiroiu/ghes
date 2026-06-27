@@ -16,16 +16,17 @@ class ProfileGenerator
     ) {}
 
     /**
-     * Analyse the user's onboarding chat and produce a structured interest profile.
+     * Analyse a user's chat (onboarding or profile-update) and produce a
+     * structured interest profile.
      *
      * @return array<string, mixed> Keys are category names (e.g. "music") or tag names
      *                              (e.g. "tag:jazz"), values are float scores 0.0–1.0.
      *                              May also include "city", "price_sensitive", "preferred_times".
      */
-    public function generateFromChat(User $user): array
+    public function generateFromChat(User $user, string $context = 'onboarding'): array
     {
         $messages = $user->chatMessages()
-            ->where('context', 'onboarding')
+            ->where('context', $context)
             ->orderBy('created_at')
             ->get();
 

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 const navLinks = [
     { href: '/dashboard', label: 'Acasă' },
     { href: '/events', label: 'Evenimente' },
+    { href: '/events/saved', label: 'Salvate' },
     { href: '/profile', label: 'Profil' },
 ];
 

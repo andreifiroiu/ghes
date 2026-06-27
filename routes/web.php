@@ -45,6 +45,7 @@ Route::middleware('auth')->group(function () {
 
     // Events
     Route::get('events', [EventController::class, 'index'])->name('events.index');
+    Route::get('events/saved', [EventController::class, 'saved'])->name('events.saved');
     Route::get('events/{event}', [EventController::class, 'show'])->name('events.show');
 
     // Feedback (JSON response)
@@ -54,6 +55,11 @@ Route::middleware('auth')->group(function () {
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('profile/resend-verification', [ProfileController::class, 'resendVerification'])->name('profile.resend-verification');
+
+    // Ongoing profile-update chat
+    Route::get('profile/chat', [ChatController::class, 'profileChat'])->name('profile.chat');
+    Route::post('profile/chat', [ChatController::class, 'profileChatStore'])->name('profile.chat.store')->middleware('throttle:20,1');
+    Route::post('profile/chat/apply', [ChatController::class, 'applyProfileUpdate'])->name('profile.chat.apply');
 
     // Notification Settings
     Route::get('settings/notifications', [NotificationSettingsController::class, 'show'])->name('settings.notifications');
