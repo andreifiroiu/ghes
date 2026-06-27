@@ -349,8 +349,23 @@ abstract class AbstractHtmlScraper implements ScraperAdapter
     protected function stripHtml(string $html): string
     {
         $text = strip_tags($html);
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = $this->decodeEntities($text);
         $text = (string) preg_replace('/\s+/', ' ', $text);
+
+        return trim($text);
+    }
+
+    /**
+     * Decode HTML entities, handling double-encoded sequences (e.g. "&amp;amp;" → "&").
+     */
+    protected function decodeEntities(string $text): string
+    {
+        $previous = null;
+
+        while ($text !== $previous) {
+            $previous = $text;
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
 
         return trim($text);
     }
