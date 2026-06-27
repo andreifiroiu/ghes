@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
 
     // Feedback (JSON response)
     Route::post('feedback', [FeedbackController::class, 'store'])->name('feedback.store');
+    Route::delete('feedback', [FeedbackController::class, 'destroy'])->name('feedback.destroy');
 
     // Profile
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');

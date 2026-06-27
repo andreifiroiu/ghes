@@ -13,4 +13,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('events/{event}', [EventController::class, 'apiShow'])->name('api.events.show');
     Route::get('recommendations', [RecommendationController::class, 'apiIndex'])->name('api.recommendations');
     Route::post('feedback', [FeedbackController::class, 'store'])->name('api.feedback.store');
+    Route::delete('feedback', [FeedbackController::class, 'destroy'])->name('api.feedback.destroy');
 });
