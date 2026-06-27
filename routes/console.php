@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ApplyPassiveDecayJob;
 use App\Jobs\CleanupExpiredEventsJob;
 use Illuminate\Support\Facades\Schedule;
 
@@ -22,6 +23,10 @@ Schedule::command('eventpulse:decay-profiles')
 
 Schedule::job(new CleanupExpiredEventsJob)
     ->dailyAt('04:00')
+    ->withoutOverlapping();
+
+Schedule::job(new ApplyPassiveDecayJob)
+    ->dailyAt('03:30')
     ->withoutOverlapping();
 
 Schedule::command('horizon:snapshot')

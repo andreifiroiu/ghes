@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\Notification;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\InterestProfile\ProfileUpdater;
@@ -109,6 +110,73 @@ it('saved reaction gives higher delta than interested', function () {
     $this->processor->processReaction($reaction);
 
     $user->refresh();
-    $savedDelta = config('eventpulse.feedback.deltas.saved');
+    $savedDelta = config('eventpulse.feedback.deltas.saved.category');
     expect($user->interest_profile['arts'])->toBe(min(1.0, 0.4 + $savedDelta));
+});
+
+it('applies passive decay to ignored events in old notifications', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.5, 'sports' => 0.5]]);
+
+    $ignored = Event::factory()->create(['category' => EventCategory::Music, 'tags' => []]);
+    $reacted = Event::factory()->create(['category' => EventCategory::Sports, 'tags' => []]);
+
+    UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $reacted->id,
+        'reaction' => Reaction::Interested,
+    ]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$ignored->id, $reacted->id],
+        'discovery_event_ids' => [],
+        'sent_at' => now()->subDays(4),
+    ]);
+
+    $count = $this->processor->applyPassiveDecay();
+
+    $user->refresh();
+    $notification->refresh();
+
+    expect($count)->toBe(1);
+    expect($user->interest_profile['music'])->toEqualWithDelta(0.48, 0.0001);
+    expect($user->interest_profile['sports'])->toBe(0.5);
+    expect($notification->decay_applied_at)->not->toBeNull();
+});
+
+it('does not decay notifications still inside the ignore window', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.5]]);
+    $event = Event::factory()->create(['category' => EventCategory::Music, 'tags' => []]);
+
+    Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+        'sent_at' => now()->subHours(1),
+    ]);
+
+    $count = $this->processor->applyPassiveDecay();
+
+    $user->refresh();
+    expect($count)->toBe(0);
+    expect($user->interest_profile['music'])->toBe(0.5);
+});
+
+it('does not decay the same notification twice', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.5]]);
+    $event = Event::factory()->create(['category' => EventCategory::Music, 'tags' => []]);
+
+    Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+        'sent_at' => now()->subDays(4),
+    ]);
+
+    $this->processor->applyPassiveDecay();
+    $secondCount = $this->processor->applyPassiveDecay();
+
+    $user->refresh();
+    expect($secondCount)->toBe(0);
+    expect($user->interest_profile['music'])->toEqualWithDelta(0.48, 0.0001);
 });

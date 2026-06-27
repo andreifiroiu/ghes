@@ -340,6 +340,34 @@ it('includes discovery events in the batch', function () {
     expect($batch->discoveryEventIds)->not->toBeEmpty();
 });
 
+it('excludes events carrying the user negative tags', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9, 'negtag:techno' => 1.0],
+        'city' => 'Bucharest',
+    ]);
+
+    $blocked = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'tags' => ['techno'],
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $allowed = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'tags' => ['jazz'],
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->not->toContain($blocked->id);
+    expect($batch->recommendedEventIds)->toContain($allowed->id);
+});
+
 it('handles empty candidate pool gracefully', function () {
     $user = User::factory()->create([
         'interest_profile' => ['music' => 0.8],

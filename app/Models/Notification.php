@@ -37,6 +37,7 @@ class Notification extends Model
         'body_html',
         'sent_at',
         'opened_at',
+        'decay_applied_at',
     ];
 
     /**
@@ -51,6 +52,7 @@ class Notification extends Model
             'discovery_event_ids' => 'array',
             'sent_at' => 'datetime',
             'opened_at' => 'datetime',
+            'decay_applied_at' => 'datetime',
             'channel' => NotificationChannel::class,
             'frequency' => NotificationFrequency::class,
         ];

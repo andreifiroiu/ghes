@@ -15,6 +15,7 @@
         "laravel/scout": "^11.1",
         "laravel/tinker": "^3.0",
         "meilisearch/meilisearch-php": "^1.16",
+        "opcodesio/log-viewer": "^3.24",
         "spatie/browsershot": "^5.2",
         "spatie/laravel-ray": "^1.43"
     },

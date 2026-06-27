@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Scout\Searchable;
 
+/**
+ * @property array<int, string>|null $tags
+ */
 class Event extends Model
 {
     /** @use HasFactory<EventFactory> */
@@ -95,7 +98,7 @@ class Event extends Model
     /**
      * Scope to only include upcoming events.
      *
-     * @param Builder<Event> $query
+     * @param  Builder<Event>  $query
      * @return Builder<Event>
      */
     public function scopeUpcoming(Builder $query): Builder

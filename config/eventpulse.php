@@ -22,22 +22,29 @@ return [
     'recommendation' => [
         'weights' => [
             'category' => 0.30,
-            'tags' => 0.20,
+            'tags' => 0.25,
             'location' => 0.15,
             'time' => 0.10,
             'price' => 0.05,
-            'freshness' => 0.10,
+            'freshness' => 0.05,
             'popularity' => 0.10,
         ],
     ],
     'feedback' => [
+        // Per-reaction profile adjustments: distinct deltas for the event's
+        // category score and for each of its tag scores. "saved" is treated as
+        // the strongest positive signal (an explicit bookmark > a thumbs-up).
         'deltas' => [
-            'interested' => 0.15,
-            'not_interested' => -0.10,
-            'saved' => 0.20,
-            'hidden' => -0.15,
-            'link_opened' => 0.05,
+            'interested' => ['category' => 0.15, 'tag' => 0.20],
+            'saved' => ['category' => 0.20, 'tag' => 0.25],
+            'not_interested' => ['category' => -0.10, 'tag' => -0.15],
+            'hidden' => ['category' => -0.25, 'tag' => -0.30],
+            'link_opened' => ['category' => 0.05, 'tag' => 0.05],
+            'ignored' => ['category' => -0.02, 'tag' => 0.0],
         ],
+        // A notification must be at least this old before its un-reacted events
+        // are treated as "ignored" and passively decayed.
+        'ignored_window_hours' => (int) env('EVENTPULSE_IGNORED_WINDOW_HOURS', 72),
     ],
     'discovery' => [
         'default_openness' => 0.3,

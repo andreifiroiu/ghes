@@ -70,6 +70,14 @@ class RecommendationEngine
             ->limit(200)
             ->get();
 
+        // Hard-filter events carrying tags the user has suppressed.
+        $negativeTags = $user->negativeTags();
+        if ($negativeTags !== []) {
+            $candidates = $candidates->reject(
+                fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
+            )->values();
+        }
+
         // Score every candidate
         $scored = $candidates
             ->map(fn (Event $event) => ['event' => $event, 'score' => $this->scoreEvent($user, $event)])

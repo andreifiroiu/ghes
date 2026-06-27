@@ -326,6 +326,24 @@ abstract class AbstractHtmlScraper implements ScraperAdapter
     }
 
     /**
+     * Load an HTML string into a DOMDocument with correct UTF-8 handling.
+     *
+     * Uses mb_encode_numericentity rather than the deprecated
+     * mb_convert_encoding($html, 'HTML-ENTITIES', ...) (removed-path in PHP 8.4)
+     * so multibyte characters such as Romanian diacritics survive the parse.
+     */
+    protected function loadHtmlDocument(string $html): \DOMDocument
+    {
+        $dom = new \DOMDocument;
+        libxml_use_internal_errors(true);
+        $encoded = mb_encode_numericentity($html, [0x80, 0x10FFFF, 0, 0x1FFFFF], 'UTF-8');
+        $dom->loadHTML($encoded, LIBXML_NOWARNING | LIBXML_NOERROR);
+        libxml_clear_errors();
+
+        return $dom;
+    }
+
+    /**
      * Strip HTML tags, decode entities, and normalise whitespace.
      */
     protected function stripHtml(string $html): string

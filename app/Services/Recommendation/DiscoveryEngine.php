@@ -34,14 +34,24 @@ class DiscoveryEngine
         }
 
         $reactedEventIds = $user->reactions()->pluck('event_id');
+        $negativeTags = $user->negativeTags();
 
         $events = Event::upcoming()
             ->whereIn('category', $lowScoreCategories)
             ->whereNotIn('id', $reactedEventIds)
             ->where('is_classified', true)
             ->inRandomOrder()
-            ->limit($count)
+            // Over-fetch so post-filtering negative tags still yields enough.
+            ->limit($negativeTags === [] ? $count : $count * 5)
             ->get();
+
+        if ($negativeTags !== []) {
+            $events = $events->reject(
+                fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
+            )->values();
+        }
+
+        $events = $events->take($count);
 
         // Log each discovery for analytics
         $events->each(function (Event $event) use ($user): void {

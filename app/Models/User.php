@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * @property array<string, float> $interest_profile
+ */
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
@@ -63,6 +66,27 @@ class User extends Authenticatable implements MustVerifyEmail
             'notification_channel' => NotificationChannel::class,
             'notification_frequency' => NotificationFrequency::class,
         ];
+    }
+
+    /**
+     * Tags the user has suppressed via "hide like this".
+     *
+     * Stored in the interest profile as "negtag:{tag}" keys; used as a hard
+     * filter to exclude matching events from recommendations and discovery.
+     *
+     * @return list<string>
+     */
+    public function negativeTags(): array
+    {
+        $tags = [];
+
+        foreach ($this->interest_profile ?? [] as $key => $value) {
+            if (str_starts_with((string) $key, 'negtag:')) {
+                $tags[] = substr((string) $key, 7);
+            }
+        }
+
+        return $tags;
     }
 
     /**

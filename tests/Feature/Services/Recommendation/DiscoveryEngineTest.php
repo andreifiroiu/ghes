@@ -43,6 +43,29 @@ it('discovers events from categories with low user scores', function () {
     expect($categories)->each->not->toBe('sports');
 });
 
+it('excludes events carrying the user negative tags', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.95, 'negtag:crowded' => 1.0],
+    ]);
+
+    $blocked = Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'tags' => ['crowded'],
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
+    ]);
+    $allowed = Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'tags' => ['hands-on'],
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
+    ]);
+
+    $discoveries = $this->engine->discoverForUser($user, 3);
+
+    expect($discoveries->pluck('id'))->not->toContain($blocked->id);
+});
+
 it('respects the requested count', function () {
     $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
 
