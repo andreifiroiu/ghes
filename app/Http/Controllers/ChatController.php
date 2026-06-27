@@ -130,6 +130,21 @@ class ChatController extends Controller
     }
 
     /**
+     * Return chat history (JSON) for the given context (default onboarding).
+     */
+    public function apiHistory(Request $request): JsonResponse
+    {
+        $context = $request->string('context')->toString() ?: 'onboarding';
+
+        $messages = $request->user()->chatMessages()
+            ->where('context', $context)
+            ->orderBy('created_at')
+            ->get();
+
+        return ChatMessageResource::collection($messages)->response();
+    }
+
+    /**
      * Show the ongoing profile-update chat page.
      */
     public function profileChat(Request $request): Response

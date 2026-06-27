@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Notification;
 
+use App\Enums\NotificationChannel;
 use App\Models\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -14,10 +15,11 @@ class NotificationDispatcher
 {
     public function __construct(
         private readonly EmailRenderer $emailRenderer,
+        private readonly PushSender $pushSender,
     ) {}
 
     /**
-     * Render, send, and record a single notification.
+     * Render, send, and record a single notification across the user's channel(s).
      */
     public function dispatch(Notification $notification): void
     {
@@ -28,30 +30,45 @@ class NotificationDispatcher
             return;
         }
 
-        $html = $this->emailRenderer->render($notification);
-        $notification->update(['body_html' => $html]);
-
         $notification->loadMissing('user');
         $user = $notification->user;
+        $channel = $user->notification_channel ?? NotificationChannel::Email;
 
-        try {
-            Mail::html($html, function ($message) use ($user, $notification): void {
-                $message->to($user->email)
-                    ->subject($notification->subject ?? 'Your EventPulse Digest');
-            });
-        } catch (Throwable $e) {
-            Log::error("Notification {$notification->id} mail send failed", ['error' => $e->getMessage()]);
-            throw $e;
+        $subject = $notification->subject ?? 'Digestul tău Ghes';
+
+        if (in_array($channel, [NotificationChannel::Email, NotificationChannel::Both], true)) {
+            $html = $this->emailRenderer->render($notification);
+            $notification->update(['body_html' => $html]);
+
+            try {
+                Mail::html($html, function ($message) use ($user, $subject): void {
+                    $message->to($user->email)->subject($subject);
+                });
+            } catch (Throwable $e) {
+                Log::error("Notification {$notification->id} mail send failed", ['error' => $e->getMessage()]);
+                throw $e;
+            }
+        }
+
+        if (in_array($channel, [NotificationChannel::Push, NotificationChannel::Both], true)) {
+            $eventCount = count($notification->event_ids ?? []) + count($notification->discovery_event_ids ?? []);
+            $this->pushSender->sendToUser(
+                $user,
+                $subject,
+                "Ai {$eventCount} evenimente noi recomandate pentru tine.",
+                route('dashboard'),
+            );
         }
 
         $notification->update(['sent_at' => now()]);
 
-        Log::info("Notification {$notification->id} sent to user {$user->id} via email");
+        Log::info("Notification {$notification->id} sent to user {$user->id} via {$channel->value}");
     }
 
     /**
      * Dispatch a batch of notifications. Failures are logged, not thrown.
      *
+     * @param  Collection<int, Notification>  $notifications
      * @return int Number of successfully sent notifications.
      */
     public function dispatchBatch(Collection $notifications): int

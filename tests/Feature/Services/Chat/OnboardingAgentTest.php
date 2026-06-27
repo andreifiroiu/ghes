@@ -32,7 +32,7 @@ it('returns a welcome message from config', function () {
 
     $welcome = $agent->welcomeMessage();
 
-    expect($welcome)->toContain('EventPulse');
+    expect($welcome)->toContain('Ghes');
     expect($welcome)->not->toBeEmpty();
 });
 

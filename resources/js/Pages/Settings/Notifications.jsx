@@ -24,7 +24,7 @@ const frequencyOptions = [
  * @param {string} props.settings.channel
  * @param {string} props.settings.frequency
  */
-export default function Notifications({ settings = {} }) {
+export default function Notifications({ settings = {}, vapidPublicKey = null }) {
     const { data, setData, put, processing, recentlySuccessful } = useForm({
         channel: settings.channel || 'email',
         frequency: settings.frequency || 'daily',
@@ -33,6 +33,49 @@ export default function Notifications({ settings = {} }) {
     const handleSubmit = (e) => {
         e.preventDefault();
         put('/settings/notifications');
+    };
+
+    const handleEnablePush = async () => {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            alert('Browserul tău nu suportă notificările push.');
+            return;
+        }
+        if (!vapidPublicKey) {
+            alert('Notificările push nu sunt configurate pe server.');
+            return;
+        }
+
+        try {
+            const registration = await navigator.serviceWorker.register('/sw.js');
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+
+            const key = Uint8Array.from(
+                atob(vapidPublicKey.replace(/-/g, '+').replace(/_/g, '/')),
+                (c) => c.charCodeAt(0)
+            );
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: key,
+            });
+
+            const csrfToken = document
+                .querySelector('meta[name="csrf-token"]')
+                ?.getAttribute('content');
+
+            await fetch('/push/subscribe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify(subscription.toJSON()),
+            });
+
+            alert('Notificările push au fost activate.');
+        } catch (e) {
+            alert('Nu am putut activa notificările push.');
+        }
     };
 
     return (
@@ -109,6 +152,25 @@ export default function Notifications({ settings = {} }) {
                                         </option>
                                     ))}
                                 </Select>
+                            </div>
+
+                            {/* Web push */}
+                            <div className="space-y-2 border-t border-gray-100 pt-4">
+                                <Label className="text-base font-medium">
+                                    Notificări push în browser
+                                </Label>
+                                <p className="text-sm text-gray-500">
+                                    Activează notificările push pentru a primi
+                                    recomandări direct în browser (necesită canalul
+                                    „push" sau „both").
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleEnablePush}
+                                >
+                                    Activează notificările push
+                                </Button>
                             </div>
                         </CardContent>
                         <CardFooter className="flex items-center gap-4">

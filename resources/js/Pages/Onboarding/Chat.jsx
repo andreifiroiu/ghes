@@ -110,14 +110,14 @@ export default function Chat({
 
     return (
         <>
-            <Head title="Bun venit la EventPulse" />
+            <Head title="Bun venit la Ghes" />
             <div className="min-h-screen bg-gray-50 flex flex-col">
                 {/* Header */}
                 <div className="bg-white border-b border-gray-200 px-4 py-4">
                     <div className="max-w-2xl mx-auto flex items-center justify-between">
                         <div>
                             <h1 className="text-xl font-bold text-indigo-600">
-                                EventPulse
+                                Ghes
                             </h1>
                             <p className="text-sm text-gray-500">
                                 Spune-ne ce te interesează

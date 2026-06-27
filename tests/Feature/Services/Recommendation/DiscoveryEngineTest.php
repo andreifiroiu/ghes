@@ -260,6 +260,46 @@ it('injects platform-wide trending events regardless of profile', function () {
 });
 
 // ---------------------------------------------------------------
+// Collaborative filtering
+// ---------------------------------------------------------------
+
+it('biases discovery toward categories popular among similar users', function () {
+    // Current user likes music; every other category is low-score.
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+
+    // A similar user (also likes music) reacted positively to a Technology event.
+    $similar = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+    $likedTech = Event::factory()->create(['category' => EventCategory::Technology]);
+    UserEventReaction::factory()->create([
+        'user_id' => $similar->id,
+        'event_id' => $likedTech->id,
+        'reaction' => Reaction::Interested,
+    ]);
+
+    // Discovery candidates: one Technology (collaborative) and one Arts (not).
+    Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+    Event::factory()->create([
+        'category' => EventCategory::Arts,
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $discoveries = $this->engine->discoverForUser($user, 1);
+
+    expect($discoveries->pluck('category')->map->value)->toContain('technology');
+});
+
+it('returns no collaborative categories when there are no similar users', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+
+    expect($this->engine->collaborativelyPopularCategories($user))->toBe([]);
+});
+
+// ---------------------------------------------------------------
 // discovery_openness auto-tuning
 // ---------------------------------------------------------------
 

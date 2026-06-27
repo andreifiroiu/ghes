@@ -13,14 +13,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property array<string, float> $interest_profile
+ * @property ?string $experiment_variant
+ * @property ?NotificationChannel $notification_channel
+ * @property ?NotificationFrequency $notification_frequency
  */
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasUuids, Notifiable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -33,6 +37,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'interest_profile',
         'discovery_openness',
+        'experiment_variant',
         'notification_channel',
         'notification_frequency',
         'timezone',
@@ -119,5 +124,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function discoveryLogs(): HasMany
     {
         return $this->hasMany(DiscoveryLog::class);
+    }
+
+    /**
+     * @return HasMany<PushSubscription, $this>
+     */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
     }
 }

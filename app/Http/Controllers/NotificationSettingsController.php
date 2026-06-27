@@ -21,6 +21,7 @@ class NotificationSettingsController extends Controller
             'user' => new UserResource($request->user()),
             'channels' => array_column(NotificationChannel::cases(), 'value'),
             'frequencies' => array_column(NotificationFrequency::cases(), 'value'),
+            'vapidPublicKey' => config('eventpulse.push.vapid.public_key'),
         ]);
     }
 

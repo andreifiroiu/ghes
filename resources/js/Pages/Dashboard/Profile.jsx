@@ -36,7 +36,7 @@ const frequencyOptions = [
 export default function Profile({ user }) {
     const profile = user?.interest_profile || {};
     const categories = profile.categories || {};
-    const discoveryOpenness = profile.discovery_openness ?? 0.5;
+    const discoveryOpenness = user?.discovery_openness ?? 0.5;
     const tags = profile.tags || [];
     const isEmailVerified = !!user?.email_verified_at;
 

@@ -30,6 +30,31 @@ return [
             'popularity' => 0.10,
         ],
     ],
+    'experiments' => [
+        // A/B variants for recommendation scoring weights. Each user is assigned
+        // one variant deterministically; RecommendationEngine scores with it.
+        // 'control' mirrors recommendation.weights.
+        'recommendation_weights' => [
+            'control' => [
+                'category' => 0.30,
+                'tags' => 0.25,
+                'location' => 0.15,
+                'time' => 0.10,
+                'price' => 0.05,
+                'freshness' => 0.05,
+                'popularity' => 0.10,
+            ],
+            'freshness_boost' => [
+                'category' => 0.25,
+                'tags' => 0.20,
+                'location' => 0.15,
+                'time' => 0.10,
+                'price' => 0.05,
+                'freshness' => 0.15,
+                'popularity' => 0.10,
+            ],
+        ],
+    ],
     'feedback' => [
         // Per-reaction profile adjustments: distinct deltas for the event's
         // category score and for each of its tag scores. "saved" is treated as
@@ -70,6 +95,11 @@ return [
         'trending_min_reactions' => 3,
         'trending_window_days' => 14,
         'trending_slots' => 1,
+        // Collaborative filtering: "similar users" share an interest category at
+        // or above this score; discovery is biased toward categories they react
+        // to positively.
+        'similar_user_threshold' => 0.6,
+        'similar_user_limit' => 200,
     ],
     'geocoding' => [
         // Provider used to resolve an address into coordinates: 'nominatim' or 'google'.
@@ -82,6 +112,14 @@ return [
     ],
     'enrichment' => [
         'timeout_seconds' => (int) env('EVENTPULSE_ENRICHMENT_TIMEOUT', 10),
+    ],
+    'push' => [
+        'enabled' => (bool) env('WEBPUSH_ENABLED', false),
+        'vapid' => [
+            'subject' => env('WEBPUSH_VAPID_SUBJECT', 'mailto:events@ghes.app'),
+            'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
+            'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
+        ],
     ],
     'scraping' => [
         'interval_hours' => (int) env('EVENTPULSE_SCRAPE_INTERVAL_HOURS', 4),
@@ -171,6 +209,23 @@ return [
                 ],
             ],
         ],
+
+        // Adding a new city needs config only — no code changes. Uncomment and
+        // adjust the parameterized adapters (and add any city-specific ones to
+        // 'adapter_registry'). The orchestrator, recommendations, and digests
+        // all key off the city automatically.
+        //
+        // 'cluj' => [
+        //     'label' => 'Cluj-Napoca',
+        //     'timezone' => 'Europe/Bucharest',
+        //     'coordinates' => [46.7712, 23.6236],
+        //     'radius_km' => 25,
+        //     'sources' => [
+        //         ['adapter' => 'iabilet',     'url' => 'https://m.iabilet.ro/bilete-in-cluj-napoca/',   'enabled' => true, 'interval_hours' => 4],
+        //         ['adapter' => 'zilesinopti', 'url' => 'https://zilesinopti.ro/evenimente-cluj-napoca/', 'enabled' => true, 'interval_hours' => 4],
+        //         ['adapter' => 'allevents',   'url' => 'https://allevents.in/cluj-napoca/all',           'enabled' => true, 'interval_hours' => 6],
+        //     ],
+        // ],
     ],
 
     'default_city' => env('EVENTPULSE_DEFAULT_CITY', 'timisoara'),
@@ -195,7 +250,7 @@ return [
         'max_tokens' => 1024,
         'classification_prompt' => 'You are an event classifier. Given the event title and description, classify it into exactly one category and extract relevant tags. Respond in JSON format with keys: "category" (one of: Music, Arts, Sports, Technology, Food, Nightlife, Business, Health, Education, Family, Community, Film, Literature, Other), "tags" (array of lowercase strings), "confidence" (float 0-1).',
         'onboarding_system_prompt' => <<<'PROMPT'
-Ești EventPulse, un asistent prietenos care îi ajută pe utilizatori să descopere evenimente locale în orașul lor.
+Ești Ghes, un asistent prietenos care îi ajută pe utilizatori să descopere evenimente locale în orașul lor.
 
 Ghidează conversația prin aceste etape:
 1. INTERESE: Întreabă ce tipuri de evenimente îi plac — muzică, arte, sport, mâncare, tech, etc. Aprofundează cu întrebări specifice (de ex. „Ce genuri muzicale preferi?" „Ai bucătării preferate?").
@@ -226,7 +281,7 @@ PROMPT,
     ],
     'onboarding' => [
         'min_exchanges' => 4,
-        'welcome_message' => 'Salut! Sunt EventPulse — te ajut să descoperi evenimente locale. Pentru început, spune-mi: ce tipuri de activități și evenimente îți plac cel mai mult?',
+        'welcome_message' => 'Salut! Sunt Ghes — te ajut să descoperi evenimente locale. Pentru început, spune-mi: ce tipuri de activități și evenimente îți plac cel mai mult?',
     ],
     'city' => env('EVENTPULSE_CITY', 'Bucharest'),
     'categories' => ['Music', 'Arts', 'Sports', 'Technology', 'Food', 'Nightlife', 'Business', 'Health', 'Education', 'Family', 'Community', 'Film', 'Literature', 'Other'],

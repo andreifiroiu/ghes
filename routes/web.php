@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Admin\ScraperController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EmailReactionController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RecommendationController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +31,10 @@ Route::middleware('guest')->group(function () {
     Route::post('register', [RegisterController::class, 'store'])->middleware('throttle:10,1');
     Route::get('login', [LoginController::class, 'create'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->middleware('throttle:5,1');
+
+    // OAuth (Google)
+    Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
+    Route::get('auth/{provider}/callback', [OAuthController::class, 'callback'])->name('oauth.callback');
 });
 
 // Authenticated routes
@@ -65,6 +71,10 @@ Route::middleware('auth')->group(function () {
     // Notification Settings
     Route::get('settings/notifications', [NotificationSettingsController::class, 'show'])->name('settings.notifications');
     Route::put('settings/notifications', [NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
+
+    // Web push subscriptions
+    Route::post('push/subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
+    Route::delete('push/subscribe', [PushSubscriptionController::class, 'destroy'])->name('push.unsubscribe');
 
     // Admin
     Route::prefix('admin')->name('admin.')->middleware('can:access-admin')->group(function () {

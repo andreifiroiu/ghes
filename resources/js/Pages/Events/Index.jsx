@@ -5,23 +5,7 @@ import EventList from '@/Components/Events/EventList';
 import { Input } from '@/Components/ui/Input';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
-
-const allCategories = [
-    { value: 'music', label: 'Muzică' },
-    { value: 'technology', label: 'Tech' },
-    { value: 'sports', label: 'Sport' },
-    { value: 'arts', label: 'Artă' },
-    { value: 'food', label: 'Gastronomie' },
-    { value: 'nightlife', label: 'Viața de noapte' },
-    { value: 'business', label: 'Business' },
-    { value: 'health', label: 'Sănătate' },
-    { value: 'education', label: 'Educație' },
-    { value: 'family', label: 'Familie' },
-    { value: 'community', label: 'Comunitate' },
-    { value: 'film', label: 'Film' },
-    { value: 'literature', label: 'Literatură' },
-    { value: 'other', label: 'Altele' },
-];
+import { CATEGORIES } from '@/lib/categories';
 
 /**
  * @param {Object} props
@@ -84,7 +68,7 @@ export default function Index({ events = {}, filters = {} }) {
 
             {/* Category filter chips */}
             <div className="flex flex-wrap gap-2 mb-6">
-                {allCategories.map(({ value, label }) => (
+                {CATEGORIES.map(({ value, label }) => (
                     <button
                         key={value}
                         onClick={() => handleCategoryFilter(value)}

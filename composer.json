@@ -12,9 +12,12 @@
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.0",
         "laravel/horizon": "^5.45",
+        "laravel/sanctum": "^4.3",
         "laravel/scout": "^11.1",
+        "laravel/socialite": "^5.28",
         "laravel/tinker": "^3.0",
         "meilisearch/meilisearch-php": "^1.16",
+        "minishlink/web-push": "^8.0",
         "opcodesio/log-viewer": "^3.24",
         "spatie/browsershot": "^5.2",
         "spatie/laravel-ray": "^1.43"

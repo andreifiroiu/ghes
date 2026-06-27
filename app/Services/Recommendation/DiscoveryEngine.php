@@ -97,6 +97,7 @@ class DiscoveryEngine
         $events = Event::upcoming()
             ->where('is_classified', true)
             ->whereIn('id', $trendingCounts->keys()->all())
+            ->when($user->city, fn ($query) => $query->where('city', $user->city))
             ->get();
 
         return $this->rejectNegativeTags($events, $negativeTags)
@@ -129,15 +130,104 @@ class DiscoveryEngine
             return collect();
         }
 
+        // Bias toward low-score categories that similar users react to positively.
+        $preferred = array_values(array_intersect(
+            $this->collaborativelyPopularCategories($user),
+            $lowScoreCategories,
+        ));
+
+        $events = $this->fetchDiscoveryEvents($preferred, $excludeIds, $negativeTags, $count, $user->city);
+
+        if ($events->count() < $count) {
+            $usedIds = array_merge($excludeIds, $events->pluck('id')->all());
+            $events = $events->concat(
+                $this->fetchDiscoveryEvents($lowScoreCategories, $usedIds, $negativeTags, $count - $events->count(), $user->city),
+            );
+        }
+
+        return $events->take($count)->values();
+    }
+
+    /**
+     * Fetch upcoming, classified discovery events in the given categories,
+     * excluding already-used events and those carrying negative tags, scoped to
+     * the user's city when set.
+     *
+     * @param  list<string>  $categories
+     * @param  list<string>  $excludeIds
+     * @param  list<string>  $negativeTags
+     * @return Collection<int, Event>
+     */
+    private function fetchDiscoveryEvents(array $categories, array $excludeIds, array $negativeTags, int $count, ?string $city = null): Collection
+    {
+        if ($categories === [] || $count < 1) {
+            return collect();
+        }
+
         $events = Event::upcoming()
-            ->whereIn('category', $lowScoreCategories)
+            ->whereIn('category', $categories)
             ->whereNotIn('id', $excludeIds)
             ->where('is_classified', true)
+            ->when($city, fn ($query) => $query->where('city', $city))
             ->inRandomOrder()
             ->limit($negativeTags === [] ? $count : $count * 5)
             ->get();
 
         return $this->rejectNegativeTags($events, $negativeTags)->take($count)->values();
+    }
+
+    /**
+     * Categories that users similar to this one (sharing a high-interest
+     * category) react to positively — ordered by popularity. Used to bias
+     * discovery (collaborative filtering, SPEC §3.4).
+     *
+     * @return list<string>
+     */
+    public function collaborativelyPopularCategories(User $user): array
+    {
+        $profile = $user->interest_profile ?? [];
+        $threshold = (float) config('eventpulse.discovery.similar_user_threshold', 0.6);
+
+        $highCategories = collect(EventCategory::cases())
+            ->map(fn (EventCategory $cat) => $cat->value)
+            ->filter(fn (string $cat) => (float) ($profile[$cat] ?? 0.0) >= $threshold)
+            ->all();
+
+        if ($highCategories === []) {
+            return [];
+        }
+
+        $similarUserIds = User::query()
+            ->whereKeyNot($user->id)
+            ->where(function ($query) use ($highCategories, $threshold): void {
+                foreach ($highCategories as $category) {
+                    $query->orWhere('interest_profile->'.$category, '>=', $threshold);
+                }
+            })
+            ->limit((int) config('eventpulse.discovery.similar_user_limit', 200))
+            ->pluck('id');
+
+        if ($similarUserIds->isEmpty()) {
+            return [];
+        }
+
+        $likedEventIds = UserEventReaction::query()
+            ->whereIn('user_id', $similarUserIds)
+            ->whereIn('reaction', [Reaction::Interested->value, Reaction::Saved->value])
+            ->pluck('event_id')
+            ->unique();
+
+        if ($likedEventIds->isEmpty()) {
+            return [];
+        }
+
+        return Event::query()
+            ->whereIn('id', $likedEventIds)
+            ->get(['category'])
+            ->countBy(fn (Event $event) => (string) $event->getRawOriginal('category'))
+            ->sortDesc()
+            ->keys()
+            ->all();
     }
 
     /**

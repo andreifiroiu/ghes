@@ -28,7 +28,7 @@ it('renders an HTML email with recommended events', function () {
         'user_id' => $user->id,
         'event_ids' => [$event->id],
         'discovery_event_ids' => [],
-        'subject' => 'Your EventPulse picks',
+        'subject' => 'Evenimentele tale Ghes',
     ]);
 
     $html = $this->renderer->render($notification);

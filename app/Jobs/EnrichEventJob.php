@@ -14,7 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class GeocodeEventJob implements ShouldQueue
+class EnrichEventJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -34,25 +34,18 @@ class GeocodeEventJob implements ShouldQueue
 
     public function handle(EventEnricher $enricher): void
     {
-        Log::info('GeocodeEventJob: geocoding', ['event_id' => $this->eventId]);
+        Log::info('EnrichEventJob: enriching', ['event_id' => $this->eventId]);
 
         $event = Event::findOrFail($this->eventId);
 
-        $enricher->enrichGeocoding($event);
+        $enricher->enrichMetadata($event);
 
-        Log::info('GeocodeEventJob: done', [
-            'event_id' => $this->eventId,
-            'latitude' => $event->latitude,
-            'longitude' => $event->longitude,
-        ]);
-
-        // Metadata enrichment (OG/JSON-LD) runs after geocoding.
-        EnrichEventJob::dispatch($this->eventId);
+        Log::info('EnrichEventJob: done', ['event_id' => $this->eventId]);
     }
 
     public function failed(Throwable $e): void
     {
-        Log::error('GeocodeEventJob: failed permanently', [
+        Log::error('EnrichEventJob: failed permanently', [
             'event_id' => $this->eventId,
             'error' => $e->getMessage(),
         ]);

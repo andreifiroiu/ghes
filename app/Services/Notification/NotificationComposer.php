@@ -42,7 +42,7 @@ class NotificationComposer
             'frequency' => $user->notification_frequency ?? NotificationFrequency::Daily,
             'event_ids' => $batch->recommendedEventIds,
             'discovery_event_ids' => $batch->discoveryEventIds,
-            'subject' => "Your EventPulse picks for {$date}",
+            'subject' => "Evenimentele tale Ghes pentru {$date}",
         ]);
 
         $notification->save();

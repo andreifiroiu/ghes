@@ -36,6 +36,10 @@ class EventResource extends JsonResource
             'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
+            'current_reaction' => $this->whenLoaded(
+                'reactions',
+                fn () => $this->reactions->first()?->reaction?->value,
+            ),
         ];
     }
 }

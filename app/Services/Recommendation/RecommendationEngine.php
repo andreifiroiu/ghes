@@ -16,6 +16,7 @@ class RecommendationEngine
         private readonly ProfileScorer $profileScorer,
         private readonly DiscoveryEngine $discoveryEngine,
         private readonly DiversityFilter $diversityFilter,
+        private readonly ExperimentAssigner $experimentAssigner,
     ) {}
 
     /**
@@ -29,7 +30,7 @@ class RecommendationEngine
     public function scoreEvent(User $user, Event $event): float
     {
         /** @var array{category: float, tags: float, location: float, time: float, price: float, freshness: float, popularity: float} $weights */
-        $weights = config('eventpulse.recommendation.weights');
+        $weights = $this->experimentAssigner->weightsFor($user);
 
         $categoryScore = $this->categoryMatch($user, $event);
         $tagScore = $this->tagMatch($user, $event);
