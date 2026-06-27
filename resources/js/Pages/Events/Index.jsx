@@ -7,19 +7,20 @@ import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
 
 const allCategories = [
-    { value: 'Music', label: 'Muzică' },
-    { value: 'Tech', label: 'Tech' },
-    { value: 'Sports', label: 'Sport' },
-    { value: 'Arts', label: 'Artă' },
-    { value: 'Food', label: 'Gastronomie' },
-    { value: 'Nightlife', label: 'Viața de noapte' },
-    { value: 'Business', label: 'Business' },
-    { value: 'Health', label: 'Sănătate' },
-    { value: 'Education', label: 'Educație' },
-    { value: 'Community', label: 'Comunitate' },
-    { value: 'Film', label: 'Film' },
-    { value: 'Theater', label: 'Teatru' },
-    { value: 'Other', label: 'Altele' },
+    { value: 'music', label: 'Muzică' },
+    { value: 'technology', label: 'Tech' },
+    { value: 'sports', label: 'Sport' },
+    { value: 'arts', label: 'Artă' },
+    { value: 'food', label: 'Gastronomie' },
+    { value: 'nightlife', label: 'Viața de noapte' },
+    { value: 'business', label: 'Business' },
+    { value: 'health', label: 'Sănătate' },
+    { value: 'education', label: 'Educație' },
+    { value: 'family', label: 'Familie' },
+    { value: 'community', label: 'Comunitate' },
+    { value: 'film', label: 'Film' },
+    { value: 'literature', label: 'Literatură' },
+    { value: 'other', label: 'Altele' },
 ];
 
 /**
