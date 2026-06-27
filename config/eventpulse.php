@@ -50,6 +50,26 @@ return [
         'default_openness' => 0.3,
         'exploration_budget' => 0.2,
         'min_surprise_score' => 0.3,
+        // Exploration reward/penalty: positive reactions to a discovery event
+        // boost the profile more, negative reactions penalise it less, than normal.
+        'reward_multiplier' => 1.5,
+        'penalty_multiplier' => 0.5,
+        // Serendipity decay: a category surfaced this many times with zero positive
+        // outcomes is suppressed from discovery for this many days.
+        'suppression_threshold' => 3,
+        'suppression_days' => 30,
+        // discovery_openness auto-tuning: once a user has resolved at least
+        // min_samples discovery events, if their hit rate falls below the
+        // threshold, reduce openness by step (never below floor).
+        'openness_min_samples' => 5,
+        'openness_hit_rate_threshold' => 0.1,
+        'openness_step' => 0.05,
+        'openness_floor' => 0.05,
+        // Trending injection: events with at least this many positive reactions
+        // across the platform (within the window) fill reserved discovery slots.
+        'trending_min_reactions' => 3,
+        'trending_window_days' => 14,
+        'trending_slots' => 1,
     ],
     'geocoding' => [
         // Provider used to resolve an address into coordinates: 'nominatim' or 'google'.

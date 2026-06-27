@@ -84,8 +84,10 @@ class RecommendationEngine
             ->sortByDesc('score')
             ->values();
 
-        // Discovery budget
-        $explorationBudget = (float) config('eventpulse.discovery.exploration_budget', 0.2);
+        // Discovery budget — driven by the user's openness (auto-tuned over time),
+        // falling back to the global default.
+        $explorationBudget = (float) ($user->discovery_openness
+            ?? config('eventpulse.discovery.exploration_budget', 0.2));
         $discoveryCount = max(1, (int) round($limit * $explorationBudget));
         $recommendationCount = $limit - $discoveryCount;
 

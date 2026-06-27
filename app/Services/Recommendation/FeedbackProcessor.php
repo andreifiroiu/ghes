@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Recommendation;
 
+use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Models\UserEventReaction;
@@ -14,10 +15,15 @@ class FeedbackProcessor
 {
     public function __construct(
         private readonly ProfileUpdater $profileUpdater,
+        private readonly DiscoveryEngine $discoveryEngine,
     ) {}
 
     /**
      * Process a single reaction: update the user's profile and mark processed.
+     *
+     * When the reaction is to a discovery event, the exploration reward/penalty
+     * is applied, the discovery outcome is recorded, and the user's openness is
+     * recalibrated.
      */
     public function processReaction(UserEventReaction $reaction): void
     {
@@ -27,18 +33,32 @@ class FeedbackProcessor
 
         $reaction->loadMissing(['user', 'event']);
 
+        $reactionValue = $reaction->reaction->value;
+
+        $discoveryLog = DiscoveryLog::query()
+            ->where('user_id', $reaction->user_id)
+            ->where('event_id', $reaction->event_id)
+            ->first();
+
         $this->profileUpdater->updateFromFeedback(
             $reaction->user,
             $reaction->event,
-            $reaction->reaction->value,
+            $reactionValue,
+            isDiscovery: $discoveryLog !== null,
         );
+
+        if ($discoveryLog !== null) {
+            $discoveryLog->update(['outcome' => $reactionValue]);
+            $this->discoveryEngine->recalibrateOpenness($reaction->user);
+        }
 
         $reaction->update(['is_processed' => true]);
 
         Log::debug('Processed feedback', [
-            'reaction' => $reaction->reaction->value,
+            'reaction' => $reactionValue,
             'user_id' => $reaction->user_id,
             'event_id' => $reaction->event_id,
+            'is_discovery' => $discoveryLog !== null,
         ]);
     }
 
@@ -135,10 +155,32 @@ class FeedbackProcessor
         }
 
         $count = 0;
+        $hadDiscovery = false;
 
         foreach (Event::whereIn('id', $ignoredEventIds)->get() as $event) {
-            $this->profileUpdater->updateFromFeedback($user, $event, 'ignored');
+            $discoveryLog = DiscoveryLog::query()
+                ->where('user_id', $user->id)
+                ->where('event_id', $event->id)
+                ->whereNull('outcome')
+                ->first();
+
+            $this->profileUpdater->updateFromFeedback(
+                $user,
+                $event,
+                'ignored',
+                isDiscovery: $discoveryLog !== null,
+            );
+
+            if ($discoveryLog !== null) {
+                $discoveryLog->update(['outcome' => 'ignored']);
+                $hadDiscovery = true;
+            }
+
             $count++;
+        }
+
+        if ($hadDiscovery) {
+            $this->discoveryEngine->recalibrateOpenness($user);
         }
 
         return $count;

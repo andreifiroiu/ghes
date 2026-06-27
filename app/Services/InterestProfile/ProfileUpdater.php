@@ -16,8 +16,12 @@ class ProfileUpdater
      * Applies the reaction's category and tag deltas (from config) to the
      * event's category score and tag scores, clamps everything to [0.0, 1.0],
      * maintains negative tags (suppression filters), and saves.
+     *
+     * When the reaction is to a discovery event, positive deltas are amplified
+     * (exploration reward) and negative deltas are softened (so a single miss
+     * doesn't suppress a newly-explored category).
      */
-    public function updateFromFeedback(User $user, Event $event, string $reaction): void
+    public function updateFromFeedback(User $user, Event $event, string $reaction, bool $isDiscovery = false): void
     {
         /** @var array<string, array{category: float, tag: float}> $deltas */
         $deltas = config('eventpulse.feedback.deltas');
@@ -27,8 +31,8 @@ class ProfileUpdater
             return;
         }
 
-        $categoryDelta = (float) ($delta['category'] ?? 0.0);
-        $tagDelta = (float) ($delta['tag'] ?? 0.0);
+        $categoryDelta = $this->scaleForDiscovery((float) ($delta['category'] ?? 0.0), $isDiscovery);
+        $tagDelta = $this->scaleForDiscovery((float) ($delta['tag'] ?? 0.0), $isDiscovery);
 
         $profile = $user->interest_profile ?? [];
 
@@ -80,6 +84,22 @@ class ProfileUpdater
         }
 
         return $profile;
+    }
+
+    /**
+     * Amplify positive / soften negative deltas for discovery-event reactions.
+     */
+    private function scaleForDiscovery(float $delta, bool $isDiscovery): float
+    {
+        if (! $isDiscovery || $delta === 0.0) {
+            return $delta;
+        }
+
+        $multiplier = $delta > 0.0
+            ? (float) config('eventpulse.discovery.reward_multiplier', 1.5)
+            : (float) config('eventpulse.discovery.penalty_multiplier', 0.5);
+
+        return $delta * $multiplier;
     }
 
     /**

@@ -5,65 +5,203 @@ declare(strict_types=1);
 namespace App\Services\Recommendation;
 
 use App\Enums\EventCategory;
+use App\Enums\Reaction;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\User;
+use App\Models\UserEventReaction;
 use Illuminate\Support\Collection;
 
 class DiscoveryEngine
 {
     /**
-     * Select discovery events from categories the user rarely engages with.
+     * Select discovery events for a user.
+     *
+     * Reserves a slot for platform-wide trending events (high engagement,
+     * regardless of profile), then fills the rest from categories the user
+     * rarely engages with — skipping categories under serendipity suppression
+     * and events carrying the user's negative tags.
      *
      * @return Collection<int, Event>
      */
     public function discoverForUser(User $user, int $count = 2): Collection
     {
+        if ($count < 1) {
+            return collect();
+        }
+
+        /** @var list<string> $reactedEventIds */
+        $reactedEventIds = $user->reactions()->pluck('event_id')->all();
+        $negativeTags = $user->negativeTags();
+
+        $trending = $this->trendingEvents($user, $reactedEventIds, $negativeTags, $count);
+
+        $excludeIds = array_merge($reactedEventIds, $trending->pluck('id')->all());
+        $remaining = $count - $trending->count();
+
+        $categoryEvents = $remaining > 0
+            ? $this->categoryDiscovery($user, $excludeIds, $negativeTags, $remaining)
+            : collect();
+
+        /** @var Collection<int, Event> $events */
+        $events = $trending->concat($categoryEvents)->take($count)->values();
+
+        // Log each surfaced discovery once per (user, event) for analytics,
+        // suppression, and hit-rate tuning.
+        $events->each(function (Event $event) use ($user): void {
+            DiscoveryLog::firstOrCreate(
+                ['user_id' => $user->id, 'event_id' => $event->id],
+                [
+                    'category_explored' => $event->category->value,
+                    'surprise_score' => $this->calculateSurpriseScore($user, $event),
+                ],
+            );
+        });
+
+        return $events;
+    }
+
+    /**
+     * Platform-wide trending events: those with the most positive reactions
+     * within the trending window, surfaced regardless of the user's profile.
+     *
+     * @param  list<string>  $reactedEventIds
+     * @param  list<string>  $negativeTags
+     * @return Collection<int, Event>
+     */
+    private function trendingEvents(User $user, array $reactedEventIds, array $negativeTags, int $count): Collection
+    {
+        $slots = min((int) config('eventpulse.discovery.trending_slots', 1), $count);
+
+        if ($slots < 1) {
+            return collect();
+        }
+
+        $minReactions = (int) config('eventpulse.discovery.trending_min_reactions', 3);
+        $windowDays = (int) config('eventpulse.discovery.trending_window_days', 14);
+        $positive = [Reaction::Interested->value, Reaction::Saved->value];
+
+        $trendingCounts = UserEventReaction::query()
+            ->whereIn('reaction', $positive)
+            ->where('created_at', '>=', now()->subDays($windowDays))
+            ->whereNotIn('event_id', $reactedEventIds)
+            ->pluck('event_id')
+            ->countBy()
+            ->filter(fn (int $reactionCount) => $reactionCount >= $minReactions)
+            ->sortDesc();
+
+        if ($trendingCounts->isEmpty()) {
+            return collect();
+        }
+
+        $events = Event::upcoming()
+            ->where('is_classified', true)
+            ->whereIn('id', $trendingCounts->keys()->all())
+            ->get();
+
+        return $this->rejectNegativeTags($events, $negativeTags)
+            ->sortByDesc(fn (Event $event) => $trendingCounts[$event->id] ?? 0)
+            ->take($slots)
+            ->values();
+    }
+
+    /**
+     * Discovery from low-interest categories, excluding suppressed categories.
+     *
+     * @param  list<string>  $excludeIds
+     * @param  list<string>  $negativeTags
+     * @return Collection<int, Event>
+     */
+    private function categoryDiscovery(User $user, array $excludeIds, array $negativeTags, int $count): Collection
+    {
         $profile = $user->interest_profile ?? [];
         $minSurprise = (float) config('eventpulse.discovery.min_surprise_score', 0.3);
+        $suppressed = $this->suppressedCategories($user);
 
-        // Categories whose surprise score (1 − user score) ≥ threshold
         $lowScoreCategories = collect(EventCategory::cases())
-            ->filter(fn (EventCategory $cat) => (1.0 - ($profile[$cat->value] ?? 0.0)) >= $minSurprise)
             ->map(fn (EventCategory $cat) => $cat->value)
+            ->filter(fn (string $cat) => (1.0 - (float) ($profile[$cat] ?? 0.0)) >= $minSurprise)
+            ->reject(fn (string $cat) => in_array($cat, $suppressed, true))
             ->values()
-            ->toArray();
+            ->all();
 
         if ($lowScoreCategories === []) {
             return collect();
         }
 
-        $reactedEventIds = $user->reactions()->pluck('event_id');
-        $negativeTags = $user->negativeTags();
-
         $events = Event::upcoming()
             ->whereIn('category', $lowScoreCategories)
-            ->whereNotIn('id', $reactedEventIds)
+            ->whereNotIn('id', $excludeIds)
             ->where('is_classified', true)
             ->inRandomOrder()
-            // Over-fetch so post-filtering negative tags still yields enough.
             ->limit($negativeTags === [] ? $count : $count * 5)
             ->get();
 
-        if ($negativeTags !== []) {
-            $events = $events->reject(
-                fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
-            )->values();
+        return $this->rejectNegativeTags($events, $negativeTags)->take($count)->values();
+    }
+
+    /**
+     * Categories under serendipity suppression: surfaced at least the threshold
+     * number of times within the suppression window with zero positive outcomes.
+     *
+     * @return list<string>
+     */
+    public function suppressedCategories(User $user): array
+    {
+        $threshold = (int) config('eventpulse.discovery.suppression_threshold', 3);
+        $days = (int) config('eventpulse.discovery.suppression_days', 30);
+        $positive = [Reaction::Interested->value, Reaction::Saved->value];
+
+        return DiscoveryLog::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', now()->subDays($days))
+            ->get(['category_explored', 'outcome'])
+            ->groupBy('category_explored')
+            ->filter(function (Collection $logs) use ($threshold, $positive) {
+                $positives = $logs->whereIn('outcome', $positive)->count();
+
+                return $logs->count() >= $threshold && $positives === 0;
+            })
+            ->keys()
+            ->all();
+    }
+
+    /**
+     * Lower a user's discovery_openness when their discovery hit rate is poor.
+     *
+     * Once a user has resolved enough discovery events, if the share that got a
+     * positive reaction falls below the threshold, nudge openness down (never
+     * below the configured floor). Openness is never raised here.
+     */
+    public function recalibrateOpenness(User $user): void
+    {
+        $minSamples = (int) config('eventpulse.discovery.openness_min_samples', 5);
+        $threshold = (float) config('eventpulse.discovery.openness_hit_rate_threshold', 0.1);
+        $step = (float) config('eventpulse.discovery.openness_step', 0.05);
+        $floor = (float) config('eventpulse.discovery.openness_floor', 0.05);
+        $positive = [Reaction::Interested->value, Reaction::Saved->value];
+
+        $resolved = DiscoveryLog::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('outcome')
+            ->get(['outcome']);
+
+        if ($resolved->count() < $minSamples) {
+            return;
         }
 
-        $events = $events->take($count);
+        $hitRate = $resolved->whereIn('outcome', $positive)->count() / $resolved->count();
 
-        // Log each discovery for analytics
-        $events->each(function (Event $event) use ($user): void {
-            DiscoveryLog::create([
-                'user_id' => $user->id,
-                'event_id' => $event->id,
-                'category_explored' => $event->category->value,
-                'surprise_score' => $this->calculateSurpriseScore($user, $event),
-            ]);
-        });
+        if ($hitRate >= $threshold) {
+            return;
+        }
 
-        return $events;
+        $current = (float) $user->discovery_openness;
+        $new = max($floor, $current - $step);
+
+        if ($new !== $current) {
+            $user->update(['discovery_openness' => $new]);
+        }
     }
 
     /**
@@ -75,5 +213,23 @@ class DiscoveryEngine
         $categoryScore = (float) ($profile[$event->category->value] ?? 0.0);
 
         return max(0.0, min(1.0, 1.0 - $categoryScore));
+    }
+
+    /**
+     * Drop events carrying any of the user's negative tags.
+     *
+     * @param  Collection<int, Event>  $events
+     * @param  list<string>  $negativeTags
+     * @return Collection<int, Event>
+     */
+    private function rejectNegativeTags(Collection $events, array $negativeTags): Collection
+    {
+        if ($negativeTags === []) {
+            return $events;
+        }
+
+        return $events->reject(
+            fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
+        )->values();
     }
 }

@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 use App\Enums\EventCategory;
 use App\Enums\Reaction;
+use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\InterestProfile\ProfileUpdater;
+use App\Services\Recommendation\DiscoveryEngine;
 use App\Services\Recommendation\FeedbackProcessor;
 
 beforeEach(function () {
     $this->processor = new FeedbackProcessor(
         profileUpdater: new ProfileUpdater,
+        discoveryEngine: new DiscoveryEngine,
     );
 });
 
@@ -112,6 +115,34 @@ it('saved reaction gives higher delta than interested', function () {
     $user->refresh();
     $savedDelta = config('eventpulse.feedback.deltas.saved.category');
     expect($user->interest_profile['arts'])->toBe(min(1.0, 0.4 + $savedDelta));
+});
+
+it('applies exploration reward and records outcome for a discovery reaction', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.2]]);
+    $event = Event::factory()->create(['category' => EventCategory::Music, 'tags' => []]);
+
+    $log = DiscoveryLog::create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+        'category_explored' => 'music',
+        'surprise_score' => 0.8,
+    ]);
+
+    $reaction = UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+        'reaction' => Reaction::Interested,
+        'is_processed' => false,
+    ]);
+
+    $this->processor->processReaction($reaction);
+
+    $user->refresh();
+    $log->refresh();
+
+    // interested category delta 0.15 * reward_multiplier 1.5 = 0.225 → 0.2 + 0.225
+    expect($user->interest_profile['music'])->toEqualWithDelta(0.425, 0.0001)
+        ->and($log->outcome)->toBe('interested');
 });
 
 it('applies passive decay to ignored events in old notifications', function () {
