@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\CleanupExpiredEventsJob;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('eventpulse:scrape')
@@ -17,6 +18,10 @@ Schedule::command('eventpulse:send-notifications')
 
 Schedule::command('eventpulse:decay-profiles')
     ->weekly()
+    ->withoutOverlapping();
+
+Schedule::job(new CleanupExpiredEventsJob)
+    ->dailyAt('04:00')
     ->withoutOverlapping();
 
 Schedule::command('horizon:snapshot')

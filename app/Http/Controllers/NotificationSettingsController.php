@@ -26,16 +26,23 @@ class NotificationSettingsController extends Controller
 
     public function update(NotificationSettingsRequest $request): RedirectResponse
     {
-        /** @var array{channel: string, frequency: string, discovery_openness: float} $validated */
+        /** @var array{channel: string, frequency: string, discovery_openness?: float} $validated */
         $validated = $request->validated();
 
-        $request->user()->update([
+        $attributes = [
             'notification_channel' => NotificationChannel::from($validated['channel']),
             'notification_frequency' => NotificationFrequency::from($validated['frequency']),
-            'discovery_openness' => (float) $validated['discovery_openness'],
-        ]);
+        ];
 
-        return redirect()->route('profile.show')
+        // discovery_openness is only sent by the profile page (which has the slider);
+        // the dedicated settings page omits it, so update it only when present.
+        if (array_key_exists('discovery_openness', $validated)) {
+            $attributes['discovery_openness'] = (float) $validated['discovery_openness'];
+        }
+
+        $request->user()->update($attributes);
+
+        return redirect()->back()
             ->with('success', 'Notification settings updated.');
     }
 }

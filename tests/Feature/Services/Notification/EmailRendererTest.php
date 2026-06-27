@@ -36,11 +36,11 @@ it('renders an HTML email with recommended events', function () {
     expect($html)->toContain('Jazz Night at Control');
     expect($html)->toContain('Control Club');
     expect($html)->toContain('Music');
-    expect($html)->toContain('Free');
+    expect($html)->toContain('Gratuit');
     expect($html)->toContain('Alice');
-    expect($html)->toContain('Interested');
-    expect($html)->toContain('Not for me');
-    expect($html)->toContain('Save');
+    expect($html)->toContain('Mă interesează');
+    expect($html)->toContain('Nu-i pentru mine');
+    expect($html)->toContain('Salvează');
 });
 
 it('includes signed reaction URLs', function () {
@@ -77,8 +77,8 @@ it('renders discovery events in a separate section', function () {
 
     $html = $this->renderer->render($notification);
 
-    expect($html)->toContain('Something New to Try');
-    expect($html)->toContain('Discovery');
+    expect($html)->toContain('Descoperă ceva nou');
+    expect($html)->toContain('Descoperire');
     expect($html)->toContain('Surprise Event');
 });
 
@@ -96,7 +96,7 @@ it('renders a valid HTML document', function () {
 
     expect($html)->toContain('<!doctype html>');
     expect($html)->toContain('</html>');
-    expect($html)->toContain('EventPulse');
+    expect($html)->toContain('Ghes');
 });
 
 it('handles empty event lists gracefully', function () {
@@ -111,7 +111,7 @@ it('handles empty event lists gracefully', function () {
     $html = $this->renderer->render($notification);
 
     expect($html)->toContain('<!doctype html>');
-    expect($html)->not->toContain('Something New to Try');
+    expect($html)->not->toContain('Descoperă ceva nou');
 });
 
 it('shows event pricing information', function () {

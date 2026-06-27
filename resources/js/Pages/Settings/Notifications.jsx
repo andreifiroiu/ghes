@@ -25,14 +25,14 @@ const frequencyOptions = [
  * @param {string} props.settings.frequency
  */
 export default function Notifications({ settings = {} }) {
-    const { data, setData, post, processing, recentlySuccessful } = useForm({
+    const { data, setData, put, processing, recentlySuccessful } = useForm({
         channel: settings.channel || 'email',
         frequency: settings.frequency || 'daily',
     });
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        post('/settings/notifications');
+        put('/settings/notifications');
     };
 
     return (
