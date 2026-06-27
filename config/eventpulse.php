@@ -51,6 +51,18 @@ return [
         'exploration_budget' => 0.2,
         'min_surprise_score' => 0.3,
     ],
+    'geocoding' => [
+        // Provider used to resolve an address into coordinates: 'nominatim' or 'google'.
+        'provider' => env('GEOCODING_PROVIDER', 'nominatim'),
+        'google_key' => env('GOOGLE_GEOCODING_KEY'),
+        'nominatim_url' => env('NOMINATIM_URL', 'https://nominatim.openstreetmap.org/search'),
+        // Nominatim's usage policy requires an identifying User-Agent.
+        'user_agent' => env('GEOCODING_USER_AGENT', 'Ghes/1.0 (+https://ghes.app)'),
+        'timeout_seconds' => (int) env('GEOCODING_TIMEOUT_SECONDS', 10),
+    ],
+    'enrichment' => [
+        'timeout_seconds' => (int) env('EVENTPULSE_ENRICHMENT_TIMEOUT', 10),
+    ],
     'scraping' => [
         'interval_hours' => (int) env('EVENTPULSE_SCRAPE_INTERVAL_HOURS', 4),
         'max_consecutive_failures' => 3,

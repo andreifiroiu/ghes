@@ -15,6 +15,7 @@ use Laravel\Scout\Searchable;
 
 /**
  * @property array<int, string>|null $tags
+ * @property string|null $neighborhood
  */
 class Event extends Model
 {
@@ -38,6 +39,7 @@ class Event extends Model
         'venue',
         'address',
         'city',
+        'neighborhood',
         'latitude',
         'longitude',
         'starts_at',

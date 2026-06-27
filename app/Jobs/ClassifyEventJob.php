@@ -59,6 +59,9 @@ class ClassifyEventJob implements ShouldBeUnique, ShouldQueue
             'tags' => $classified->tags,
             'confidence' => $classified->confidence,
         ]);
+
+        // Geocoding runs after classification (see pipeline in SPEC §4.4).
+        GeocodeEventJob::dispatch($this->eventId);
     }
 
     public function failed(Throwable $e): void
