@@ -97,6 +97,11 @@ return [
     */
 
     'waits' => [
+        'redis:scraping' => 300,
+        'redis:processing' => 120,
+        'redis:ai' => 180,
+        'redis:enrichment' => 180,
+        'redis:notifications' => 60,
         'redis:default' => 60,
     ],
 
@@ -197,16 +202,55 @@ return [
     */
 
     'defaults' => [
-        'supervisor-1' => [
+        'supervisor-scraping' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            'queue' => ['scraping'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 3,
+            'timeout' => 120,
+            'nice' => 0,
+        ],
+        'supervisor-processing' => [
+            'connection' => 'redis',
+            'queue' => ['processing', 'enrichment'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
-            'tries' => 1,
+            'tries' => 3,
+            'timeout' => 90,
+            'nice' => 0,
+        ],
+        'supervisor-ai' => [
+            'connection' => 'redis',
+            'queue' => ['ai'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 2,
+            'timeout' => 120,
+            'nice' => 0,
+        ],
+        'supervisor-notifications' => [
+            'connection' => 'redis',
+            'queue' => ['notifications', 'default'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
             'timeout' => 60,
             'nice' => 0,
         ],
@@ -214,16 +258,40 @@ return [
 
     'environments' => [
         'production' => [
-            'supervisor-1' => [
-                'maxProcesses' => 10,
+            'supervisor-scraping' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-processing' => [
+                'maxProcesses' => 6,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-ai' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-notifications' => [
+                'maxProcesses' => 4,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
         ],
 
         'local' => [
-            'supervisor-1' => [
-                'maxProcesses' => 3,
+            'supervisor-scraping' => [
+                'maxProcesses' => 1,
+            ],
+            'supervisor-processing' => [
+                'maxProcesses' => 2,
+            ],
+            'supervisor-ai' => [
+                'maxProcesses' => 1,
+            ],
+            'supervisor-notifications' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],
