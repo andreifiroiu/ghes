@@ -15,7 +15,7 @@ class EventController extends Controller
 {
     public function index(Request $request): Response
     {
-        $query = Event::upcoming()->orderBy('starts_at', 'asc');
+        $query = Event::canonical()->upcoming()->orderBy('starts_at', 'asc');
 
         if ($request->filled('search')) {
             $searchIds = Event::search($request->string('search')->toString())
@@ -41,6 +41,8 @@ class EventController extends Controller
 
     public function show(Event $event): Response
     {
+        $event = $this->resolveCanonical($event);
+
         return Inertia::render('Events/Show', [
             'event' => new EventResource($event),
         ]);
@@ -48,7 +50,7 @@ class EventController extends Controller
 
     public function apiIndex(Request $request): JsonResponse
     {
-        $query = Event::upcoming()->orderBy('starts_at', 'asc');
+        $query = Event::canonical()->upcoming()->orderBy('starts_at', 'asc');
 
         if ($request->filled('search')) {
             $searchIds = Event::search($request->string('search')->toString())
@@ -71,6 +73,31 @@ class EventController extends Controller
 
     public function apiShow(Event $event): JsonResponse
     {
-        return (new EventResource($event))->response();
+        return (new EventResource($this->resolveCanonical($event)))->response();
+    }
+
+    /**
+     * Follow a merged duplicate to the event it now lives under.
+     *
+     * Links in already-sent digests point at ids that may since have been
+     * merged away; they must still resolve to the surviving event rather than
+     * showing a stale duplicate.
+     */
+    private function resolveCanonical(Event $event): Event
+    {
+        $seen = 0;
+
+        while ($event->merged_into_id !== null && $seen < 5) {
+            $canonical = $event->canonicalEvent;
+
+            if ($canonical === null) {
+                break;
+            }
+
+            $event = $canonical;
+            $seen++;
+        }
+
+        return $event;
     }
 }

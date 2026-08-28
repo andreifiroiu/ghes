@@ -5,88 +5,146 @@ declare(strict_types=1);
 use App\DTOs\RawEvent;
 use App\Models\Event;
 use App\Services\Processing\EventDeduplicator;
+use App\Services\Processing\EventTextNormalizer;
 
+/**
+ * Scoring behaviour of the matcher: how the title, venue and time components
+ * combine, and how the configured thresholds gate a merge.
+ *
+ * The blocking-key and candidate-selection behaviour is covered by
+ * tests/Feature/Processing/EventDeduplicatorTest.php.
+ */
 beforeEach(function () {
     $this->deduplicator = new EventDeduplicator;
+    $this->timezone = 'Europe/Bucharest';
 });
 
-it('generates consistent fingerprints for the same event data', function () {
-    $event = new RawEvent(
-        title: 'Jazz Night at Control',
-        description: 'Live jazz every Friday',
-        sourceUrl: 'https://example.com/events/jazz-night',
-        sourceId: 'evt-123',
-        source: 'generic_html',
-        venue: 'Control Club',
-        address: 'Str. Constantin Mille 4',
-        city: 'Bucharest',
-        startsAt: '2026-04-10 20:00:00',
-        endsAt: '2026-04-10 23:00:00',
-        priceMin: 50.0,
-        priceMax: 50.0,
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function scoringRawEvent(array $overrides = []): RawEvent
+{
+    return new RawEvent(
+        title: $overrides['title'] ?? 'Concert Phoenix',
+        description: null,
+        sourceUrl: $overrides['source_url'] ?? 'https://allevents.in/timisoara/concert-phoenix',
+        sourceId: null,
+        source: $overrides['source'] ?? 'allevents',
+        venue: array_key_exists('venue', $overrides) ? $overrides['venue'] : 'Casa Tineretului',
+        address: null,
+        city: 'Timișoara',
+        startsAt: array_key_exists('starts_at', $overrides) ? $overrides['starts_at'] : '2026-05-10 17:00:00',
+        endsAt: null,
+        priceMin: null,
+        priceMax: null,
         currency: 'RON',
         isFree: false,
         imageUrl: null,
         metadata: [],
     );
+}
 
-    $fingerprint1 = $this->deduplicator->generateFingerprint($event);
-    $fingerprint2 = $this->deduplicator->generateFingerprint($event);
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function scoringEvent(array $overrides = []): Event
+{
+    $title = $overrides['title'] ?? 'Concert Phoenix';
+    $startsAt = array_key_exists('starts_at', $overrides) ? $overrides['starts_at'] : '2026-05-10 17:00:00';
+    $localDate = EventTextNormalizer::localDate($startsAt, 'Europe/Bucharest');
 
-    expect($fingerprint1)->toBe($fingerprint2);
-    expect($fingerprint1)->toBeString()->not->toBeEmpty();
-});
-
-it('generates different fingerprints for different events', function () {
-    $event1 = new RawEvent(
-        title: 'Jazz Night at Control',
-        description: null,
-        sourceUrl: 'https://example.com/events/jazz-night',
-        sourceId: null,
-        source: 'generic_html',
-        venue: null,
-        address: null,
-        city: null,
-        startsAt: '2026-04-10 20:00:00',
-        endsAt: null,
-        priceMin: null,
-        priceMax: null,
-        currency: null,
-        isFree: null,
-        imageUrl: null,
-        metadata: [],
-    );
-
-    $event2 = new RawEvent(
-        title: 'Rock Concert at Expirat',
-        description: null,
-        sourceUrl: 'https://example.com/events/rock-concert',
-        sourceId: null,
-        source: 'generic_html',
-        venue: null,
-        address: null,
-        city: null,
-        startsAt: '2026-04-11 21:00:00',
-        endsAt: null,
-        priceMin: null,
-        priceMax: null,
-        currency: null,
-        isFree: null,
-        imageUrl: null,
-        metadata: [],
-    );
-
-    $fp1 = $this->deduplicator->generateFingerprint($event1);
-    $fp2 = $this->deduplicator->generateFingerprint($event2);
-
-    expect($fp1)->not->toBe($fp2);
-});
-
-it('detects duplicate events by fingerprint', function () {
-    $event = Event::factory()->create([
-        'fingerprint' => 'abc123hash',
+    return Event::factory()->create([
+        'title' => $title,
+        'city' => 'Timișoara',
+        'venue' => array_key_exists('venue', $overrides) ? $overrides['venue'] : 'Casa Tineretului',
+        'starts_at' => $startsAt,
+        'local_date' => $localDate,
+        'source' => $overrides['source'] ?? 'iabilet',
     ]);
+}
 
-    expect($this->deduplicator->isDuplicate('abc123hash'))->toBeTrue();
-    expect($this->deduplicator->isDuplicate('xyz789hash'))->toBeFalse();
+it('scores an identical listing from another provider at the top of the range', function () {
+    $score = $this->deduplicator->score(scoringRawEvent(), scoringEvent(), $this->timezone);
+
+    expect($score)->toBeGreaterThan(0.9);
+});
+
+it('scores a title-only difference below the merge threshold', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Stand-up Comedy cu Micutzu']),
+        scoringEvent(['title' => 'Concert Phoenix']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('returns zero when the title floor is not cleared, however well venue and time agree', function () {
+    // Same venue, same minute — only the act differs.
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Concert Byron']),
+        scoringEvent(['title' => 'Recital Maria Tanase']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('still clears the threshold when the venue is unknown on one side', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['venue' => null]),
+        scoringEvent(['venue' => 'Casa Tineretului']),
+        $this->timezone,
+    );
+
+    expect($score)->toBeGreaterThanOrEqual((float) config('eventpulse.dedup.min_score'));
+});
+
+it('treats a venue that merely appends the city as the same venue', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['venue' => 'Casa Tineretului, Timisoara']),
+        scoringEvent(['venue' => 'Casa Tineretului']),
+        $this->timezone,
+    );
+
+    expect($score)->toBeGreaterThan(0.9);
+});
+
+it('does not penalise a date-only listing against a timed one', function () {
+    $withTime = $this->deduplicator->score(
+        scoringRawEvent(['starts_at' => '2026-05-10 17:00:00']),
+        scoringEvent(['starts_at' => '2026-05-10 17:00:00']),
+        $this->timezone,
+    );
+
+    $dateOnly = $this->deduplicator->score(
+        scoringRawEvent(['starts_at' => '2026-05-09 21:00:00']), // local midnight on the 10th
+        scoringEvent(['starts_at' => '2026-05-10 17:00:00']),
+        $this->timezone,
+    );
+
+    expect($dateOnly)->toBeGreaterThanOrEqual((float) config('eventpulse.dedup.min_score'))
+        ->and($dateOnly)->toBeLessThanOrEqual($withTime);
+});
+
+it('honours a raised minimum score from config', function () {
+    config()->set('eventpulse.dedup.min_score', 0.99);
+
+    $raw = scoringRawEvent(['title' => 'Concert Phoenix la Timisoara', 'venue' => null]);
+    scoringEvent(['title' => 'Concert Phoenix']);
+
+    expect($this->deduplicator->findFuzzyDuplicate($raw, $this->timezone))->toBeNull();
+});
+
+it('honours a lowered title floor from config', function () {
+    config()->set('eventpulse.dedup.min_title_similarity', 0.0);
+    config()->set('eventpulse.dedup.min_score', 0.0);
+
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Concert Byron']),
+        scoringEvent(['title' => 'Recital Maria Tanase']),
+        $this->timezone,
+    );
+
+    expect($score)->toBeGreaterThan(0.0);
 });

@@ -35,7 +35,7 @@ class DiscoveryEngine
 
         $reactedEventIds = $user->reactions()->pluck('event_id');
 
-        $events = Event::upcoming()
+        $events = Event::canonical()->upcoming()
             ->whereIn('category', $lowScoreCategories)
             ->whereNotIn('id', $reactedEventIds)
             ->where('is_classified', true)

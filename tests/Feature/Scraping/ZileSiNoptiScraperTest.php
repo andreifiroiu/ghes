@@ -192,7 +192,7 @@ describe('Romanian day-name date parsing in card', function () use ($defaultSour
         $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
 
         expect($events)->not->toBeEmpty();
-        $startsAt = Carbon::parse($events->first()->startsAt);
+        $startsAt = Carbon::parse($events->first()->startsAt)->setTimezone('Europe/Bucharest');
         expect($startsAt->day)->toBe(5)
             ->and($startsAt->month)->toBe(4)
             ->and($startsAt->hour)->toBe(20);
@@ -212,7 +212,7 @@ describe('Romanian day-name date parsing in card', function () use ($defaultSour
 
         $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
 
-        $startsAt = Carbon::parse($events->first()->startsAt);
+        $startsAt = Carbon::parse($events->first()->startsAt)->setTimezone('Europe/Bucharest');
         expect($startsAt->day)->toBe(10)
             ->and($startsAt->month)->toBe(4)
             ->and($startsAt->hour)->toBe(22);
@@ -232,7 +232,7 @@ describe('Romanian day-name date parsing in card', function () use ($defaultSour
         // The first event from the first day page uses today (April 6) as date
         $found = $events->first(fn ($e) => str_contains($e->title, 'Fiul'));
         expect($found)->not->toBeNull();
-        $startsAt = Carbon::parse($found->startsAt);
+        $startsAt = Carbon::parse($found->startsAt)->setTimezone('Europe/Bucharest');
         expect($startsAt->month)->toBe(4)
             ->and($startsAt->day)->toBe(6)
             ->and($startsAt->hour)->toBe(18)
@@ -253,7 +253,7 @@ describe('Romanian day-name date parsing in card', function () use ($defaultSour
 
         $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
 
-        $startsAt = Carbon::parse($events->first()->startsAt);
+        $startsAt = Carbon::parse($events->first()->startsAt)->setTimezone('Europe/Bucharest');
         expect($startsAt->day)->toBe(11)->and($startsAt->month)->toBe(4);
 
         Carbon::setTestNow();

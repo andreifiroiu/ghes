@@ -6,6 +6,7 @@ use App\Contracts\ScraperAdapter;
 use App\DTOs\RawEvent;
 use App\Jobs\ClassifyEventJob;
 use App\Models\Event;
+use App\Models\EventSource;
 use App\Models\ScraperRun;
 use App\Services\Scraping\Adapters\IaBiletScraper;
 use App\Services\Scraping\Adapters\ZileSiNoptiScraper;
@@ -99,9 +100,9 @@ describe('ScrapingPipeline', function (): void {
     // End-to-end deduplication
     // -----------------------------------------------------------------------
 
-    it('stores a cross-scraper duplicate only once via fuzzy dedup', function (): void {
-        // Same concert on two different scrapers (different source URLs → different fingerprints,
-        // but same title + time → fuzzy dedup fires on the second runSource call)
+    it('merges a cross-scraper duplicate into one event with both sources attached', function (): void {
+        // Same concert on two different scrapers. Different source URLs, so only
+        // the shared title/city/local-date can line them up.
         $iabiletAdapter = new FakePipelineAdapter('iabilet');
         $iabiletAdapter->events = [
             pipelineRawEvent(['sourceUrl' => 'https://m.iabilet.ro/concert-phoenix/']),
@@ -122,7 +123,72 @@ describe('ScrapingPipeline', function (): void {
         $orchestrator->runSource('timisoara', 'iabilet');
         $orchestrator->runSource('timisoara', 'zilesinopti');
 
+        $event = Event::sole();
+
+        expect(Event::count())->toBe(1)
+            ->and($event->sources_count)->toBe(2)
+            ->and(EventSource::count())->toBe(2)
+            ->and($event->sources()->pluck('source')->sort()->values()->all())
+            ->toBe(['iabilet', 'zilesinopti']);
+    });
+
+    it('merges providers that disagree about the time of day by three hours', function (): void {
+        $iabiletAdapter = new FakePipelineAdapter('iabilet');
+        $iabiletAdapter->events = [
+            pipelineRawEvent([
+                'sourceUrl' => 'https://m.iabilet.ro/concert-phoenix/',
+                'startsAt' => '2026-05-10 17:00:00',
+            ]),
+        ];
+
+        $zsnAdapter = new FakePipelineAdapter('zilesinopti');
+        $zsnAdapter->events = [
+            pipelineRawEvent([
+                'source' => 'zilesinopti',
+                'sourceUrl' => 'https://zilesinopti.ro/concert-phoenix/',
+                'startsAt' => '2026-05-10 20:00:00',
+            ]),
+        ];
+
+        $this->app->instance(IaBiletScraper::class, $iabiletAdapter);
+        $this->app->instance(ZileSiNoptiScraper::class, $zsnAdapter);
+
+        $orchestrator = app(ScraperOrchestrator::class);
+        $orchestrator->runSource('timisoara', 'iabilet');
+        $orchestrator->runSource('timisoara', 'zilesinopti');
+
         expect(Event::count())->toBe(1);
+    });
+
+    it('merges a date-only listing with a timed one for the same local day', function (): void {
+        $iabiletAdapter = new FakePipelineAdapter('iabilet');
+        $iabiletAdapter->events = [
+            pipelineRawEvent([
+                'sourceUrl' => 'https://m.iabilet.ro/concert-phoenix/',
+                // Local midnight on 2026-05-10, as iabilet publishes date-only events.
+                'startsAt' => '2026-05-09 21:00:00',
+            ]),
+        ];
+
+        $zsnAdapter = new FakePipelineAdapter('zilesinopti');
+        $zsnAdapter->events = [
+            pipelineRawEvent([
+                'source' => 'zilesinopti',
+                'sourceUrl' => 'https://zilesinopti.ro/concert-phoenix/',
+                'startsAt' => '2026-05-10 17:00:00',
+            ]),
+        ];
+
+        $this->app->instance(IaBiletScraper::class, $iabiletAdapter);
+        $this->app->instance(ZileSiNoptiScraper::class, $zsnAdapter);
+
+        $orchestrator = app(ScraperOrchestrator::class);
+        $orchestrator->runSource('timisoara', 'iabilet');
+        $orchestrator->runSource('timisoara', 'zilesinopti');
+
+        // The timed listing upgrades the date-only one in place.
+        expect(Event::count())->toBe(1)
+            ->and(Event::sole()->starts_at->setTimezone('Europe/Bucharest')->format('H:i'))->toBe('20:00');
     });
 
     it('stores two distinct events from two scrapers', function (): void {
@@ -151,7 +217,7 @@ describe('ScrapingPipeline', function (): void {
     });
 
     it('stores the event only once when the same URL is emitted twice', function (): void {
-        // Exact fingerprint dedup (same title + url + date)
+        // Same provider, same URL, same occurrence — one canonical event, one source row.
         $adapter = new FakePipelineAdapter('iabilet');
         $adapter->events = [
             pipelineRawEvent(['sourceUrl' => 'https://m.iabilet.ro/concert-phoenix/']),
@@ -162,7 +228,8 @@ describe('ScrapingPipeline', function (): void {
 
         app(ScraperOrchestrator::class)->runSource('timisoara', 'iabilet');
 
-        expect(Event::count())->toBe(1);
+        expect(Event::count())->toBe(1)
+            ->and(EventSource::count())->toBe(1);
     });
 
     // -----------------------------------------------------------------------

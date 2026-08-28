@@ -7,6 +7,7 @@ namespace App\Services\Scraping\Adapters;
 use App\Contracts\ScraperAdapter;
 use App\DTOs\RawEvent;
 use App\Models\ApifyUsageLog;
+use App\Services\Processing\EventTextNormalizer;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -603,17 +604,14 @@ class FacebookEventsScraper implements ScraperAdapter
 
     /**
      * Lowercase and strip Romanian diacritics for fuzzy matching.
+     *
+     * Delegates to the shared normaliser: this adapter implements
+     * ScraperAdapter directly rather than extending AbstractHtmlScraper, so
+     * without this it would drift from the rest of the pipeline.
      */
     private function normalizeText(string $text): string
     {
-        $diacritics = [
-            'ș' => 's', 'Ș' => 's', 'ț' => 't', 'Ț' => 't',
-            'ş' => 's', 'Ş' => 's', 'ţ' => 't', 'Ţ' => 't',
-            'ă' => 'a', 'Ă' => 'a', 'â' => 'a', 'Â' => 'a',
-            'î' => 'i', 'Î' => 'i',
-        ];
-
-        return trim(mb_strtolower(strtr($text, $diacritics)));
+        return EventTextNormalizer::normalizeText($text);
     }
 
     /**

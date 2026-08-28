@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Scout\Searchable;
 
@@ -30,14 +31,18 @@ class Event extends Model
         'source_url',
         'source_id',
         'fingerprint',
+        'match_key',
+        'merged_into_id',
         'category',
         'tags',
         'venue',
         'address',
         'city',
+        'city_slug',
         'latitude',
         'longitude',
         'starts_at',
+        'local_date',
         'ends_at',
         'price_min',
         'price_max',
@@ -46,6 +51,8 @@ class Event extends Model
         'image_url',
         'metadata',
         'popularity_score',
+        'sources_count',
+        'last_seen_at',
         'is_classified',
         'is_geocoded',
         'is_enriched',
@@ -63,11 +70,14 @@ class Event extends Model
             'metadata' => 'array',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'local_date' => 'date',
+            'last_seen_at' => 'datetime',
             'price_min' => 'float',
             'price_max' => 'float',
             'latitude' => 'float',
             'longitude' => 'float',
             'popularity_score' => 'integer',
+            'sources_count' => 'integer',
             'is_free' => 'boolean',
             'is_classified' => 'boolean',
             'is_geocoded' => 'boolean',
@@ -93,14 +103,68 @@ class Event extends Model
     }
 
     /**
+     * Every provider that reported this event.
+     *
+     * @return HasMany<EventSource, $this>
+     */
+    public function sources(): HasMany
+    {
+        return $this->hasMany(EventSource::class);
+    }
+
+    /**
+     * The canonical event this one was merged into, if any.
+     *
+     * @return BelongsTo<Event, $this>
+     */
+    public function canonicalEvent(): BelongsTo
+    {
+        return $this->belongsTo(Event::class, 'merged_into_id');
+    }
+
+    /**
+     * Events that were merged into this one.
+     *
+     * @return HasMany<Event, $this>
+     */
+    public function mergedDuplicates(): HasMany
+    {
+        return $this->hasMany(Event::class, 'merged_into_id');
+    }
+
+    /**
      * Scope to only include upcoming events.
      *
-     * @param Builder<Event> $query
+     * @param  Builder<Event>  $query
      * @return Builder<Event>
      */
     public function scopeUpcoming(Builder $query): Builder
     {
         return $query->where('starts_at', '>', now());
+    }
+
+    /**
+     * Scope to only include canonical events, excluding any that have been
+     * merged into another event.
+     *
+     * Deliberately an explicit scope rather than a global one: a global scope
+     * would silently break findOrFail() inside the classification and geocoding
+     * jobs, and route-model binding on links in already-sent digests.
+     *
+     * @param  Builder<Event>  $query
+     * @return Builder<Event>
+     */
+    public function scopeCanonical(Builder $query): Builder
+    {
+        return $query->whereNull('merged_into_id');
+    }
+
+    /**
+     * Merged duplicates must not appear in search results.
+     */
+    public function shouldBeSearchable(): bool
+    {
+        return $this->merged_into_id === null;
     }
 
     /**

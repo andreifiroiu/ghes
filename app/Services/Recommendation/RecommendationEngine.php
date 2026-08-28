@@ -63,10 +63,14 @@ class RecommendationEngine
     {
         $reactedEventIds = $user->reactions()->pluck('event_id');
 
-        $candidates = Event::upcoming()
+        $candidates = Event::canonical()->upcoming()
             ->where('is_classified', true)
             ->when($user->city, fn ($q) => $q->where('city', $user->city))
             ->whereNotIn('id', $reactedEventIds)
+            // Order before limiting: without it the 200 candidates are an
+            // arbitrary slice, so the same user can get different results
+            // from one request to the next.
+            ->orderBy('starts_at')
             ->limit(200)
             ->get();
 

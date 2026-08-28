@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Enums\EventCategory;
 use App\Models\Event;
+use App\Services\Processing\EventTextNormalizer;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -24,18 +25,18 @@ class EventFactory extends Factory
     public function definition(): array
     {
         $titlePatterns = [
-            'Live Jazz at ' . fake()->company(),
-            fake()->city() . ' Tech Meetup',
+            'Live Jazz at '.fake()->company(),
+            fake()->city().' Tech Meetup',
             'Street Food Festival',
-            'Open Mic Night at ' . fake()->company(),
+            'Open Mic Night at '.fake()->company(),
             'Yoga in the Park',
-            fake()->city() . ' Marathon ' . fake()->year(),
-            'Art Exhibition: ' . fake()->catchPhrase(),
+            fake()->city().' Marathon '.fake()->year(),
+            'Art Exhibition: '.fake()->catchPhrase(),
             'Startup Pitch Night',
-            'Film Screening: ' . fake()->sentence(3),
+            'Film Screening: '.fake()->sentence(3),
             'Weekend Farmers Market',
-            'Comedy Show with ' . fake()->name(),
-            'Book Club: ' . fake()->sentence(2),
+            'Comedy Show with '.fake()->name(),
+            'Book Club: '.fake()->sentence(2),
         ];
 
         $startsAt = fake()->dateTimeBetween('now', '+30 days');
@@ -46,13 +47,12 @@ class EventFactory extends Factory
             'source' => fake()->randomElement(['eventbrite', 'meetup', 'generic_html', 'rss_feed']),
             'source_url' => fake()->unique()->url(),
             'source_id' => fake()->uuid(),
-            'fingerprint' => md5(fake()->unique()->text(50)),
             'category' => fake()->randomElement(EventCategory::cases()),
             'tags' => fake()->randomElements(
                 ['live-music', 'jazz', 'outdoor', 'free', 'family-friendly', 'tech', 'workshop', 'food', 'art', 'startup', 'networking'],
                 fake()->numberBetween(1, 4)
             ),
-            'venue' => fake()->company() . ' ' . fake()->randomElement(['Hall', 'Arena', 'Center', 'Café', 'Park', 'Gallery']),
+            'venue' => fake()->company().' '.fake()->randomElement(['Hall', 'Arena', 'Center', 'Café', 'Park', 'Gallery']),
             'address' => fake()->streetAddress(),
             'city' => 'Bucharest',
             'latitude' => fake()->latitude(44.38, 44.50),
@@ -72,6 +72,31 @@ class EventFactory extends Factory
             'is_geocoded' => true,
             'is_enriched' => true,
         ];
+    }
+
+    /**
+     * Keep the derived identity columns consistent with whatever title, city
+     * and start time a test ends up using, so dedup queries can find the row.
+     */
+    public function configure(): static
+    {
+        return $this->afterMaking(function (Event $event): void {
+            $this->applyIdentityKeys($event);
+        })->afterCreating(function (Event $event): void {
+            $this->applyIdentityKeys($event);
+
+            Event::withoutSyncingToSearch(fn () => $event->save());
+        });
+    }
+
+    /**
+     * Indicate that the event has been merged into another one.
+     */
+    public function merged(Event $canonical): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'merged_into_id' => $canonical->id,
+        ]);
     }
 
     /**
@@ -96,5 +121,21 @@ class EventFactory extends Factory
             'starts_at' => $startsAt,
             'ends_at' => Carbon::parse($startsAt)->addHours(rand(1, 5)),
         ]);
+    }
+
+    private function applyIdentityKeys(Event $event): void
+    {
+        $timezone = (string) config(
+            'eventpulse.cities.'.config('eventpulse.default_city').'.timezone',
+            (string) config('app.timezone', 'UTC'),
+        );
+
+        $localDate = $event->starts_at === null
+            ? null
+            : EventTextNormalizer::localDate($event->starts_at->toDateTimeString(), $timezone);
+
+        $event->city_slug = EventTextNormalizer::citySlug($event->city);
+        $event->local_date = $localDate;
+        $event->match_key = EventTextNormalizer::matchKey($event->title, $event->city, $localDate);
     }
 }
