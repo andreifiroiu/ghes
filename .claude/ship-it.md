@@ -117,6 +117,12 @@ internal-only writes nothing, which is a valid outcome.
   assuming a column exists.
 - **Removing a reaction is `DELETE /feedback`** — POST requires a non-null reaction;
   `reaction: null` 422s.
+- **`.env.example` drifts behind `config/`, and the gap is invisible locally.** Google
+  OAuth and web push both shipped with no entry in `.env.example`, so a deploy seeded
+  from it came up misconfigured — and `PushSender` no-ops when its VAPID keys are
+  absent, so that half failed *silently*. When adding an `env()` call with no default,
+  add the key to `.env.example` in the same commit. To audit:
+  `comm -23 <(grep -rhoE "env\('[A-Z0-9_]+'" config/ | sed -E "s/env\('//; s/'//" | sort -u) <(grep -oE "^[A-Z0-9_]+" .env.example | sort -u)`
 - **`RecommendationEngineTest::it ranks higher-scored events first` is flaky and fails
   silently.** Its `expect()` sits behind `if ($musicPos !== false && $techPos !== false)`,
   so when discovery displaces an event from the batch the test reports **risky** (zero
