@@ -328,6 +328,6 @@ class EventDeduplicator
         $intersection = count(array_intersect($a, $b));
         $union = count(array_unique(array_merge($a, $b)));
 
-        return $union === 0 ? 0.0 : $intersection / $union;
+        return $intersection / $union;
     }
 }

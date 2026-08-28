@@ -31,7 +31,7 @@ class IaBiletScraper extends AbstractHtmlScraper
     {
         $baseUrl = $this->getUrl($sourceConfig);
         $city = $cityConfig['label'];
-        $this->cityTimezone = $cityConfig['timezone'] ?? null;
+        $this->cityTimezone = $cityConfig['timezone'];
         $maxPages = (int) config('eventpulse.scrapers.max_pages', 10);
         $emitted = 0;
 

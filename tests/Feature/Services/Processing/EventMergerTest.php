@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\DTOs\RawEvent;
 use App\Enums\Reaction;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
@@ -109,4 +110,39 @@ it('is a no-op when asked to merge an event into itself', function () {
 it('ranks known sources above unknown ones', function () {
     expect($this->merger->sourcePriority('iabilet'))
         ->toBeGreaterThan($this->merger->sourcePriority('some_new_scraper'));
+});
+
+it('keeps first_seen_at at the original sighting when a source is re-scraped', function () {
+    $event = Event::factory()->create();
+
+    $raw = new RawEvent(
+        title: 'Concert Phoenix',
+        description: null,
+        sourceUrl: 'https://iabilet.ro/bilete/concert-phoenix-12345/',
+        sourceId: '12345',
+        source: 'iabilet',
+        venue: 'Sala Capitol',
+        address: null,
+        city: 'Timișoara',
+        startsAt: '2026-09-10 18:00:00',
+        endsAt: null,
+        priceMin: null,
+        priceMax: null,
+        currency: 'RON',
+        isFree: false,
+        imageUrl: null,
+    );
+
+    $this->travelTo('2026-08-01 09:00:00');
+    $first = $this->merger->attachSource($event, $raw, 'Europe/Bucharest');
+    $firstSeen = $first->first_seen_at;
+
+    $this->travelTo('2026-08-20 09:00:00');
+    $second = $this->merger->attachSource($event, $raw, 'Europe/Bucharest');
+
+    expect($second->id)->toBe($first->id)
+        ->and($second->fresh()->first_seen_at->toDateTimeString())
+        ->toBe($firstSeen->toDateTimeString())
+        ->and($second->fresh()->last_seen_at->toDateTimeString())
+        ->toBe('2026-08-20 09:00:00');
 });

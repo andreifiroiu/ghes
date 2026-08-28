@@ -12,8 +12,47 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Laravel\Scout\Searchable;
 
+/**
+ * A canonical event, deduplicated across every provider that reported it.
+ *
+ * @property string $id
+ * @property string|null $merged_into_id
+ * @property string $title
+ * @property string|null $description
+ * @property string $source
+ * @property string $source_url
+ * @property string|null $source_id
+ * @property string $fingerprint
+ * @property string|null $match_key
+ * @property EventCategory $category
+ * @property array<int, string>|null $tags
+ * @property string|null $venue
+ * @property string|null $address
+ * @property string|null $city
+ * @property string|null $city_slug
+ * @property float|null $latitude
+ * @property float|null $longitude
+ * @property Carbon|null $starts_at
+ * @property Carbon|null $local_date
+ * @property Carbon|null $ends_at
+ * @property float|null $price_min
+ * @property float|null $price_max
+ * @property string $currency
+ * @property bool $is_free
+ * @property string|null $image_url
+ * @property array<string, mixed>|null $metadata
+ * @property int $popularity_score
+ * @property int $sources_count
+ * @property Carbon|null $last_seen_at
+ * @property bool $is_classified
+ * @property bool $is_geocoded
+ * @property bool $is_enriched
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 class Event extends Model
 {
     /** @use HasFactory<EventFactory> */
@@ -178,7 +217,7 @@ class Event extends Model
             'id' => $this->id,
             'title' => $this->title,
             'description' => $this->description,
-            'category' => $this->category?->value,
+            'category' => $this->category->value,
             'tags' => $this->tags,
             'city' => $this->city,
             'venue' => $this->venue,

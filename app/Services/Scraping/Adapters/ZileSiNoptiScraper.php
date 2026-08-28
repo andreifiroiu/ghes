@@ -41,7 +41,7 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
         $mainUrl = $this->getUrl($sourceConfig);
         $weekendUrl = $this->getExtraUrls($sourceConfig)[0] ?? null;
         $city = $cityConfig['label'];
-        $this->cityTimezone = $cityConfig['timezone'] ?? null;
+        $this->cityTimezone = $cityConfig['timezone'];
 
         // Shared detail-page fetch state — prevents fetching the same URL
         // more than once across all listing pages in a single scrape run.

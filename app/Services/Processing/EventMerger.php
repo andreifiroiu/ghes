@@ -46,28 +46,28 @@ class EventMerger
     {
         $localDate = EventTextNormalizer::localDate($raw->startsAt, $timezone);
 
-        /** @var EventSource $source */
-        $source = EventSource::updateOrCreate(
-            [
-                'source' => $raw->source,
-                'url_key' => EventTextNormalizer::normalizeUrl($raw->sourceUrl),
-                'occurrence_key' => EventTextNormalizer::occurrenceKey($localDate),
-            ],
-            [
-                'event_id' => $event->id,
-                'source_url' => $raw->sourceUrl,
-                'source_id' => $raw->sourceId,
-                'title' => $raw->title,
-                'starts_at' => $raw->startsAt,
-                'payload' => $this->payloadFor($raw),
-                'first_seen_at' => now(),
-                'last_seen_at' => now(),
-            ],
-        );
+        $source = EventSource::firstOrNew([
+            'source' => $raw->source,
+            'url_key' => EventTextNormalizer::normalizeUrl($raw->sourceUrl),
+            'occurrence_key' => EventTextNormalizer::occurrenceKey($localDate),
+        ]);
 
-        if (! $source->wasRecentlyCreated) {
-            $source->forceFill(['last_seen_at' => now()])->save();
-        }
+        $source->fill([
+            'event_id' => $event->id,
+            'source_url' => $raw->sourceUrl,
+            'source_id' => $raw->sourceId,
+            'title' => $raw->title,
+            'starts_at' => $raw->startsAt,
+            'payload' => $this->payloadFor($raw),
+        ]);
+
+        // Set once, at creation. A re-scrape must not reset it, or the column
+        // becomes a second copy of last_seen_at and the backfilled history
+        // seeded from events.created_at is lost on the next scrape.
+        $source->first_seen_at ??= now();
+        $source->last_seen_at = now();
+
+        $source->save();
 
         return $source;
     }

@@ -98,13 +98,13 @@ class EventPipeline
 
         return $lock->block(
             (int) config('eventpulse.dedup.lock_wait_seconds', 5),
-            fn (): ?Event => DB::transaction(
-                fn (): ?Event => $this->resolve($rawEvent, $timezone, $matchKey)
+            fn (): Event => DB::transaction(
+                fn (): Event => $this->resolve($rawEvent, $timezone, $matchKey)
             ),
         );
     }
 
-    private function resolve(RawEvent $rawEvent, string $timezone, string $matchKey): ?Event
+    private function resolve(RawEvent $rawEvent, string $timezone, string $matchKey): Event
     {
         // 1. Have we already seen this exact listing from this provider?
         $existingSource = $this->deduplicator->findExistingSource($rawEvent, $timezone);

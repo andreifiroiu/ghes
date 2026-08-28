@@ -57,7 +57,7 @@
 
 1. **Scraper orchestrator** — Schedules and runs scrapers on a configurable cadence (e.g., every 4h). Each source has its own scraper adapter implementing a common interface.
 2. **Raw Event Queue** — Redis Streams or a simple DB staging table. Each raw event includes: title, description, date/time, location (text), source URL, raw HTML snippet.
-3. **Deduplication** — Fuzzy matching on (title + date + venue) to prevent storing the same event twice from different sources. Use normalized text + Levenshtein distance or embedding similarity.
+3. **Deduplication** — Matching on a blocking key of `city-slug | local calendar date | sorted title-token key`, with a scored fallback (weighted title / venue / time, gated by an independent title-similarity floor) over same-city candidates within a day. Dates are compared as the **local calendar date in the city's timezone**, because sources disagree on the time of day by hours and some publish a bare date. A match enriches one canonical event rather than discarding the later copy, and every provider that reported it is recorded in `event_sources`.
 4. **Classification** — LLM-based (Claude API) classification into a taxonomy:
    - **Primary categories:** Music, Art & Culture, Sports & Fitness, Food & Drink, Tech & Science, Business & Networking, Community & Social, Family & Kids, Outdoors & Adventure, Nightlife, Theater & Film, Workshops & Classes, Festivals, Other.
    - **Tags:** Free-form tags extracted by the LLM (e.g., "jazz", "vegan", "startup", "running", "photography").
@@ -225,11 +225,42 @@ CREATE TABLE events (
     tags JSONB DEFAULT '[]',
     metadata JSONB DEFAULT '{}',  -- age_restriction, formality, indoor/outdoor, etc.
     popularity_score DECIMAL(5, 2) DEFAULT 0,
-    fingerprint VARCHAR(64) NOT NULL,  -- for dedup: hash of normalized(title+date+venue)
+    fingerprint VARCHAR(64),          -- legacy; superseded by match_key + event_sources
+    -- Canonical-event identity
+    match_key VARCHAR(191),           -- "{city-slug}|{local-date}|{title-token-key}"; indexed, NOT unique
+    city_slug VARCHAR(255),
+    local_date DATE,                  -- starts_at as a calendar date in the city's timezone
+    merged_into_id UUID REFERENCES events(id) ON DELETE SET NULL,
+    sources_count INT DEFAULT 1,
+    last_seen_at TIMESTAMPTZ,
     ingested_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- NOTE: fingerprint and source_url are deliberately NOT unique. Identity lives
+-- in event_sources; a unique on either blocks both the merge model and any
+-- refresh of an already-imported event.
+
+-- One row per provider that reported an event. The unique key is what makes
+-- re-scraping idempotent; occurrence_key is NOT NULL so NULL-distinctness can
+-- never weaken the constraint.
+CREATE TABLE event_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    source VARCHAR(100) NOT NULL,
+    source_url TEXT NOT NULL,
+    url_key VARCHAR(255) NOT NULL,    -- canonicalised source_url: no www./m., query or trailing slash
+    source_id VARCHAR(255),
+    occurrence_key VARCHAR(10) NOT NULL,  -- local 'Y-m-d', or 'undated'
+    title VARCHAR(255),
+    starts_at TIMESTAMPTZ,
+    payload JSONB DEFAULT '{}',
+    first_seen_at TIMESTAMPTZ NOT NULL,   -- set once, at creation
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(fingerprint)
+    UNIQUE(source, url_key, occurrence_key),
+    UNIQUE(source, source_id, occurrence_key)
 );
 
 CREATE INDEX idx_events_starts_at ON events(starts_at);
@@ -237,6 +268,8 @@ CREATE INDEX idx_events_city_starts ON events(city, starts_at);
 CREATE INDEX idx_events_category ON events(primary_category);
 CREATE INDEX idx_events_tags ON events USING GIN(tags);
 CREATE INDEX idx_events_fingerprint ON events(fingerprint);
+CREATE INDEX idx_events_match_key ON events(match_key);
+CREATE INDEX idx_events_city_local_date ON events(city_slug, local_date);
 
 -- Users
 CREATE TABLE users (
