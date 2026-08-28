@@ -83,6 +83,13 @@ User-facing notes go to `public-changelog.md` via that skill.
 - Footer: **no** "Generated with Claude Code" line — zero occurrences in 100 commits. One
   old commit carries a bare `https://claude.ai/code/session_…` URL; do not copy that.
 
+## After the PR
+
+Run the `dev-flow:public-changelog` skill — `public-changelog.md` is the user-facing
+record and `.claude/public-changelog.md` carries its rules (Romanian; admin, scraper,
+queue and index work is internal and gets no entry). A change that turns out to be
+internal-only writes nothing, which is a valid outcome.
+
 ## What breaks in this codebase
 
 - **JSON-column predicates pass on sqlite, misbehave on Postgres.**
