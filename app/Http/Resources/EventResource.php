@@ -22,7 +22,7 @@ class EventResource extends JsonResource
             'id' => $this->id,
             'title' => $this->title,
             'description' => $this->description,
-            'category' => $this->category?->value,
+            'category' => $this->category->value,
             'tags' => $this->tags,
             'venue' => $this->venue,
             'address' => $this->address,
@@ -36,6 +36,10 @@ class EventResource extends JsonResource
             'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
+            'current_reaction' => $this->whenLoaded(
+                'reactions',
+                fn () => $this->reactions->first()?->reaction?->value,
+            ),
         ];
     }
 }

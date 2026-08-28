@@ -32,7 +32,7 @@ it('returns a welcome message from config', function () {
 
     $welcome = $agent->welcomeMessage();
 
-    expect($welcome)->toContain('EventPulse');
+    expect($welcome)->toContain('Ghes');
     expect($welcome)->not->toBeEmpty();
 });
 
@@ -80,7 +80,7 @@ it('returns a fallback message when Claude API fails', function () {
 
     $response = makeOnboardingAgent()->chat($user, 'Hello');
 
-    expect($response)->toContain('sorry');
+    expect($response)->toContain('pare rău');
 });
 
 it('reports onboarding incomplete with fewer than min_exchanges', function () {

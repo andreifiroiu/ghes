@@ -16,6 +16,7 @@ class RecommendationEngine
         private readonly ProfileScorer $profileScorer,
         private readonly DiscoveryEngine $discoveryEngine,
         private readonly DiversityFilter $diversityFilter,
+        private readonly ExperimentAssigner $experimentAssigner,
     ) {}
 
     /**
@@ -29,7 +30,7 @@ class RecommendationEngine
     public function scoreEvent(User $user, Event $event): float
     {
         /** @var array{category: float, tags: float, location: float, time: float, price: float, freshness: float, popularity: float} $weights */
-        $weights = config('eventpulse.recommendation.weights');
+        $weights = $this->experimentAssigner->weightsFor($user);
 
         $categoryScore = $this->categoryMatch($user, $event);
         $tagScore = $this->tagMatch($user, $event);
@@ -64,11 +65,20 @@ class RecommendationEngine
         $reactedEventIds = $user->reactions()->pluck('event_id');
 
         $candidates = Event::upcoming()
+            ->visible()
             ->where('is_classified', true)
             ->when($user->city, fn ($q) => $q->where('city', $user->city))
             ->whereNotIn('id', $reactedEventIds)
             ->limit(200)
             ->get();
+
+        // Hard-filter events carrying tags the user has suppressed.
+        $negativeTags = $user->negativeTags();
+        if ($negativeTags !== []) {
+            $candidates = $candidates->reject(
+                fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
+            )->values();
+        }
 
         // Score every candidate
         $scored = $candidates
@@ -76,8 +86,10 @@ class RecommendationEngine
             ->sortByDesc('score')
             ->values();
 
-        // Discovery budget
-        $explorationBudget = (float) config('eventpulse.discovery.exploration_budget', 0.2);
+        // Discovery budget — driven by the user's openness (auto-tuned over time),
+        // falling back to the global default.
+        $explorationBudget = (float) ($user->discovery_openness
+            ?? config('eventpulse.discovery.exploration_budget', 0.2));
         $discoveryCount = max(1, (int) round($limit * $explorationBudget));
         $recommendationCount = $limit - $discoveryCount;
 

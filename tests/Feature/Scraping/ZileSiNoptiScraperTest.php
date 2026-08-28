@@ -455,3 +455,141 @@ describe('RawEvent fields', function () use ($defaultSourceConfig, $defaultCityC
         expect($events->first()->description)->toBeNull();
     });
 });
+
+// ---------------------------------------------------------------------------
+// Cover image extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a listing card that carries a CSS background-image (the "featured" card
+ * layout) so no detail-page fetch is needed for the cover.
+ */
+function makeListingPageWithImage(string $title, string $href, string $imageUrl): string
+{
+    $item = <<<HTML
+        <div class='kzn-sw-item'>
+            <div class="kzn-sw-item-imagine kzn-sw-item-imagine-1">
+                <a class="lazyload" href="{$href}" style="background-image:url({$imageUrl}); background-size:cover;"></a>
+            </div>
+            <div class="kzn-sw-item-text kzn-sw-item-text-1">
+                <div class="kzn-one-event-date kzn-sw-text"><div><i class='eicon-clock-o'></i>19:00</div></div>
+                <div class='kzn-sw-item-textsus'>Concerte</div>
+                <h3 class="kzn-sw-item-titlu"><a href="{$href}">{$title}</a></h3>
+                <div class="kzn-sw-item-sumar">{$title} — o descriere suficient de lungă încât pagina de detaliu să nu fie nevoie să fie accesată.</div>
+                <div class="kzn-sw-item-adresa"><i class="eicon-map-pin"></i><a href="/locuri/venue/">Venue</a></div>
+            </div>
+        </div>
+    HTML;
+
+    return "<html><body><div class='kzn-lista-evenimente'>{$item}</div></body></html>";
+}
+
+/** Build a detail page with optional og:image and content. */
+function makeDetailPage(?string $ogImage = null, string $extraBody = ''): string
+{
+    $meta = $ogImage !== null ? "<meta property=\"og:image\" content=\"{$ogImage}\">" : '';
+
+    return <<<HTML
+        <html><head>{$meta}</head><body>
+        <h1>Detail title</h1>
+        <div class="entry-content">
+            <p>Aceasta este o descriere suficient de lungă pentru a depăși pragul de 30 de caractere impus.</p>
+            {$extraBody}
+        </div>
+        </body></html>
+    HTML;
+}
+
+describe('cover image extraction', function () use ($defaultSourceConfig, $defaultCityConfig) {
+    it('uses the listing card background-image without fetching the detail page', function () use ($defaultSourceConfig, $defaultCityConfig) {
+        Carbon::setTestNow(Carbon::create(2026, 4, 6));
+
+        $img = 'https://zilesinopti.ro/wp-content/uploads/2026/06/header-768x403.webp';
+        Http::fake([
+            'zilesinopti.ro/evenimente-timisoara/?zi=2026-04-06' => Http::response(
+                makeListingPageWithImage('Concert @ Sala Mare', 'https://zilesinopti.ro/evenimente/concert/', $img),
+            ),
+            'zilesinopti.ro/evenimente-timisoara/*' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente-timisoara-weekend/' => Http::response(emptyListingPage()),
+        ]);
+
+        $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
+
+        $event = $events->first(fn ($e) => str_contains($e->title, 'Concert'));
+        expect($event->imageUrl)->toBe($img);
+
+        // No request should have been made to the detail URL — card already had the image.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/evenimente/concert/'));
+
+        Carbon::setTestNow();
+    });
+
+    it('pulls the cover from the detail page og:image when the card has none', function () use ($defaultSourceConfig, $defaultCityConfig) {
+        Carbon::setTestNow(Carbon::create(2026, 4, 6));
+
+        $ogImage = 'https://zilesinopti.ro/wp-content/uploads/2026/06/cover-full.webp';
+        Http::fake([
+            'zilesinopti.ro/evenimente-timisoara/?zi=2026-04-06' => Http::response(makeListingPage([
+                ['title' => 'Expo @ Muzeu', 'venue' => 'Muzeu', 'time' => '10:00', 'category' => 'Expoziții',
+                    'href' => 'https://zilesinopti.ro/evenimente/expo-muzeu/'],
+            ])),
+            'zilesinopti.ro/evenimente-timisoara/*' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente-timisoara-weekend/' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente/expo-muzeu/' => Http::response(makeDetailPage($ogImage)),
+        ]);
+
+        $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
+
+        $event = $events->first(fn ($e) => str_contains($e->title, 'Expo'));
+        expect($event->imageUrl)->toBe($ogImage);
+
+        Carbon::setTestNow();
+    });
+
+    it('leaves imageUrl null when neither the card nor the detail page has a cover', function () use ($defaultSourceConfig, $defaultCityConfig) {
+        Carbon::setTestNow(Carbon::create(2026, 4, 6));
+
+        Http::fake([
+            'zilesinopti.ro/evenimente-timisoara/?zi=2026-04-06' => Http::response(makeListingPage([
+                ['title' => 'Plain @ Loc', 'venue' => 'Loc', 'time' => '10:00', 'category' => 'Altele',
+                    'href' => 'https://zilesinopti.ro/evenimente/plain/'],
+            ])),
+            'zilesinopti.ro/evenimente-timisoara/*' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente-timisoara-weekend/' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente/plain/' => Http::response(makeDetailPage(null)),
+        ]);
+
+        $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
+
+        $event = $events->first(fn ($e) => str_contains($e->title, 'Plain'));
+        expect($event->imageUrl)->toBeNull();
+
+        Carbon::setTestNow();
+    });
+
+    it('ignores logo/ad images and falls back to a real content image', function () use ($defaultSourceConfig, $defaultCityConfig) {
+        Carbon::setTestNow(Carbon::create(2026, 4, 6));
+
+        $realCover = 'https://zilesinopti.ro/wp-content/uploads/2026/06/real-cover.webp';
+        $body = '<img src="https://zilesinopti.ro/wp-content/uploads/2022/04/zile-si-nopti-logo-alb.png">'
+            ."<img class=\"wp-post-image\" src=\"data:image/svg+xml;base64,abc\" data-src=\"{$realCover}\">";
+
+        Http::fake([
+            'zilesinopti.ro/evenimente-timisoara/?zi=2026-04-06' => Http::response(makeListingPage([
+                ['title' => 'Show @ Teatru', 'venue' => 'Teatru', 'time' => '18:00', 'category' => 'Teatru',
+                    'href' => 'https://zilesinopti.ro/evenimente/show/'],
+            ])),
+            'zilesinopti.ro/evenimente-timisoara/*' => Http::response(emptyListingPage()),
+            'zilesinopti.ro/evenimente-timisoara-weekend/' => Http::response(emptyListingPage()),
+            // No og:image → falls through to content images
+            'zilesinopti.ro/evenimente/show/' => Http::response(makeDetailPage(null, $body)),
+        ]);
+
+        $events = scrapeToCollection(new TestZileSiNoptiScraper, $defaultSourceConfig, $defaultCityConfig);
+
+        $event = $events->first(fn ($e) => str_contains($e->title, 'Show'));
+        expect($event->imageUrl)->toBe($realCover);
+
+        Carbon::setTestNow();
+    });
+});

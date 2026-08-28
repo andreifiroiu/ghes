@@ -7,6 +7,7 @@ namespace App\Services\Processing;
 use App\DTOs\RawEvent;
 use App\Models\Event;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class EventDeduplicator
 {
@@ -61,6 +62,13 @@ class EventDeduplicator
             similar_text($normalisedTitle, $candidateTitle, $percent);
 
             if ($percent >= 80.0) {
+                Log::debug('EventDeduplicator: fuzzy match found', [
+                    'incoming_title' => $event->title,
+                    'matched_title' => $candidate->title,
+                    'matched_event_id' => $candidate->id,
+                    'similarity' => round($percent, 1),
+                ]);
+
                 return $candidate;
             }
         }

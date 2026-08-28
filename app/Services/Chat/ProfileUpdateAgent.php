@@ -30,7 +30,7 @@ class ProfileUpdateAgent
             'content' => $msg->content,
         ])->toArray();
 
-        $systemPrompt = 'Ești EventPulse, ajuți utilizatorul să-și rafineze preferințele pentru evenimente. '
+        $systemPrompt = 'Ești Ghes, ajuți utilizatorul să-și rafineze preferințele pentru evenimente. '
             .'Profilul curent: '.json_encode($user->interest_profile ?? []).'. '
             .'Înțelege ce vrea să modifice, confirmă schimbările, apoi răspunde natural. '
             .'Răspunde întotdeauna în română.';

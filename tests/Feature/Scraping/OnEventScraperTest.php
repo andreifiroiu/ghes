@@ -193,6 +193,20 @@ describe('OnEventScraper', function (): void {
         expect($event->endsAt)->not->toBeNull();
     });
 
+    it('decodes HTML entities in the title, including double-encoded sequences', function (): void {
+        Http::fake([
+            'https://www.onevent.ro/*' => Http::sequence()
+                ->push(oePage([oeCard(['title' => 'Vinyl, Food &amp;amp; Wine', 'venue' => 'Caf&eacute; Central'])]))
+                ->push(oeEmptyPage()),
+        ]);
+
+        $events = oeScrapeToCollection(new TestOnEventScraper);
+        $event = $events->first();
+
+        expect($event->title)->toBe('Vinyl, Food & Wine');
+        expect($event->venue)->toBe('Café Central');
+    });
+
     it('extracts source ID from URL path', function (): void {
         Http::fake([
             'https://www.onevent.ro/*' => Http::sequence()

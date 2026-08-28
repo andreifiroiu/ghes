@@ -11,6 +11,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ProcessRawEventJob implements ShouldQueue
 {
@@ -29,6 +31,26 @@ class ProcessRawEventJob implements ShouldQueue
 
     public function handle(EventPipeline $pipeline): void
     {
-        $pipeline->process($this->rawEvent);
+        Log::info('ProcessRawEventJob: processing raw event', [
+            'title' => $this->rawEvent->title,
+            'source' => $this->rawEvent->source,
+        ]);
+
+        $event = $pipeline->process($this->rawEvent);
+
+        Log::info('ProcessRawEventJob: done', [
+            'title' => $this->rawEvent->title,
+            'result' => $event !== null ? 'saved' : 'skipped_duplicate',
+            'event_id' => $event?->id,
+        ]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('ProcessRawEventJob: failed permanently', [
+            'title' => $this->rawEvent->title,
+            'source' => $this->rawEvent->source,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

@@ -82,6 +82,18 @@ export default function Login() {
                             >
                                 {processing ? 'Se conectează...' : 'Intră în cont'}
                             </Button>
+                            <div className="flex items-center w-full gap-3 text-xs text-gray-400">
+                                <span className="flex-1 border-t border-gray-200" />
+                                sau
+                                <span className="flex-1 border-t border-gray-200" />
+                            </div>
+                            <a
+                                href="/auth/google/redirect"
+                                className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                                <img src="https://www.google.com/favicon.ico" alt="" className="h-4 w-4" />
+                                Continuă cu Google
+                            </a>
                             <p className="text-sm text-gray-500 text-center">
                                 Nu ai cont?{' '}
                                 <Link

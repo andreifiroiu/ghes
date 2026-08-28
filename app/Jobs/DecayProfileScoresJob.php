@@ -10,6 +10,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class DecayProfileScoresJob implements ShouldQueue
 {
@@ -27,6 +29,15 @@ class DecayProfileScoresJob implements ShouldQueue
 
     public function handle(ProfileDecayer $decayer): void
     {
-        $decayer->decayAll();
+        Log::info('DecayProfileScoresJob: starting profile decay');
+
+        $decayed = $decayer->decayAll();
+
+        Log::info('DecayProfileScoresJob: profile decay complete', ['profiles_decayed' => $decayed]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('DecayProfileScoresJob: failed permanently', ['error' => $e->getMessage()]);
     }
 }

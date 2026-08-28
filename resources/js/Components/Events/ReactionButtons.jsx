@@ -27,7 +27,7 @@ export default function ReactionButtons({ eventId, currentReaction = null }) {
 
             try {
                 const response = await fetch('/feedback', {
-                    method: 'POST',
+                    method: newReaction === null ? 'DELETE' : 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document
@@ -35,10 +35,11 @@ export default function ReactionButtons({ eventId, currentReaction = null }) {
                             ?.getAttribute('content') || '',
                         Accept: 'application/json',
                     },
-                    body: JSON.stringify({
-                        event_id: eventId,
-                        reaction: newReaction,
-                    }),
+                    body: JSON.stringify(
+                        newReaction === null
+                            ? { event_id: eventId }
+                            : { event_id: eventId, reaction: newReaction }
+                    ),
                 });
 
                 if (!response.ok) {

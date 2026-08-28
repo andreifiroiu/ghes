@@ -111,7 +111,7 @@ class OnEventScraper extends AbstractHtmlScraper
             return null;
         }
 
-        $title = (string) ($ld['name'] ?? '');
+        $title = $this->decodeEntities((string) ($ld['name'] ?? ''));
         if ($title === '') {
             return null;
         }
@@ -138,10 +138,10 @@ class OnEventScraper extends AbstractHtmlScraper
         $locations = $ld['location'] ?? null;
         if (is_array($locations) && isset($locations[0]) && is_array($locations[0])) {
             $loc = $locations[0];
-            $venueName = (string) ($loc['name'] ?? '');
+            $venueName = $this->decodeEntities((string) ($loc['name'] ?? ''));
             $venue = $venueName !== '' ? $venueName : null;
 
-            $street = (string) ($loc['address']['streetAddress'] ?? '');
+            $street = $this->decodeEntities((string) ($loc['address']['streetAddress'] ?? ''));
             $address = $street !== '' ? $street : null;
         }
 

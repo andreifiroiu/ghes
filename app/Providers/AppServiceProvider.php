@@ -7,10 +7,12 @@ namespace App\Providers;
 use App\Services\Anthropic\AnthropicClient;
 use App\Services\Scraping\ScraperOrchestrator;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Opcodes\LogViewer\Facades\LogViewer;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -42,6 +44,10 @@ class AppServiceProvider extends ServiceProvider
 
             return in_array($user->email, $admins, true);
         });
+
+        // Restrict the Log Viewer dashboard to admins in every environment.
+        // Reuses the same allow-list as the rest of the admin area.
+        LogViewer::auth(fn (Request $request): bool => (bool) $request->user()?->can('access-admin'));
 
         RateLimiter::for('anthropic-api', function () {
             return Limit::perMinute(100);

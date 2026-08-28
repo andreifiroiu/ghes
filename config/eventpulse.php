@@ -22,27 +22,104 @@ return [
     'recommendation' => [
         'weights' => [
             'category' => 0.30,
-            'tags' => 0.20,
+            'tags' => 0.25,
             'location' => 0.15,
             'time' => 0.10,
             'price' => 0.05,
-            'freshness' => 0.10,
+            'freshness' => 0.05,
             'popularity' => 0.10,
         ],
     ],
-    'feedback' => [
-        'deltas' => [
-            'interested' => 0.15,
-            'not_interested' => -0.10,
-            'saved' => 0.20,
-            'hidden' => -0.15,
-            'link_opened' => 0.05,
+    'experiments' => [
+        // A/B variants for recommendation scoring weights. Each user is assigned
+        // one variant deterministically; RecommendationEngine scores with it.
+        // 'control' mirrors recommendation.weights.
+        'recommendation_weights' => [
+            'control' => [
+                'category' => 0.30,
+                'tags' => 0.25,
+                'location' => 0.15,
+                'time' => 0.10,
+                'price' => 0.05,
+                'freshness' => 0.05,
+                'popularity' => 0.10,
+            ],
+            'freshness_boost' => [
+                'category' => 0.25,
+                'tags' => 0.20,
+                'location' => 0.15,
+                'time' => 0.10,
+                'price' => 0.05,
+                'freshness' => 0.15,
+                'popularity' => 0.10,
+            ],
         ],
+    ],
+    'feedback' => [
+        // Per-reaction profile adjustments: distinct deltas for the event's
+        // category score and for each of its tag scores. "saved" is treated as
+        // the strongest positive signal (an explicit bookmark > a thumbs-up).
+        'deltas' => [
+            'interested' => ['category' => 0.15, 'tag' => 0.20],
+            'saved' => ['category' => 0.20, 'tag' => 0.25],
+            'not_interested' => ['category' => -0.10, 'tag' => -0.15],
+            'hidden' => ['category' => -0.25, 'tag' => -0.30],
+            'link_opened' => ['category' => 0.05, 'tag' => 0.05],
+            'ignored' => ['category' => -0.02, 'tag' => 0.0],
+        ],
+        // A notification must be at least this old before its un-reacted events
+        // are treated as "ignored" and passively decayed.
+        'ignored_window_hours' => (int) env('EVENTPULSE_IGNORED_WINDOW_HOURS', 72),
     ],
     'discovery' => [
         'default_openness' => 0.3,
         'exploration_budget' => 0.2,
         'min_surprise_score' => 0.3,
+        // Exploration reward/penalty: positive reactions to a discovery event
+        // boost the profile more, negative reactions penalise it less, than normal.
+        'reward_multiplier' => 1.5,
+        'penalty_multiplier' => 0.5,
+        // Serendipity decay: a category surfaced this many times with zero positive
+        // outcomes is suppressed from discovery for this many days.
+        'suppression_threshold' => 3,
+        'suppression_days' => 30,
+        // discovery_openness auto-tuning: once a user has resolved at least
+        // min_samples discovery events, if their hit rate falls below the
+        // threshold, reduce openness by step (never below floor).
+        'openness_min_samples' => 5,
+        'openness_hit_rate_threshold' => 0.1,
+        'openness_step' => 0.05,
+        'openness_floor' => 0.05,
+        // Trending injection: events with at least this many positive reactions
+        // across the platform (within the window) fill reserved discovery slots.
+        'trending_min_reactions' => 3,
+        'trending_window_days' => 14,
+        'trending_slots' => 1,
+        // Collaborative filtering: "similar users" share an interest category at
+        // or above this score; discovery is biased toward categories they react
+        // to positively.
+        'similar_user_threshold' => 0.6,
+        'similar_user_limit' => 200,
+    ],
+    'geocoding' => [
+        // Provider used to resolve an address into coordinates: 'nominatim' or 'google'.
+        'provider' => env('GEOCODING_PROVIDER', 'nominatim'),
+        'google_key' => env('GOOGLE_GEOCODING_KEY'),
+        'nominatim_url' => env('NOMINATIM_URL', 'https://nominatim.openstreetmap.org/search'),
+        // Nominatim's usage policy requires an identifying User-Agent.
+        'user_agent' => env('GEOCODING_USER_AGENT', 'Ghes/1.0 (+https://ghes.app)'),
+        'timeout_seconds' => (int) env('GEOCODING_TIMEOUT_SECONDS', 10),
+    ],
+    'enrichment' => [
+        'timeout_seconds' => (int) env('EVENTPULSE_ENRICHMENT_TIMEOUT', 10),
+    ],
+    'push' => [
+        'enabled' => (bool) env('WEBPUSH_ENABLED', false),
+        'vapid' => [
+            'subject' => env('WEBPUSH_VAPID_SUBJECT', 'mailto:events@ghes.app'),
+            'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
+            'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
+        ],
     ],
     'scraping' => [
         'interval_hours' => (int) env('EVENTPULSE_SCRAPE_INTERVAL_HOURS', 4),
@@ -96,20 +173,19 @@ return [
                     'enabled' => true,
                     'interval_hours' => 4,
                 ],
-                ['adapter' => 'iabilet',        'url' => 'https://m.iabilet.ro/bilete-in-timisoara/',              'enabled' => false, 'interval_hours' => 4],
-                ['adapter' => 'allevents',       'url' => 'https://allevents.in/timisoara/all',                     'enabled' => false, 'interval_hours' => 6],
-                ['adapter' => 'eventbrite',      'params' => ['address' => 'Timisoara,Romania'],                    'enabled' => false, 'interval_hours' => 6],
-                ['adapter' => 'onevent',         'url' => 'https://www.onevent.ro/orase/timisoara/',                'enabled' => false, 'interval_hours' => 6],
-                ['adapter' => 'timisoreni', 'url' => 'https://www.timisoreni.ro/info/index/t--evenimente/', 'extra_urls' => ['https://www.timisoreni.ro/info/spectacole/'], 'enabled' => false, 'interval_hours' => 8],
-                ['adapter' => 'opera_timisoara', 'url' => 'https://www.ort.ro/ro/Spectacole.html',                   'enabled' => false, 'interval_hours' => 24],
-                ['adapter' => 'teatru_national_tm', 'url' => 'https://www.tntm.ro/',                                   'enabled' => false, 'interval_hours' => 24],
-                ['adapter' => 'entertix', 'url' => 'https://www.entertix.ro/evenimente', 'city_filter' => 'Timișoara', 'enabled' => false, 'interval_hours' => 8],
-                ['adapter' => 'visit_timisoara', 'url' => 'https://visit-timisoara.com/events-activities/',         'enabled' => false, 'interval_hours' => 12],
-                ['adapter' => 'radio_timisoara', 'url' => 'https://www.radiotimisoara.ro/agenda-evenimente',        'enabled' => false, 'interval_hours' => 12],
-                ['adapter' => 'meetup',          'url' => 'https://www.meetup.com/find/ro--timisoara/',             'enabled' => false, 'interval_hours' => 6],
+                ['adapter' => 'iabilet',        'url' => 'https://m.iabilet.ro/bilete-in-timisoara/',              'enabled' => true, 'interval_hours' => 4],
+                ['adapter' => 'allevents',       'url' => 'https://allevents.in/timisoara/all',                     'enabled' => true, 'interval_hours' => 6],
+                ['adapter' => 'eventbrite',      'params' => ['address' => 'Timisoara,Romania'],                    'enabled' => true, 'interval_hours' => 6],
+                ['adapter' => 'onevent',         'url' => 'https://www.onevent.ro/orase/timisoara/',                'enabled' => true, 'interval_hours' => 6],
+                ['adapter' => 'timisoreni', 'url' => 'https://www.timisoreni.ro/info/index/t--evenimente/', 'extra_urls' => ['https://www.timisoreni.ro/info/spectacole/'], 'enabled' => true, 'interval_hours' => 8],
+                ['adapter' => 'opera_timisoara', 'url' => 'https://www.ort.ro/ro/Spectacole.html',                   'enabled' => true, 'interval_hours' => 24],
+                ['adapter' => 'teatru_national_tm', 'url' => 'https://www.tntm.ro/',                                   'enabled' => true, 'interval_hours' => 24],
+                ['adapter' => 'entertix', 'url' => 'https://www.entertix.ro/evenimente', 'city_filter' => 'Timișoara', 'enabled' => true, 'interval_hours' => 8],
+                ['adapter' => 'visit_timisoara', 'url' => 'https://visit-timisoara.com/events-activities/',         'enabled' => true, 'interval_hours' => 12],
+                ['adapter' => 'meetup',          'url' => 'https://www.meetup.com/find/ro--timisoara/',             'enabled' => true, 'interval_hours' => 6],
                 [
                     'adapter' => 'facebook_events',
-                    'enabled' => false,
+                    'enabled' => true,
                     'interval_hours' => 12,
                     'params' => [
                         'apify_actor' => 'apify/facebook-events-scraper',
@@ -133,6 +209,23 @@ return [
                 ],
             ],
         ],
+
+        // Adding a new city needs config only — no code changes. Uncomment and
+        // adjust the parameterized adapters (and add any city-specific ones to
+        // 'adapter_registry'). The orchestrator, recommendations, and digests
+        // all key off the city automatically.
+        //
+        // 'cluj' => [
+        //     'label' => 'Cluj-Napoca',
+        //     'timezone' => 'Europe/Bucharest',
+        //     'coordinates' => [46.7712, 23.6236],
+        //     'radius_km' => 25,
+        //     'sources' => [
+        //         ['adapter' => 'iabilet',     'url' => 'https://m.iabilet.ro/bilete-in-cluj-napoca/',   'enabled' => true, 'interval_hours' => 4],
+        //         ['adapter' => 'zilesinopti', 'url' => 'https://zilesinopti.ro/evenimente-cluj-napoca/', 'enabled' => true, 'interval_hours' => 4],
+        //         ['adapter' => 'allevents',   'url' => 'https://allevents.in/cluj-napoca/all',           'enabled' => true, 'interval_hours' => 6],
+        //     ],
+        // ],
     ],
 
     'default_city' => env('EVENTPULSE_DEFAULT_CITY', 'timisoara'),
@@ -152,12 +245,12 @@ return [
         'max_score' => 1.0,
     ],
     'llm' => [
-        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
         'api_key' => env('ANTHROPIC_API_KEY'),
         'max_tokens' => 1024,
         'classification_prompt' => 'You are an event classifier. Given the event title and description, classify it into exactly one category and extract relevant tags. Respond in JSON format with keys: "category" (one of: Music, Arts, Sports, Technology, Food, Nightlife, Business, Health, Education, Family, Community, Film, Literature, Other), "tags" (array of lowercase strings), "confidence" (float 0-1).',
         'onboarding_system_prompt' => <<<'PROMPT'
-Ești EventPulse, un asistent prietenos care îi ajută pe utilizatori să descopere evenimente locale în orașul lor.
+Ești Ghes, un asistent prietenos care îi ajută pe utilizatori să descopere evenimente locale în orașul lor.
 
 Ghidează conversația prin aceste etape:
 1. INTERESE: Întreabă ce tipuri de evenimente îi plac — muzică, arte, sport, mâncare, tech, etc. Aprofundează cu întrebări specifice (de ex. „Ce genuri muzicale preferi?" „Ai bucătării preferate?").
@@ -188,7 +281,7 @@ PROMPT,
     ],
     'onboarding' => [
         'min_exchanges' => 4,
-        'welcome_message' => 'Salut! Sunt EventPulse — te ajut să descoperi evenimente locale. Pentru început, spune-mi: ce tipuri de activități și evenimente îți plac cel mai mult?',
+        'welcome_message' => 'Salut! Sunt Ghes — te ajut să descoperi evenimente locale. Pentru început, spune-mi: ce tipuri de activități și evenimente îți plac cel mai mult?',
     ],
     'city' => env('EVENTPULSE_CITY', 'Bucharest'),
     'categories' => ['Music', 'Arts', 'Sports', 'Technology', 'Food', 'Nightlife', 'Business', 'Health', 'Education', 'Family', 'Community', 'Film', 'Literature', 'Other'],

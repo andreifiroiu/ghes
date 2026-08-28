@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 const navLinks = [
     { href: '/dashboard', label: 'Acasă' },
     { href: '/events', label: 'Evenimente' },
+    { href: '/events/saved', label: 'Salvate' },
     { href: '/profile', label: 'Profil' },
 ];
 
@@ -42,7 +43,10 @@ export default function AppLayout({ children, title }) {
                                 </Link>
                             </div>
                             <div className="hidden sm:ml-8 sm:flex sm:space-x-2">
-                                {navLinks.map((link) => (
+                                {(auth?.isAdmin
+                                    ? [...navLinks, { href: '/admin', label: 'Admin' }]
+                                    : navLinks
+                                ).map((link) => (
                                     <Link
                                         key={link.href}
                                         href={link.href}
@@ -156,7 +160,10 @@ export default function AppLayout({ children, title }) {
                 {mobileMenuOpen && (
                     <div className="sm:hidden border-t border-white/10">
                         <div className="px-2 pt-2 pb-3 space-y-1">
-                            {navLinks.map((link) => (
+                            {(auth?.isAdmin
+                                ? [...navLinks, { href: '/admin', label: 'Admin' }]
+                                : navLinks
+                            ).map((link) => (
                                 <Link
                                     key={link.href}
                                     href={link.href}

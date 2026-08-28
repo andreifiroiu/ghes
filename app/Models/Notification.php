@@ -12,6 +12,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property NotificationChannel $channel
+ * @property NotificationFrequency $frequency
+ * @property array<int, string> $event_ids
+ * @property array<int, string> $discovery_event_ids
+ */
 class Notification extends Model
 {
     /** @use HasFactory<NotificationFactory> */
@@ -37,6 +43,7 @@ class Notification extends Model
         'body_html',
         'sent_at',
         'opened_at',
+        'decay_applied_at',
     ];
 
     /**
@@ -51,6 +58,7 @@ class Notification extends Model
             'discovery_event_ids' => 'array',
             'sent_at' => 'datetime',
             'opened_at' => 'datetime',
+            'decay_applied_at' => 'datetime',
             'channel' => NotificationChannel::class,
             'frequency' => NotificationFrequency::class,
         ];

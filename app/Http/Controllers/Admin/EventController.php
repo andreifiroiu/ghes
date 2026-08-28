@@ -1,0 +1,131 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Admin;
+
+use App\Enums\EventCategory;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\AdminEventUpdateRequest;
+use App\Http\Resources\AdminEventResource;
+use App\Jobs\ClassifyEventJob;
+use App\Jobs\EnrichEventJob;
+use App\Jobs\GeocodeEventJob;
+use App\Models\Event;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+use LogicException;
+
+class EventController extends Controller
+{
+    private const FEATURE_BOOST = 25;
+
+    public function index(Request $request): Response
+    {
+        $query = Event::query()->orderBy('created_at', 'desc');
+
+        if ($request->filled('search')) {
+            $query->whereLike('title', '%'.$request->string('search')->toString().'%');
+        }
+
+        if ($request->filled('city')) {
+            $query->where('city', $request->string('city')->toString());
+        }
+
+        if ($request->filled('category')) {
+            $query->where('category', $request->string('category')->toString());
+        }
+
+        match ($request->string('status')->toString()) {
+            'hidden' => $query->where('is_hidden', true),
+            'unclassified' => $query->where('is_classified', false),
+            'ungeocoded' => $query->where('is_geocoded', false),
+            default => null,
+        };
+
+        $events = $query->paginate(20)->withQueryString();
+
+        return Inertia::render('Admin/Events/Index', [
+            'events' => AdminEventResource::collection($events),
+            'filters' => $request->only(['search', 'city', 'category', 'status']),
+            'categories' => array_column(EventCategory::cases(), 'value'),
+        ]);
+    }
+
+    public function edit(Event $event): Response
+    {
+        return Inertia::render('Admin/Events/Edit', [
+            'event' => new AdminEventResource($event),
+            'categories' => array_column(EventCategory::cases(), 'value'),
+        ]);
+    }
+
+    public function update(AdminEventUpdateRequest $request, Event $event): RedirectResponse
+    {
+        $event->update($request->validated());
+
+        return redirect()->route('admin.events.index')->with('success', 'Event updated.');
+    }
+
+    public function destroy(Event $event): RedirectResponse
+    {
+        $event->delete();
+
+        return redirect()->route('admin.events.index')->with('success', 'Event deleted.');
+    }
+
+    public function toggleHidden(Event $event): RedirectResponse
+    {
+        $event->update(['is_hidden' => ! $event->is_hidden]);
+
+        return back()->with('success', $event->is_hidden ? 'Event hidden.' : 'Event made visible.');
+    }
+
+    public function feature(Event $event): RedirectResponse
+    {
+        $event->update([
+            'popularity_score' => min(100, $event->popularity_score + self::FEATURE_BOOST),
+        ]);
+
+        return back()->with('success', 'Event boosted.');
+    }
+
+    public function reprocess(Request $request, Event $event): RedirectResponse
+    {
+        /** @var array{action: string} $validated */
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(['classify', 'geocode', 'enrich'])],
+        ]);
+
+        // The validation rule above guarantees one of these three actions.
+        match ($validated['action']) {
+            'classify' => $this->queueClassify($event),
+            'geocode' => $this->queueGeocode($event),
+            'enrich' => $this->queueEnrich($event),
+            default => throw new LogicException("Unhandled reprocess action [{$validated['action']}]."),
+        };
+
+        return back()->with('success', 'Re-processing queued.');
+    }
+
+    private function queueClassify(Event $event): void
+    {
+        $event->update(['is_classified' => false]);
+        ClassifyEventJob::dispatch($event->id);
+    }
+
+    private function queueGeocode(Event $event): void
+    {
+        $event->update(['is_geocoded' => false]);
+        GeocodeEventJob::dispatch($event->id);
+    }
+
+    private function queueEnrich(Event $event): void
+    {
+        $event->update(['is_enriched' => false]);
+        EnrichEventJob::dispatch($event->id);
+    }
+}

@@ -11,6 +11,7 @@ use App\Models\UserEventReaction;
 use App\Services\InterestProfile\ProfileScorer;
 use App\Services\Recommendation\DiscoveryEngine;
 use App\Services\Recommendation\DiversityFilter;
+use App\Services\Recommendation\ExperimentAssigner;
 use App\Services\Recommendation\RecommendationEngine;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,7 @@ beforeEach(function () {
         profileScorer: new ProfileScorer,
         discoveryEngine: new DiscoveryEngine,
         diversityFilter: new DiversityFilter,
+        experimentAssigner: new ExperimentAssigner,
     );
 });
 
@@ -50,6 +52,34 @@ it('scores music events higher for users who like music', function () {
 
     expect($this->engine->scoreEvent($user, $musicEvent))
         ->toBeGreaterThan($this->engine->scoreEvent($user, $sportsEvent));
+});
+
+it('scores using the user assigned experiment variant weights', function () {
+    // Fresh event in a category neither user cares about: the freshness_boost
+    // variant weights freshness higher, so it should score this higher.
+    $controlUser = User::factory()->create([
+        'experiment_variant' => 'control',
+        'interest_profile' => [],
+        'city' => 'Bucharest',
+    ]);
+    $boostUser = User::factory()->create([
+        'experiment_variant' => 'freshness_boost',
+        'interest_profile' => [],
+        'city' => 'Bucharest',
+    ]);
+
+    $event = Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'tags' => [],
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(2),
+        'is_classified' => true,
+        'is_free' => true,
+        'popularity_score' => 0,
+    ]);
+
+    expect($this->engine->scoreEvent($boostUser, $event))
+        ->toBeGreaterThan($this->engine->scoreEvent($controlUser, $event));
 });
 
 it('always returns a score between 0 and 1', function () {
@@ -338,6 +368,86 @@ it('includes discovery events in the batch', function () {
     $batch = $this->engine->recommend($user, 8);
 
     expect($batch->discoveryEventIds)->not->toBeEmpty();
+});
+
+it('excludes events carrying the user negative tags', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9, 'negtag:techno' => 1.0],
+        'city' => 'Bucharest',
+    ]);
+
+    $blocked = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'tags' => ['techno'],
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $allowed = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'tags' => ['jazz'],
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->not->toContain($blocked->id);
+    expect($batch->recommendedEventIds)->toContain($allowed->id);
+});
+
+it('excludes hidden events from recommendations', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9],
+        'city' => 'Bucharest',
+    ]);
+
+    $visible = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+        'is_hidden' => false,
+    ]);
+    $hidden = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+        'is_hidden' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->toContain($visible->id)
+        ->and($batch->recommendedEventIds)->not->toContain($hidden->id);
+});
+
+it('scopes recommendations to the user city', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.8],
+        'city' => 'Cluj-Napoca',
+    ]);
+
+    $cluj = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Cluj-Napoca',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+    $timisoara = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Timișoara',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->toContain($cluj->id)
+        ->and($batch->recommendedEventIds)->not->toContain($timisoara->id);
 });
 
 it('handles empty candidate pool gracefully', function () {

@@ -11,8 +11,18 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Laravel\Scout\Searchable;
 
+/**
+ * @property array<int, string>|null $tags
+ * @property string|null $neighborhood
+ * @property bool $is_hidden
+ * @property EventCategory $category
+ * @property Carbon|null $starts_at
+ * @property Carbon|null $ends_at
+ * @property Carbon|null $created_at
+ */
 class Event extends Model
 {
     /** @use HasFactory<EventFactory> */
@@ -35,6 +45,7 @@ class Event extends Model
         'venue',
         'address',
         'city',
+        'neighborhood',
         'latitude',
         'longitude',
         'starts_at',
@@ -49,6 +60,7 @@ class Event extends Model
         'is_classified',
         'is_geocoded',
         'is_enriched',
+        'is_hidden',
     ];
 
     /**
@@ -72,6 +84,7 @@ class Event extends Model
             'is_classified' => 'boolean',
             'is_geocoded' => 'boolean',
             'is_enriched' => 'boolean',
+            'is_hidden' => 'boolean',
             'category' => EventCategory::class,
         ];
     }
@@ -95,12 +108,32 @@ class Event extends Model
     /**
      * Scope to only include upcoming events.
      *
-     * @param Builder<Event> $query
+     * @param  Builder<Event>  $query
      * @return Builder<Event>
      */
     public function scopeUpcoming(Builder $query): Builder
     {
         return $query->where('starts_at', '>', now());
+    }
+
+    /**
+     * Scope to events not hidden by an admin.
+     *
+     * @param  Builder<Event>  $query
+     * @return Builder<Event>
+     */
+    public function scopeVisible(Builder $query): Builder
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    /**
+     * Keep admin-hidden events out of the search index; Scout removes an
+     * already-indexed record as soon as this turns false on save.
+     */
+    public function shouldBeSearchable(): bool
+    {
+        return ! $this->is_hidden;
     }
 
     /**
@@ -114,7 +147,7 @@ class Event extends Model
             'id' => $this->id,
             'title' => $this->title,
             'description' => $this->description,
-            'category' => $this->category?->value,
+            'category' => $this->category->value,
             'tags' => $this->tags,
             'city' => $this->city,
             'venue' => $this->venue,

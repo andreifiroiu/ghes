@@ -1,4 +1,4 @@
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, Link } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
@@ -36,7 +36,7 @@ const frequencyOptions = [
 export default function Profile({ user }) {
     const profile = user?.interest_profile || {};
     const categories = profile.categories || {};
-    const discoveryOpenness = profile.discovery_openness ?? 0.5;
+    const discoveryOpenness = user?.discovery_openness ?? 0.5;
     const tags = profile.tags || [];
     const isEmailVerified = !!user?.email_verified_at;
 
@@ -150,10 +150,16 @@ export default function Profile({ user }) {
                 <div className="lg:col-span-2 space-y-6">
                     {/* Category scores */}
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle className="text-lg">
                                 Categorii de interes
                             </CardTitle>
+                            <Link
+                                href="/profile/chat"
+                                className="text-sm font-medium text-[#FF5733] hover:underline"
+                            >
+                                Actualizează prin chat
+                            </Link>
                         </CardHeader>
                         <CardContent>
                             {sortedCategories.length === 0 ? (
