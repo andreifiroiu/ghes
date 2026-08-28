@@ -65,6 +65,7 @@ class RecommendationEngine
         $reactedEventIds = $user->reactions()->pluck('event_id');
 
         $candidates = Event::upcoming()
+            ->visible()
             ->where('is_classified', true)
             ->when($user->city, fn ($q) => $q->where('city', $user->city))
             ->whereNotIn('id', $reactedEventIds)

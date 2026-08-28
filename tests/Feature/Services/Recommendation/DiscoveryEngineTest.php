@@ -259,38 +259,53 @@ it('injects platform-wide trending events regardless of profile', function () {
     expect($discoveries->pluck('id'))->toContain($trendingEvent->id);
 });
 
-// ---------------------------------------------------------------
-// Collaborative filtering
-// ---------------------------------------------------------------
+it('excludes hidden events from discovery', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.95]]);
 
-it('biases discovery toward categories popular among similar users', function () {
-    // Current user likes music; every other category is low-score.
-    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
-
-    // A similar user (also likes music) reacted positively to a Technology event.
-    $similar = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
-    $likedTech = Event::factory()->create(['category' => EventCategory::Technology]);
-    UserEventReaction::factory()->create([
-        'user_id' => $similar->id,
-        'event_id' => $likedTech->id,
-        'reaction' => Reaction::Interested,
+    $hidden = Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+        'is_hidden' => true,
     ]);
-
-    // Discovery candidates: one Technology (collaborative) and one Arts (not).
     Event::factory()->create([
         'category' => EventCategory::Technology,
         'starts_at' => now()->addDays(3),
         'is_classified' => true,
-    ]);
-    Event::factory()->create([
-        'category' => EventCategory::Arts,
-        'starts_at' => now()->addDays(3),
-        'is_classified' => true,
+        'is_hidden' => false,
     ]);
 
-    $discoveries = $this->engine->discoverForUser($user, 1);
+    $discoveries = $this->engine->discoverForUser($user, 5);
 
-    expect($discoveries->pluck('category')->map->value)->toContain('technology');
+    expect($discoveries->pluck('id'))->not->toContain($hidden->id);
+});
+
+// ---------------------------------------------------------------
+// Collaborative filtering
+// ---------------------------------------------------------------
+
+it('surfaces categories popular among similar users', function () {
+    // Current user likes music.
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+
+    // A music event the current user's "tribe" engages with (the similarity signal).
+    $musicEvent = Event::factory()->create(['category' => EventCategory::Music]);
+
+    // A similar user: positively reacted to that music event AND to a tech event.
+    $similar = User::factory()->create();
+    $techEvent = Event::factory()->create(['category' => EventCategory::Technology]);
+    UserEventReaction::factory()->create([
+        'user_id' => $similar->id,
+        'event_id' => $musicEvent->id,
+        'reaction' => Reaction::Interested,
+    ]);
+    UserEventReaction::factory()->create([
+        'user_id' => $similar->id,
+        'event_id' => $techEvent->id,
+        'reaction' => Reaction::Saved,
+    ]);
+
+    expect($this->engine->collaborativelyPopularCategories($user))->toContain('technology');
 });
 
 it('returns no collaborative categories when there are no similar users', function () {

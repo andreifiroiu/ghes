@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Admin\ScraperController;
+use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -78,6 +81,24 @@ Route::middleware('auth')->group(function () {
 
     // Admin
     Route::prefix('admin')->name('admin.')->middleware('can:access-admin')->group(function () {
+        Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
+
+        // Events
+        Route::get('events', [AdminEventController::class, 'index'])->name('events.index');
+        Route::get('events/{event}/edit', [AdminEventController::class, 'edit'])->name('events.edit');
+        Route::put('events/{event}', [AdminEventController::class, 'update'])->name('events.update');
+        Route::delete('events/{event}', [AdminEventController::class, 'destroy'])->name('events.destroy');
+        Route::post('events/{event}/hide', [AdminEventController::class, 'toggleHidden'])->name('events.hide');
+        Route::post('events/{event}/feature', [AdminEventController::class, 'feature'])->name('events.feature');
+        Route::post('events/{event}/reprocess', [AdminEventController::class, 'reprocess'])->name('events.reprocess');
+
+        // Users
+        Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
+        Route::get('users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+        Route::put('users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+        Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+
+        // Scrapers
         Route::get('scrapers', [ScraperController::class, 'index'])->name('scrapers.index');
         Route::post('scrapers/run', [ScraperController::class, 'store'])->name('scrapers.run');
     });

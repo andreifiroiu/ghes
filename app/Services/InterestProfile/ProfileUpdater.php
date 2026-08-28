@@ -31,8 +31,8 @@ class ProfileUpdater
             return;
         }
 
-        $categoryDelta = $this->scaleForDiscovery((float) ($delta['category'] ?? 0.0), $isDiscovery);
-        $tagDelta = $this->scaleForDiscovery((float) ($delta['tag'] ?? 0.0), $isDiscovery);
+        $categoryDelta = $this->scaleForDiscovery((float) $delta['category'], $isDiscovery);
+        $tagDelta = $this->scaleForDiscovery((float) $delta['tag'], $isDiscovery);
 
         $profile = $user->interest_profile ?? [];
 

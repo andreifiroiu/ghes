@@ -95,6 +95,7 @@ class DiscoveryEngine
         }
 
         $events = Event::upcoming()
+            ->visible()
             ->where('is_classified', true)
             ->whereIn('id', $trendingCounts->keys()->all())
             ->when($user->city, fn ($query) => $query->where('city', $user->city))
@@ -165,6 +166,7 @@ class DiscoveryEngine
         }
 
         $events = Event::upcoming()
+            ->visible()
             ->whereIn('category', $categories)
             ->whereNotIn('id', $excludeIds)
             ->where('is_classified', true)
@@ -177,9 +179,12 @@ class DiscoveryEngine
     }
 
     /**
-     * Categories that users similar to this one (sharing a high-interest
-     * category) react to positively — ordered by popularity. Used to bias
-     * discovery (collaborative filtering, SPEC §3.4).
+     * Categories popular among users similar to this one — ordered by popularity.
+     * Used to bias discovery (collaborative filtering, SPEC §3.4).
+     *
+     * "Similar users" are those who positively reacted to events in the current
+     * user's high-interest categories; the result is the categories *they* react
+     * to positively. Behaviour-based and portable (no JSON column queries).
      *
      * @return list<string>
      */
@@ -187,6 +192,7 @@ class DiscoveryEngine
     {
         $profile = $user->interest_profile ?? [];
         $threshold = (float) config('eventpulse.discovery.similar_user_threshold', 0.6);
+        $positive = [Reaction::Interested->value, Reaction::Saved->value];
 
         $highCategories = collect(EventCategory::cases())
             ->map(fn (EventCategory $cat) => $cat->value)
@@ -197,32 +203,28 @@ class DiscoveryEngine
             return [];
         }
 
-        $similarUserIds = User::query()
-            ->whereKeyNot($user->id)
-            ->where(function ($query) use ($highCategories, $threshold): void {
-                foreach ($highCategories as $category) {
-                    $query->orWhere('interest_profile->'.$category, '>=', $threshold);
-                }
-            })
+        // Kept as subqueries: the events table grows with every scrape, so
+        // plucking its ids into PHP would build an unbounded IN list, and the
+        // similar-user limit has to be applied by the database, not after.
+        $similarUserIds = UserEventReaction::query()
+            ->whereIn('reaction', $positive)
+            ->where('user_id', '!=', $user->id)
+            ->whereIn('event_id', Event::query()
+                ->whereIn('category', $highCategories)
+                ->select('id'))
+            ->distinct()
             ->limit((int) config('eventpulse.discovery.similar_user_limit', 200))
-            ->pluck('id');
+            ->pluck('user_id');
 
         if ($similarUserIds->isEmpty()) {
             return [];
         }
 
-        $likedEventIds = UserEventReaction::query()
-            ->whereIn('user_id', $similarUserIds)
-            ->whereIn('reaction', [Reaction::Interested->value, Reaction::Saved->value])
-            ->pluck('event_id')
-            ->unique();
-
-        if ($likedEventIds->isEmpty()) {
-            return [];
-        }
-
         return Event::query()
-            ->whereIn('id', $likedEventIds)
+            ->whereIn('id', UserEventReaction::query()
+                ->whereIn('user_id', $similarUserIds)
+                ->whereIn('reaction', $positive)
+                ->select('event_id'))
             ->get(['category'])
             ->countBy(fn (Event $event) => (string) $event->getRawOriginal('category'))
             ->sortDesc()

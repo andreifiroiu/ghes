@@ -11,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /**
  * @mixin Event
  */
-class EventResource extends JsonResource
+class AdminEventResource extends JsonResource
 {
     /**
      * @return array<string, mixed>
@@ -27,19 +27,22 @@ class EventResource extends JsonResource
             'venue' => $this->venue,
             'address' => $this->address,
             'city' => $this->city,
+            'neighborhood' => $this->neighborhood,
             'starts_at' => $this->starts_at?->toIso8601String(),
             'ends_at' => $this->ends_at?->toIso8601String(),
             'price_min' => $this->price_min,
             'price_max' => $this->price_max,
             'is_free' => $this->is_free,
+            'currency' => $this->currency,
             'image_url' => $this->image_url,
-            'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
-            'current_reaction' => $this->whenLoaded(
-                'reactions',
-                fn () => $this->reactions->first()?->reaction?->value,
-            ),
+            'popularity_score' => $this->popularity_score,
+            'is_classified' => $this->is_classified,
+            'is_geocoded' => $this->is_geocoded,
+            'is_enriched' => $this->is_enriched,
+            'is_hidden' => $this->is_hidden,
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }

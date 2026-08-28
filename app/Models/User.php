@@ -13,13 +13,16 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
- * @property array<string, float> $interest_profile
+ * @property array<string, mixed> $interest_profile
  * @property ?string $experiment_variant
  * @property ?NotificationChannel $notification_channel
  * @property ?NotificationFrequency $notification_frequency
+ * @property Carbon|null $email_verified_at
+ * @property Carbon|null $created_at
  */
 class User extends Authenticatable implements MustVerifyEmail
 {

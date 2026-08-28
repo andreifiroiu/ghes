@@ -398,6 +398,33 @@ it('excludes events carrying the user negative tags', function () {
     expect($batch->recommendedEventIds)->toContain($allowed->id);
 });
 
+it('excludes hidden events from recommendations', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9],
+        'city' => 'Bucharest',
+    ]);
+
+    $visible = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+        'is_hidden' => false,
+    ]);
+    $hidden = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+        'is_hidden' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->toContain($visible->id)
+        ->and($batch->recommendedEventIds)->not->toContain($hidden->id);
+});
+
 it('scopes recommendations to the user city', function () {
     $user = User::factory()->create([
         'interest_profile' => ['music' => 0.8],
