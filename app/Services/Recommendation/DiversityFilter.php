@@ -18,7 +18,7 @@ class DiversityFilter
      */
     public function filter(Collection $events, int $maxPerCategory = 3): Collection
     {
-        $grouped = $events->groupBy(fn (Event $event) => $event->category?->value ?? 'other');
+        $grouped = $events->groupBy(fn (Event $event) => $event->category->value);
 
         // Cap each group
         $capped = $grouped->map(fn (Collection $group) => $group->take($maxPerCategory)->values());

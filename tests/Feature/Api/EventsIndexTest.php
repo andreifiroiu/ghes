@@ -48,6 +48,92 @@ it('returns all upcoming events when no category filter is applied', function ()
         );
 });
 
+it('filters events to a single selected date in the city timezone', function () {
+    $user = User::factory()->create();
+    $tz = config('eventpulse.cities.'.config('eventpulse.default_city').'.timezone');
+
+    // Target day, local time -> stored UTC.
+    $targetDay = now($tz)->addDays(10)->startOfDay();
+    $onDay = Event::factory()->create([
+        'starts_at' => $targetDay->copy()->setTime(20, 0)->utc(),
+    ]);
+    // Next day, just after midnight local time -> must be excluded.
+    Event::factory()->create([
+        'starts_at' => $targetDay->copy()->addDay()->setTime(0, 30)->utc(),
+    ]);
+
+    $date = $targetDay->format('Y-m-d');
+
+    $this->actingAs($user)
+        ->get("/events?date={$date}")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 1)
+            ->where('events.data.0.id', $onDay->id)
+            ->where('filters.date', $date)
+        );
+});
+
+it('ignores an invalid date and returns all upcoming events', function () {
+    $user = User::factory()->create();
+
+    Event::factory()->count(2)->create(['starts_at' => now()->addDays(3)]);
+
+    $this->actingAs($user)
+        ->get('/events?date=not-a-date')
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('events.data', 2));
+});
+
+it('excludes admin-hidden events from the browse list', function () {
+    $user = User::factory()->create();
+
+    $visible = Event::factory()->create([
+        'starts_at' => now()->addDays(2),
+        'is_hidden' => false,
+    ]);
+    $hidden = Event::factory()->create([
+        'starts_at' => now()->addDays(2),
+        'is_hidden' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/events')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 1)
+            ->where('events.data.0.id', $visible->id)
+        );
+
+    expect($hidden->fresh()->is_hidden)->toBeTrue();
+});
+
+it('returns 404 for an admin-hidden event detail page', function () {
+    $user = User::factory()->create();
+    $hidden = Event::factory()->create(['is_hidden' => true]);
+
+    $this->actingAs($user)->get("/events/{$hidden->id}")->assertNotFound();
+});
+
+it('excludes admin-hidden events from the saved list', function () {
+    $user = User::factory()->create();
+
+    $saved = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_hidden' => false]);
+    $savedThenHidden = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_hidden' => true]);
+
+    foreach ([$saved, $savedThenHidden] as $event) {
+        UserEventReaction::factory()->create([
+            'user_id' => $user->id,
+            'event_id' => $event->id,
+            'reaction' => Reaction::Saved,
+        ]);
+    }
+
+    $this->actingAs($user)
+        ->get('/events/saved')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events', 1)
+            ->where('events.0.id', $saved->id)
+        );
+});
+
 it('excludes events the user marked not-interested or hidden from the browse list', function () {
     $user = User::factory()->create();
 
