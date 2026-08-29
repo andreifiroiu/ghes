@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\DuplicateEventController;
 use App\Http\Controllers\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Admin\ScraperController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -100,6 +101,12 @@ Route::middleware('auth')->group(function () {
 
         // Events
         Route::get('events', [AdminEventController::class, 'index'])->name('events.index');
+
+        // Duplicate review — declared before the {event} routes so the literal
+        // segment is not swallowed by the binding.
+        Route::get('events/duplicates', [DuplicateEventController::class, 'index'])->name('events.duplicates');
+        Route::post('events/merge', [DuplicateEventController::class, 'store'])->name('events.merge');
+
         Route::get('events/{event}/edit', [AdminEventController::class, 'edit'])->name('events.edit');
         Route::put('events/{event}', [AdminEventController::class, 'update'])->name('events.update');
         Route::delete('events/{event}', [AdminEventController::class, 'destroy'])->name('events.destroy');

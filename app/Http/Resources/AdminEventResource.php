@@ -36,6 +36,8 @@ class AdminEventResource extends JsonResource
             'currency' => $this->currency,
             'image_url' => $this->image_url,
             'source' => $this->source,
+            'sources_count' => $this->sources_count,
+            'merged_into_id' => $this->merged_into_id,
             'source_url' => $this->source_url,
             'popularity_score' => $this->popularity_score,
             'is_classified' => $this->is_classified,
