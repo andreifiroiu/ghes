@@ -2,6 +2,15 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Îmbunătățit — Reacțiile tale reglează acum și sursele de evenimente (#13)
+
+Până acum, când apăsai „mă interesează" sau „nu-i pentru mine", Ghes reținea ce fel de
+eveniment era și ce etichete avea, dar nu și de unde îl aflase. Acum reține și sursa:
+dacă te interesează constant evenimentele anunțate de un anumit site, ce vine de acolo
+urcă în recomandările tale, iar ce vine de la o sursă pe care o refuzi mereu coboară.
+Se vede în recomandările de pe pagina de start și în e-mailurile cu recomandări, și se
+potrivește tot mai bine cu tine pe măsură ce dai mai multe reacții.
+
 ## 2026-08-29 — Rezolvat — E-mailurile cu recomandări chiar ajung la tine (#10)
 
 Dacă alesesei să primești recomandările pe e-mail, ele nu plecau deloc — aplicația
