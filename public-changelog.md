@@ -2,6 +2,22 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Nou — Vezi ce se întâmplă în oraș înainte să îți faci cont (#9)
+
+Pagina de start arată acum evenimentele care urmează în Timișoara, nu doar o descriere
+a aplicației: ce se întâmplă zilele astea, din câte surse adunăm și când am verificat
+ultima oară. Poți deschide lista completă de evenimente și pagina fiecărui eveniment
+fără cont. Ca să salvezi un eveniment sau să spui ce te interesează ai în continuare
+nevoie de cont — de acolo încolo lista începe să se potrivească cu tine.
+
+## 2026-08-29 — Îmbunătățit — Ghes se folosește mult mai ușor de pe telefon (#9)
+
+Butoanele și filtrele erau prea mici ca să le nimerești cu degetul, iar când scriai în
+căutare telefonul mărea pagina de la sine. Acum ai jos o bară cu Acasă, Evenimente,
+Salvate și Profil, ca să te muți dintr-un loc în altul fără să derulezi până sus. În
+conversația de la început tastatura nu mai acoperă câmpul în care scrii, iar pe pagina
+unui eveniment vezi întâi ora, locul și prețul, abia apoi descrierea.
+
 ## 2026-08-29 — Rezolvat — Recomandările țin din nou cont mai mult de ce te interesează acum (#7)
 
 Profilul tău de interese ar fi trebuit să se împrospăteze săptămânal, așa încât ce
