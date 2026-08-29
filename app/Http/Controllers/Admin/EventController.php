@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\EventCategory;
+use App\Http\Controllers\Admin\Concerns\FiltersAdminEvents;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminEventUpdateRequest;
 use App\Http\Resources\AdminEventResource;
@@ -21,11 +22,20 @@ use LogicException;
 
 class EventController extends Controller
 {
+    use FiltersAdminEvents;
+
     private const FEATURE_BOOST = 25;
+
+    /**
+     * Columns an admin may order the list by.
+     *
+     * @var list<string>
+     */
+    private const SORTABLE = ['created_at', 'starts_at', 'title', 'popularity_score'];
 
     public function index(Request $request): Response
     {
-        $query = Event::query()->orderBy('created_at', 'desc');
+        $query = Event::query();
 
         if ($request->filled('search')) {
             $query->whereLike('title', '%'.$request->string('search')->toString().'%');
@@ -39,19 +49,35 @@ class EventController extends Controller
             $query->where('category', $request->string('category')->toString());
         }
 
+        if ($request->filled('source')) {
+            $query->where('source', $request->string('source')->toString());
+        }
+
+        $this->applyDateRange($query, $request);
+
+        // Merged duplicates are hidden unless explicitly asked for: they are
+        // kept only so old links resolve, and listing them alongside their
+        // canonical row makes every duplicate look unfixed.
         match ($request->string('status')->toString()) {
-            'hidden' => $query->where('is_hidden', true),
-            'unclassified' => $query->where('is_classified', false),
-            'ungeocoded' => $query->where('is_geocoded', false),
-            default => null,
+            'hidden' => $query->where('is_hidden', true)->canonical(),
+            'unclassified' => $query->where('is_classified', false)->canonical(),
+            'ungeocoded' => $query->where('is_geocoded', false)->canonical(),
+            'merged' => $query->whereNotNull('merged_into_id'),
+            default => $query->canonical(),
         };
 
-        $events = $query->paginate(20)->withQueryString();
+        [$sort, $direction] = $this->sortFor($request);
+
+        $events = $query->orderBy($sort, $direction)->paginate(20)->withQueryString();
 
         return Inertia::render('Admin/Events/Index', [
             'events' => AdminEventResource::collection($events),
-            'filters' => $request->only(['search', 'city', 'category', 'status']),
+            'filters' => $request->only([
+                'search', 'city', 'category', 'source', 'status', 'date_from', 'date_to', 'sort', 'direction',
+            ]),
             'categories' => array_column(EventCategory::cases(), 'value'),
+            'sources' => $this->knownSources(),
+            'cities' => $this->knownCities(),
         ]);
     }
 
@@ -109,6 +135,20 @@ class EventController extends Controller
         };
 
         return back()->with('success', 'Re-processing queued.');
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function sortFor(Request $request): array
+    {
+        $sort = $request->string('sort')->toString();
+        $direction = $request->string('direction')->toString();
+
+        return [
+            in_array($sort, self::SORTABLE, true) ? $sort : 'created_at',
+            $direction === 'asc' ? 'asc' : 'desc',
+        ];
     }
 
     private function queueClassify(Event $event): void

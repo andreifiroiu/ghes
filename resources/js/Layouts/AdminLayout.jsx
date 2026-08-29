@@ -6,9 +6,25 @@ import { cn } from '@/lib/utils';
 const navLinks = [
     { href: '/admin', label: 'Dashboard', exact: true },
     { href: '/admin/events', label: 'Events' },
+    { href: '/admin/events/duplicates', label: 'Duplicates' },
     { href: '/admin/users', label: 'Users' },
     { href: '/admin/scrapers', label: 'Scrapers' },
 ];
+
+/**
+ * The most specific link matching the current path, so /admin/events/duplicates
+ * highlights Duplicates rather than both it and Events.
+ *
+ * @param {string} path
+ * @returns {string|null}
+ */
+function activeHref(path) {
+    const matches = navLinks.filter((link) =>
+        link.exact ? path === link.href : path.startsWith(link.href)
+    );
+
+    return matches.sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+}
 
 /**
  * @param {Object} props
@@ -20,8 +36,9 @@ export default function AdminLayout({ children, title }) {
     const flash = usePage().props.flash || {};
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-    const isActive = (link) =>
-        link.exact ? currentPath === link.href : currentPath.startsWith(link.href);
+    // usePage().url carries the query string; navigation matches on path only.
+    const current = activeHref(currentPath.split('?')[0]);
+    const isActive = (link) => link.href === current;
 
     return (
         <div className="min-h-screen bg-[#F8F9FA]">

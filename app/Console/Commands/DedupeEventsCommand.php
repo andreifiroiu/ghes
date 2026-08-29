@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\LogsConsoleOutput;
-use App\DTOs\RawEvent;
+use App\DTOs\DuplicateGroup;
 use App\Models\Event;
 use App\Models\EventSource;
-use App\Services\Processing\EventDeduplicator;
+use App\Services\Processing\DuplicateFinder;
 use App\Services\Processing\EventMerger;
 use App\Services\Processing\EventTextNormalizer;
 use Illuminate\Console\Command;
@@ -23,6 +23,10 @@ use Illuminate\Support\Facades\DB;
  * Phase 0 must run immediately after the migrations: until every event has a
  * match_key and an event_sources row, the pipeline cannot recognise anything
  * imported before the change and would duplicate the whole back catalogue.
+ *
+ * What counts as a duplicate lives in DuplicateFinder, which the admin
+ * review screen shares, so an operator reviewing groups by hand sees exactly
+ * what this command would have merged on its own.
  */
 class DedupeEventsCommand extends Command
 {
@@ -40,7 +44,7 @@ class DedupeEventsCommand extends Command
 
     private bool $dryRun = false;
 
-    public function handle(EventMerger $merger): int
+    public function handle(EventMerger $merger, DuplicateFinder $finder): int
     {
         $this->dryRun = (bool) $this->option('dry-run');
 
@@ -57,18 +61,19 @@ class DedupeEventsCommand extends Command
         }
 
         try {
-            $backfilled = $this->backfillIdentity();
+            $backfilled = $this->backfillIdentity($finder);
             $this->info("Phase 0: backfilled {$backfilled} events.");
 
             if ($this->option('backfill-only')) {
                 return self::SUCCESS;
             }
 
-            $merged = $this->mergeByMatchKey($merger);
+            $merged = $this->mergeGroups($merger, $finder->byMatchKey($this->baseQuery()));
             $this->info("Phase 1: merged {$merged} duplicates on an exact key match.");
 
             if ($this->option('fuzzy')) {
-                $fuzzyMerged = $this->mergeByScore($merger);
+                // Re-queried after phase 1, so events merged above are gone.
+                $fuzzyMerged = $this->mergeGroups($merger, $finder->byScore($this->baseQuery()));
                 $this->info("Phase 2: merged {$fuzzyMerged} duplicates on a scored match.");
             }
 
@@ -85,7 +90,7 @@ class DedupeEventsCommand extends Command
      * Phase 0 — give every event its derived identity columns and an
      * event_sources row describing where it originally came from.
      */
-    private function backfillIdentity(): int
+    private function backfillIdentity(DuplicateFinder $finder): int
     {
         $count = 0;
 
@@ -94,10 +99,10 @@ class DedupeEventsCommand extends Command
                 $query->whereNull('match_key')->orWhereNull('city_slug');
             })
             ->orderBy('id')
-            ->chunkById(200, function (Collection $events) use (&$count): void {
+            ->chunkById(200, function (Collection $events) use ($finder, &$count): void {
                 /** @var Collection<int, Event> $events */
                 foreach ($events as $event) {
-                    $timezone = $this->timezoneFor($event);
+                    $timezone = $finder->timezoneFor($event);
 
                     $localDate = $event->starts_at === null
                         ? null
@@ -155,174 +160,27 @@ class DedupeEventsCommand extends Command
     }
 
     /**
-     * Phase 1 — merge events that share a blocking key exactly.
+     * Fold every duplicate in each group into that group's best canonical.
+     *
+     * @param  Collection<int, DuplicateGroup>  $groups
      */
-    private function mergeByMatchKey(EventMerger $merger): int
+    private function mergeGroups(EventMerger $merger, Collection $groups): int
     {
-        $duplicateKeys = $this->baseQuery()
-            ->canonical()
-            ->whereNotNull('match_key')
-            ->select('match_key')
-            ->groupBy('match_key')
-            ->havingRaw('count(*) > 1')
-            ->pluck('match_key');
-
         $merged = 0;
 
-        foreach ($duplicateKeys as $matchKey) {
-            $group = $this->baseQuery()
-                ->canonical()
-                ->where('match_key', $matchKey)
-                ->get();
+        foreach ($groups as $group) {
+            $winner = $group->canonical();
 
-            $merged += $this->mergeGroup($merger, $group);
-        }
-
-        return $merged;
-    }
-
-    /**
-     * Phase 2 — score every same-city, same-day pair that phase 1 left alone.
-     */
-    private function mergeByScore(EventMerger $merger): int
-    {
-        $deduplicator = app(EventDeduplicator::class);
-        $minimumScore = (float) config('eventpulse.dedup.min_score', 0.75);
-        $maxCandidates = (int) config('eventpulse.dedup.max_candidates', 200);
-
-        $buckets = $this->baseQuery()
-            ->canonical()
-            ->whereNotNull('local_date')
-            ->select('city_slug', 'local_date')
-            ->groupBy('city_slug', 'local_date')
-            ->havingRaw('count(*) > 1')
-            ->get();
-
-        $merged = 0;
-
-        foreach ($buckets as $bucket) {
-            $events = $this->baseQuery()
-                ->canonical()
-                ->where('city_slug', $bucket->city_slug)
-                ->whereDate('local_date', $bucket->local_date)
-                ->orderBy('created_at')
-                ->orderBy('id')
-                ->limit($maxCandidates)
-                ->get();
-
-            $merged += $this->mergeBucket($merger, $deduplicator, $events, $minimumScore);
-        }
-
-        return $merged;
-    }
-
-    /**
-     * @param  Collection<int, Event>  $events
-     */
-    private function mergeBucket(
-        EventMerger $merger,
-        EventDeduplicator $deduplicator,
-        Collection $events,
-        float $minimumScore,
-    ): int {
-        $merged = 0;
-        /** @var array<string, true> $consumed */
-        $consumed = [];
-
-        foreach ($events as $candidate) {
-            if (isset($consumed[$candidate->id])) {
-                continue;
-            }
-
-            foreach ($events as $other) {
-                if ($other->id === $candidate->id || isset($consumed[$other->id])) {
-                    continue;
-                }
-
-                $score = $deduplicator->score(
-                    $this->asRawEvent($other),
-                    $candidate,
-                    $this->timezoneFor($candidate),
-                );
-
-                if ($score < $minimumScore) {
-                    continue;
-                }
-
-                [$winner, $loser] = $this->rank($candidate, $other, $merger);
-
-                $this->reportMerge($winner, $loser, $score);
+            foreach ($group->duplicates() as $loser) {
+                $this->reportMerge($winner, $loser, $group->score);
 
                 $merger->mergeInto($winner, $loser, syncSearch: ! $this->dryRun);
 
-                $consumed[$loser->id] = true;
                 $merged++;
             }
         }
 
         return $merged;
-    }
-
-    /**
-     * @param  Collection<int, Event>  $group
-     */
-    private function mergeGroup(EventMerger $merger, Collection $group): int
-    {
-        if ($group->count() < 2) {
-            return 0;
-        }
-
-        $winner = $group->sort(fn (Event $a, Event $b): int => $this->compare($a, $b, $merger))->first();
-
-        $merged = 0;
-
-        foreach ($group as $event) {
-            if ($event->id === $winner->id) {
-                continue;
-            }
-
-            $this->reportMerge($winner, $event, 1.0);
-
-            $merger->mergeInto($winner, $event, syncSearch: ! $this->dryRun);
-
-            $merged++;
-        }
-
-        return $merged;
-    }
-
-    /**
-     * @return array{0: Event, 1: Event}
-     */
-    private function rank(Event $a, Event $b, EventMerger $merger): array
-    {
-        return $this->compare($a, $b, $merger) <= 0 ? [$a, $b] : [$b, $a];
-    }
-
-    /**
-     * Order two events by how good a canonical they would make: source
-     * priority first, then how complete the row is, then age.
-     */
-    private function compare(Event $a, Event $b, EventMerger $merger): int
-    {
-        return [
-            -$merger->sourcePriority($a->source),
-            -$this->completeness($a),
-            $a->created_at?->getTimestamp() ?? 0,
-            $a->id,
-        ] <=> [
-            -$merger->sourcePriority($b->source),
-            -$this->completeness($b),
-            $b->created_at?->getTimestamp() ?? 0,
-            $b->id,
-        ];
-    }
-
-    private function completeness(Event $event): int
-    {
-        $fields = ['description', 'venue', 'address', 'image_url', 'price_min', 'latitude', 'ends_at'];
-
-        return count(array_filter($fields, fn (string $field): bool => $event->{$field} !== null));
     }
 
     private function reportMerge(Event $winner, Event $loser, float $score): void
@@ -335,33 +193,6 @@ class DedupeEventsCommand extends Command
             $loser->title,
             $loser->source,
         ));
-    }
-
-    /**
-     * Represent a stored event as a raw one so the matcher can score it
-     * against another stored event using exactly the same rules the pipeline
-     * applies to freshly scraped data.
-     */
-    private function asRawEvent(Event $event): RawEvent
-    {
-        return new RawEvent(
-            title: $event->title,
-            description: $event->description,
-            sourceUrl: $event->source_url,
-            sourceId: $event->source_id,
-            source: $event->source,
-            venue: $event->venue,
-            address: $event->address,
-            city: $event->city,
-            startsAt: $event->starts_at?->toDateTimeString(),
-            endsAt: $event->ends_at?->toDateTimeString(),
-            priceMin: $event->price_min,
-            priceMax: $event->price_max,
-            currency: $event->currency,
-            isFree: $event->is_free,
-            imageUrl: $event->image_url,
-            metadata: $event->metadata ?? [],
-        );
     }
 
     /**
@@ -381,23 +212,5 @@ class DedupeEventsCommand extends Command
         }
 
         return $query;
-    }
-
-    private function timezoneFor(Event $event): string
-    {
-        /** @var array<string, array{label?: string, timezone?: string}> $cities */
-        $cities = config('eventpulse.cities', []);
-
-        foreach ($cities as $key => $city) {
-            $slug = EventTextNormalizer::citySlug($city['label'] ?? $key);
-
-            if ($slug !== null && $slug === $event->city_slug) {
-                return $city['timezone'] ?? (string) config('app.timezone', 'UTC');
-            }
-        }
-
-        $default = (string) config('eventpulse.default_city');
-
-        return (string) config("eventpulse.cities.{$default}.timezone", (string) config('app.timezone', 'UTC'));
     }
 }
