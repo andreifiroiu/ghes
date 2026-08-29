@@ -2,6 +2,20 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Nou — Fiecare eveniment are acum pagina lui în Ghes (#15)
+
+Când dai clic pe un eveniment ajungi la pagina lui din Ghes, nu direct pe site-ul de
+bilete. Găsești acolo locul și adresa, prețul, o hartă cu punctul exact, descrierea
+completă și toate site-urile de unde poți lua bilete — nu doar unul. Poți adăuga
+evenimentul în calendarul tău sau trimite linkul mai departe, iar jos vezi evenimente
+similare, ca să nu te oprești la primul.
+
+## 2026-08-29 — Rezolvat — Locul și prețul apar acum pe pagina unui eveniment (#15)
+
+Pe pagina unui eveniment, locul de desfășurare, adresa și prețul lipseau cu totul —
+rămâneau goale oricare ar fi fost evenimentul. Acum apar acolo unde le aștepți,
+inclusiv intervalul de preț când biletele costă diferit.
+
 ## 2026-08-29 — Îmbunătățit — Reacțiile tale reglează acum și sursele de evenimente (#13)
 
 Până acum, când apăsai „mă interesează" sau „nu-i pentru mine", Ghes reținea ce fel de

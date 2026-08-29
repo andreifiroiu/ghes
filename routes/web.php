@@ -43,6 +43,9 @@ Route::get('events', [EventController::class, 'index'])->name('events.index');
 Route::get('events/{event}', [EventController::class, 'show'])
     ->whereUuid('event')
     ->name('events.show');
+Route::get('events/{event}/calendar.ics', [EventController::class, 'calendar'])
+    ->whereUuid('event')
+    ->name('events.calendar');
 
 // Auth (guest only)
 Route::middleware('guest')->group(function () {

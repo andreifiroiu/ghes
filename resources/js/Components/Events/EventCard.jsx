@@ -1,23 +1,10 @@
+import { Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
 import ReactionButtons from '@/Components/Events/ReactionButtons';
 import SaveButton from '@/Components/Events/SaveButton';
-
-const SOURCE_LABELS = {
-    iabilet: 'iaBilet',
-    zilesinopti: 'Zile și Nopți',
-    allevents: 'AllEvents',
-    eventbrite: 'Eventbrite',
-    onevent: 'OnEvent',
-    entertix: 'Entertix',
-    meetup: 'Meetup',
-    google_events: 'Google Events',
-    timisoreni: 'Timisoreni',
-    opera_timisoara: 'Opera Timișoara',
-    teatru_national_tm: 'Teatrul Național TM',
-    visit_timisoara: 'Visit Timișoara',
-    radio_timisoara: 'Radio Timișoara',
-};
+import { formatPrice } from '@/lib/price';
+import { sourceLabel as labelForSource } from '@/lib/sources';
 
 /**
  * @param {Object} props
@@ -29,9 +16,10 @@ const SOURCE_LABELS = {
  * @param {string} [props.event.venue]
  * @param {string} [props.event.category]
  * @param {number|null} [props.event.price_min]
+ * @param {number|null} [props.event.price_max]
+ * @param {string} [props.event.currency]
  * @param {boolean} [props.event.is_free]
  * @param {string} [props.event.source]
- * @param {string} [props.event.source_url]
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
  * @param {boolean} [props.showReactions] - Off for guests, who cannot react or save
@@ -47,22 +35,14 @@ export default function EventCard({ event, showReactions = true }) {
           })
         : null;
 
-    const sourceLabel = SOURCE_LABELS[event.source] ?? event.source;
+    const sourceLabel = labelForSource(event.source);
 
-    const priceLabel = event.is_free
-        ? 'Gratuit'
-        : event.price_min != null
-          ? `De la ${event.price_min} RON`
-          : null;
-
-    const cardLink = event.source_url || null;
+    const priceLabel = formatPrice(event);
 
     return (
         <Card className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-            <a
-                href={cardLink}
-                target="_blank"
-                rel="noopener noreferrer"
+            <Link
+                href={`/events/${event.id}`}
                 className="block"
                 aria-label={event.title}
             >
@@ -114,13 +94,13 @@ export default function EventCard({ event, showReactions = true }) {
                     {sourceLabel && (
                         <p className="text-xs text-gray-400 flex items-center gap-1 mt-1">
                             <svg className="w-3 h-3 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18 15 15 0 010-18z" />
                             </svg>
                             {sourceLabel}
                         </p>
                     )}
                 </CardContent>
-            </a>
+            </Link>
             {showReactions && (
                 <div className="px-4 pb-4 mt-auto flex items-center gap-2">
                     <ReactionButtons
