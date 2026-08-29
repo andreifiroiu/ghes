@@ -24,7 +24,7 @@ class ScraperController extends Controller
     {
         $runs = ScraperRun::query()
             ->orderBy('created_at', 'desc')
-            ->paginate(25);
+            ->paginate((int) config('eventpulse.pagination.admin_scraper_runs', 25));
 
         return Inertia::render('Admin/Scrapers', [
             'runs' => $runs,

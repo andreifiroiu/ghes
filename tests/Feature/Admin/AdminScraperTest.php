@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Jobs\RunScraperJob;
+use App\Models\ScraperRun;
 use App\Models\User;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia;
@@ -67,4 +68,14 @@ it('scopes the offered sources to each city', function () {
             ->has('adapters.timisoara', 2)
             ->where('adapters.timisoara.0', ['adapter' => 'allevents', 'enabled' => true])
             ->where('adapters.timisoara.1', ['adapter' => 'onevent', 'enabled' => false]));
+});
+
+it('paginates the scraper runs list at the configured page size', function () {
+    config(['eventpulse.pagination.admin_scraper_runs' => 2]);
+    ScraperRun::factory()->count(3)->create();
+
+    $this->actingAs($this->admin)->get('/admin/scrapers')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('runs.data', 2)
+            ->where('runs.per_page', 2));
 });

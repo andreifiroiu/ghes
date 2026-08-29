@@ -29,7 +29,7 @@ class UserController extends Controller
             });
         }
 
-        $users = $query->paginate(20)->withQueryString();
+        $users = $query->paginate((int) config('eventpulse.pagination.admin_users', 20))->withQueryString();
 
         return Inertia::render('Admin/Users/Index', [
             'users' => AdminUserResource::collection($users),

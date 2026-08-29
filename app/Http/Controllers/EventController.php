@@ -18,7 +18,7 @@ class EventController extends Controller
 {
     public function index(Request $request): Response
     {
-        $events = $this->browseQuery($request)->paginate(20)->withQueryString();
+        $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
 
         return Inertia::render('Events/Index', [
             'events' => EventResource::collection($events),
@@ -171,7 +171,7 @@ class EventController extends Controller
 
     public function apiIndex(Request $request): JsonResponse
     {
-        $events = $this->browseQuery($request)->paginate(20)->withQueryString();
+        $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
 
         return EventResource::collection($events)->response();
     }

@@ -317,6 +317,13 @@ return [
     'serpapi_api_key' => env('SERPAPI_API_KEY'),
     'apify_api_token' => env('APIFY_API_TOKEN'),
     'apify_daily_budget_usd' => (float) env('APIFY_DAILY_BUDGET_USD', 5.00),
+    'pagination' => [
+        // Rows per page for each paginated listing.
+        'events' => 18,
+        'admin_events' => 20,
+        'admin_users' => 20,
+        'admin_scraper_runs' => 25,
+    ],
     'notifications' => [
         'hour' => (int) env('EVENTPULSE_NOTIFICATION_HOUR', 8),
         'max_events_per_digest' => 10,
