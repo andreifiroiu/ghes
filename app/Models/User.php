@@ -13,11 +13,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
+use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * @property array<string, mixed> $interest_profile
+ * @property ?string $experiment_variant
+ * @property ?NotificationChannel $notification_channel
+ * @property ?NotificationFrequency $notification_frequency
+ * @property Carbon|null $email_verified_at
+ * @property Carbon|null $created_at
+ */
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasUuids, Notifiable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +40,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'interest_profile',
         'discovery_openness',
+        'experiment_variant',
         'notification_channel',
         'notification_frequency',
         'timezone',
@@ -66,6 +77,27 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Tags the user has suppressed via "hide like this".
+     *
+     * Stored in the interest profile as "negtag:{tag}" keys; used as a hard
+     * filter to exclude matching events from recommendations and discovery.
+     *
+     * @return list<string>
+     */
+    public function negativeTags(): array
+    {
+        $tags = [];
+
+        foreach ($this->interest_profile ?? [] as $key => $value) {
+            if (str_starts_with((string) $key, 'negtag:')) {
+                $tags[] = substr((string) $key, 7);
+            }
+        }
+
+        return $tags;
+    }
+
+    /**
      * @return HasMany<UserEventReaction, $this>
      */
     public function reactions(): HasMany
@@ -95,5 +127,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function discoveryLogs(): HasMany
     {
         return $this->hasMany(DiscoveryLog::class);
+    }
+
+    /**
+     * @return HasMany<PushSubscription, $this>
+     */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
     }
 }

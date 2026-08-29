@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\Reaction;
+use App\Http\Requests\DeleteFeedbackRequest;
 use App\Http\Requests\FeedbackRequest;
 use App\Jobs\ProcessFeedbackJob;
 use App\Models\UserEventReaction;
@@ -35,6 +36,21 @@ class FeedbackController extends Controller
         return response()->json([
             'message' => 'Feedback recorded.',
             'reaction' => $reaction->value,
+        ]);
+    }
+
+    public function destroy(DeleteFeedbackRequest $request): JsonResponse
+    {
+        /** @var array{event_id: string} $validated */
+        $validated = $request->validated();
+
+        UserEventReaction::query()
+            ->where('user_id', $request->user()->id)
+            ->where('event_id', $validated['event_id'])
+            ->delete();
+
+        return response()->json([
+            'message' => 'Feedback removed.',
         ]);
     }
 }

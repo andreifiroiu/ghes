@@ -25,6 +25,8 @@ class ScraperOrchestrator
         /** @var array<string, mixed> $cities */
         $cities = config('eventpulse.cities', []);
 
+        Log::info('ScraperOrchestrator: runAll dispatching', ['cities' => array_keys($cities)]);
+
         foreach (array_keys($cities) as $cityKey) {
             $this->runCity($cityKey);
         }
@@ -35,7 +37,15 @@ class ScraperOrchestrator
      */
     public function runCity(string $cityKey): void
     {
-        foreach ($this->getEnabledSources($cityKey) as $sourceConfig) {
+        $sources = $this->getEnabledSources($cityKey);
+
+        Log::info('ScraperOrchestrator: runCity dispatching', [
+            'city' => $cityKey,
+            'enabled_sources' => count($sources),
+            'adapters' => array_column($sources, 'adapter'),
+        ]);
+
+        foreach ($sources as $sourceConfig) {
             RunScraperJob::dispatch($cityKey, $sourceConfig);
         }
     }
@@ -57,6 +67,12 @@ class ScraperOrchestrator
             'city' => $cityKey,
             'status' => 'running',
             'started_at' => now(),
+        ]);
+
+        Log::info("runSource: starting {$adapterKey}@{$cityKey}", [
+            'adapter' => $adapterKey,
+            'city' => $cityKey,
+            'run_id' => $run->id,
         ]);
 
         $found = 0;
@@ -99,6 +115,15 @@ class ScraperOrchestrator
                 'events_updated' => $updated,
                 'events_skipped' => $skipped,
                 'finished_at' => now(),
+            ]);
+
+            Log::info("runSource: completed {$adapterKey}@{$cityKey}", [
+                'adapter' => $adapterKey,
+                'city' => $cityKey,
+                'events_found' => $found,
+                'events_created' => $created,
+                'events_updated' => $updated,
+                'events_skipped' => $skipped,
             ]);
         } catch (Throwable $e) {
             Log::error("Scraper failed for {$adapterKey}@{$cityKey}", [

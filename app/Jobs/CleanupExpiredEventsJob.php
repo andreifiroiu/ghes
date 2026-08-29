@@ -10,6 +10,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class CleanupExpiredEventsJob implements ShouldQueue
 {
@@ -27,10 +29,18 @@ class CleanupExpiredEventsJob implements ShouldQueue
 
     public function handle(): void
     {
-        // TODO: Delete events older than 90 days with no reactions
-        Event::query()
+        Log::info('CleanupExpiredEventsJob: starting cleanup');
+
+        $deleted = Event::query()
             ->where('starts_at', '<', now()->subDays(90))
             ->whereDoesntHave('reactions')
             ->delete();
+
+        Log::info('CleanupExpiredEventsJob: deleted expired events', ['deleted' => $deleted]);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('CleanupExpiredEventsJob: failed permanently', ['error' => $e->getMessage()]);
     }
 }

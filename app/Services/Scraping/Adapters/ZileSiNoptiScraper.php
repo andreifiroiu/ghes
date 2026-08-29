@@ -45,8 +45,8 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
 
         // Shared detail-page fetch state — prevents fetching the same URL
         // more than once across all listing pages in a single scrape run.
-        /** @var array<string, string|null> $fetchedDescriptions  URL → description (or null if not found) */
-        $fetchedDescriptions = [];
+        /** @var array<string, array{description: string|null, imageUrl: string|null}> $fetchedDetails  URL → detail data */
+        $fetchedDetails = [];
         $detailCount = 0;
         $detailWindowStart = time();
 
@@ -74,7 +74,7 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
                 continue;
             }
 
-            $parsed = $this->parseListingPage($html, $date->startOfDay()->copy(), $city, $fetchedDescriptions, $detailCount, $detailWindowStart);
+            $parsed = $this->parseListingPage($html, $date->startOfDay()->copy(), $city, $fetchedDetails, $detailCount, $detailWindowStart);
             Log::debug("ZileSiNoptiScraper: parsed {$parsed->count()} events from day page", ['date' => $date->toDateString()]);
 
             foreach ($parsed as $event) {
@@ -89,7 +89,7 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
 
             $weekendHtml = $this->fetchPage($weekendUrl);
             if ($weekendHtml !== '') {
-                $parsed = $this->parseListingPage($weekendHtml, null, $city, $fetchedDescriptions, $detailCount, $detailWindowStart);
+                $parsed = $this->parseListingPage($weekendHtml, null, $city, $fetchedDetails, $detailCount, $detailWindowStart);
                 Log::debug("ZileSiNoptiScraper: parsed {$parsed->count()} events from weekend page");
 
                 foreach ($parsed as $event) {
@@ -108,22 +108,18 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
      * Parse all `.kzn-sw-item` cards from a listing page.
      *
      * @param  ?Carbon  $pageDate  Known date for this page (null = each card carries its own date).
-     * @param  array<string, string|null>  $fetchedDescriptions  URL → description (or null if fetch attempted but empty)
+     * @param  array<string, array{description: string|null, imageUrl: string|null}>  $fetchedDetails  URL → detail data (cached per scrape run)
      * @return Collection<int, RawEvent>
      */
     private function parseListingPage(
         string $html,
         ?Carbon $pageDate,
         string $city,
-        array &$fetchedDescriptions,
+        array &$fetchedDetails,
         int &$detailCount,
         int &$detailWindowStart,
     ): Collection {
-        $dom = new \DOMDocument;
-        libxml_use_internal_errors(true);
-        $dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_NOWARNING | LIBXML_NOERROR);
-        libxml_clear_errors();
-
+        $dom = $this->loadHtmlDocument($html);
         $xpath = new \DOMXPath($dom);
         $items = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " kzn-sw-item ")]');
         $itemCount = $items ? $items->length : 0;
@@ -145,15 +141,16 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
                 'source_url' => $event->sourceUrl,
             ]);
 
-            // Optionally enrich with description from detail page
-            if ($event->description === null) {
-                if (array_key_exists($event->sourceUrl, $fetchedDescriptions)) {
+            // Listing cards rarely carry a cover image (and day-list cards carry no
+            // description either), so enrich from the detail page whenever either is
+            // missing. A single fetch yields both, shared across pages in this run.
+            if ($event->description === null || $event->imageUrl === null) {
+                $detail = null;
+
+                if (array_key_exists($event->sourceUrl, $fetchedDetails)) {
                     // Already fetched this URL in this scrape run — reuse cached result
-                    $cached = $fetchedDescriptions[$event->sourceUrl];
-                    if ($cached !== null) {
-                        $event = $this->withDescription($event, $cached);
-                        Log::debug('ZileSiNoptiScraper: reused cached description', ['url' => $event->sourceUrl]);
-                    }
+                    $detail = $fetchedDetails[$event->sourceUrl];
+                    Log::debug('ZileSiNoptiScraper: reused cached detail data', ['url' => $event->sourceUrl]);
                 } else {
                     // Reset rate-limit window
                     if (time() - $detailWindowStart >= 60) {
@@ -165,14 +162,14 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
                         Log::debug("ZileSiNoptiScraper: fetching detail page ({$detailCount}/".self::DETAIL_RATE_LIMIT.')', [
                             'url' => $event->sourceUrl,
                         ]);
-                        $description = $this->fetchDetailDescription($event->sourceUrl);
-                        $fetchedDescriptions[$event->sourceUrl] = $description;
-                        if ($description !== null) {
-                            $event = $this->withDescription($event, $description);
-                            Log::debug('ZileSiNoptiScraper: enriched event with description');
-                        }
+                        $detail = $this->fetchDetailData($event->sourceUrl);
+                        $fetchedDetails[$event->sourceUrl] = $detail;
                         $detailCount++;
                     }
+                }
+
+                if ($detail !== null) {
+                    $event = $this->enrich($event, $detail['description'], $detail['imageUrl']);
                 }
             }
 
@@ -328,22 +325,38 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
     }
 
     /**
-     * Fetch the event detail page and extract the first meaningful paragraphs as description.
+     * Fetch the event detail page once and extract both the description and the
+     * cover image. Either may be null when the page does not carry it (many
+     * calendar-style /evenimente/ pages have no cover at all).
+     *
+     * @return array{description: string|null, imageUrl: string|null}
      */
-    private function fetchDetailDescription(string $url): ?string
+    private function fetchDetailData(string $url): array
     {
         $html = $this->fetchPage($url);
         if ($html === '') {
-            return null;
+            return ['description' => null, 'imageUrl' => null];
         }
 
-        $dom = new \DOMDocument;
-        libxml_use_internal_errors(true);
-        $dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_NOWARNING | LIBXML_NOERROR);
-        libxml_clear_errors();
+        $xpath = new \DOMXPath($this->loadHtmlDocument($html));
 
-        $xpath = new \DOMXPath($dom);
+        $description = $this->extractDetailDescription($xpath);
+        $imageUrl = $this->extractDetailImage($xpath);
 
+        Log::debug('ZileSiNoptiScraper: fetched detail data', [
+            'url' => $url,
+            'has_description' => $description !== null,
+            'image_url' => $imageUrl,
+        ]);
+
+        return ['description' => $description, 'imageUrl' => $imageUrl];
+    }
+
+    /**
+     * Extract the first meaningful paragraphs of the detail page as a description.
+     */
+    private function extractDetailDescription(\DOMXPath $xpath): ?string
+    {
         // Prefer the WordPress entry content area; fall back to generic paragraphs
         $paragraphs = $xpath->query(
             '//div[contains(@class,"entry-content")]//p | //div[contains(@class,"elementor-widget-container")]//p[not(ancestor::*[contains(@class,"kzn-")])]',
@@ -362,6 +375,71 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
         }
 
         return $parts !== [] ? implode("\n\n", $parts) : null;
+    }
+
+    /**
+     * Extract the event cover image from a detail page.
+     *
+     * Order of preference:
+     *   1. og:image / twitter:image meta tags — the full-resolution cover.
+     *   2. The featured/first content image, resolving lazy-loaded `data-src`.
+     *
+     * Site chrome (logos, newsletter banners, ad/sponsor creatives) is rejected.
+     */
+    private function extractDetailImage(\DOMXPath $xpath): ?string
+    {
+        // 1. Social meta tags carry the full-size cover.
+        $metaQueries = [
+            '//meta[@property="og:image"]',
+            '//meta[@name="twitter:image"]',
+        ];
+        foreach ($metaQueries as $query) {
+            $meta = $xpath->query($query)->item(0);
+            if ($meta instanceof \DOMElement) {
+                $content = trim($meta->getAttribute('content'));
+                if ($content !== '' && $this->isUsableImageUrl($content)) {
+                    return $content;
+                }
+            }
+        }
+
+        // 2. Featured image / first real content image (lazy-loaded → data-src).
+        $imgs = $xpath->query(
+            '//div[contains(@class,"elementor-widget-theme-post-featured-image")]//img'
+            .' | //article//img[contains(@class,"wp-post-image")]'
+            .' | //div[contains(@class,"entry-content")]//img',
+        );
+        foreach ($imgs as $img) {
+            if (! $img instanceof \DOMElement) {
+                continue;
+            }
+            foreach (['data-src', 'data-lazy-src', 'src'] as $attr) {
+                $candidate = trim($img->getAttribute($attr));
+                if ($candidate !== '' && ! str_starts_with($candidate, 'data:') && $this->isUsableImageUrl($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Reject site-chrome images (logos, newsletter banners, ad/sponsor creatives)
+     * that are never the event's own cover.
+     */
+    private function isUsableImageUrl(string $url): bool
+    {
+        $markers = ['logo', 'newsletter', 'smart-bill', 'romarg', 'exclusion', 'favicon', 'sprite', 'placeholder', 'sponsor', 'zile-si-nopti-'];
+        $lower = mb_strtolower($url);
+
+        foreach ($markers as $marker) {
+            if (str_contains($lower, $marker)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -388,13 +466,15 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
     }
 
     /**
-     * Return a new RawEvent with the given description (readonly DTO workaround).
+     * Return a copy of the event with detail-page description/image filled in,
+     * but only where the listing card did not already provide a value (readonly
+     * DTO workaround).
      */
-    private function withDescription(RawEvent $event, string $description): RawEvent
+    private function enrich(RawEvent $event, ?string $description, ?string $imageUrl): RawEvent
     {
         return new RawEvent(
             title: $event->title,
-            description: $description,
+            description: $event->description ?? $description,
             sourceUrl: $event->sourceUrl,
             sourceId: $event->sourceId,
             source: $event->source,
@@ -407,7 +487,7 @@ class ZileSiNoptiScraper extends AbstractHtmlScraper
             priceMax: $event->priceMax,
             currency: $event->currency,
             isFree: $event->isFree,
-            imageUrl: $event->imageUrl,
+            imageUrl: $event->imageUrl ?? $imageUrl,
             metadata: $event->metadata,
         );
     }

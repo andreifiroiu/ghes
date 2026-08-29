@@ -26,12 +26,19 @@ class ProfileDecayer
 
         $multiplier = 1.0 - $decayRate;
 
-        $decayed = array_map(
-            fn (mixed $value) => is_numeric($value)
+        $decayed = [];
+        foreach ($profile as $key => $value) {
+            // Negative tags are suppression flags, not interest scores — keep them.
+            if (str_starts_with((string) $key, 'negtag:')) {
+                $decayed[$key] = $value;
+
+                continue;
+            }
+
+            $decayed[$key] = is_numeric($value)
                 ? max(0.0, min(1.0, (float) $value * $multiplier))
-                : $value,
-            $profile,
-        );
+                : $value;
+        }
 
         $user->update(['interest_profile' => $decayed]);
     }

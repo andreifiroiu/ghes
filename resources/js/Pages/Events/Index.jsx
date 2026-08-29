@@ -5,57 +5,49 @@ import EventList from '@/Components/Events/EventList';
 import { Input } from '@/Components/ui/Input';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
-
-const allCategories = [
-    { value: 'Music', label: 'Muzică' },
-    { value: 'Tech', label: 'Tech' },
-    { value: 'Sports', label: 'Sport' },
-    { value: 'Arts', label: 'Artă' },
-    { value: 'Food', label: 'Gastronomie' },
-    { value: 'Nightlife', label: 'Viața de noapte' },
-    { value: 'Business', label: 'Business' },
-    { value: 'Health', label: 'Sănătate' },
-    { value: 'Education', label: 'Educație' },
-    { value: 'Community', label: 'Comunitate' },
-    { value: 'Film', label: 'Film' },
-    { value: 'Theater', label: 'Teatru' },
-    { value: 'Other', label: 'Altele' },
-];
+import { CATEGORIES } from '@/lib/categories';
 
 /**
  * @param {Object} props
  * @param {Object} props.events - Paginated events object
  * @param {Array<Object>} props.events.data
- * @param {Object} props.events.links
- * @param {Object} props.events.meta
- * @param {number} props.events.current_page
- * @param {number} props.events.last_page
- * @param {string|null} props.events.next_page_url
- * @param {string|null} props.events.prev_page_url
+ * @param {Object} props.events.links - { first, last, prev, next }
+ * @param {Object} props.events.meta - { current_page, last_page, total, ... }
  * @param {string} [props.filters.search]
  * @param {string} [props.filters.category]
+ * @param {string} [props.filters.date]
  */
 export default function Index({ events = {}, filters = {} }) {
     const eventData = events.data || events;
     const [search, setSearch] = useState(filters.search || '');
     const activeCategory = filters.category || null;
+    const activeDate = filters.date || '';
+    const today = new Date().toISOString().slice(0, 10);
 
-    const handleSearch = (e) => {
-        e.preventDefault();
+    const applyFilters = (overrides) => {
         router.get(
             '/events',
-            { search, category: activeCategory },
+            {
+                search,
+                category: activeCategory,
+                date: activeDate,
+                ...overrides,
+            },
             { preserveState: true, preserveScroll: true }
         );
     };
 
+    const handleSearch = (e) => {
+        e.preventDefault();
+        applyFilters({});
+    };
+
     const handleCategoryFilter = (value) => {
-        const newCategory = activeCategory === value ? null : value;
-        router.get(
-            '/events',
-            { search, category: newCategory },
-            { preserveState: true, preserveScroll: true }
-        );
+        applyFilters({ category: activeCategory === value ? null : value });
+    };
+
+    const handleDateChange = (value) => {
+        applyFilters({ date: value || null });
     };
 
     const handlePageChange = (url) => {
@@ -69,7 +61,7 @@ export default function Index({ events = {}, filters = {} }) {
             <Head title="Evenimente" />
 
             {/* Search bar */}
-            <form onSubmit={handleSearch} className="mb-6">
+            <form onSubmit={handleSearch} className="mb-4">
                 <div className="flex gap-2">
                     <Input
                         value={search}
@@ -81,9 +73,34 @@ export default function Index({ events = {}, filters = {} }) {
                 </div>
             </form>
 
+            {/* Date filter */}
+            <div className="flex flex-wrap items-center gap-2 mb-6">
+                <label htmlFor="event-date" className="text-sm font-medium text-gray-700">
+                    Dată:
+                </label>
+                <Input
+                    id="event-date"
+                    type="date"
+                    min={today}
+                    value={activeDate}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className="w-auto"
+                />
+                {activeDate && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDateChange(null)}
+                    >
+                        Toate datele
+                    </Button>
+                )}
+            </div>
+
             {/* Category filter chips */}
             <div className="flex flex-wrap gap-2 mb-6">
-                {allCategories.map(({ value, label }) => (
+                {CATEGORIES.map(({ value, label }) => (
                     <button
                         key={value}
                         onClick={() => handleCategoryFilter(value)}
@@ -106,24 +123,24 @@ export default function Index({ events = {}, filters = {} }) {
             />
 
             {/* Pagination */}
-            {events.last_page > 1 && (
+            {events.meta?.last_page > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-8">
                     <Button
                         variant="outline"
                         size="sm"
-                        disabled={!events.prev_page_url}
-                        onClick={() => handlePageChange(events.prev_page_url)}
+                        disabled={!events.links?.prev}
+                        onClick={() => handlePageChange(events.links?.prev)}
                     >
                         Înapoi
                     </Button>
                     <span className="text-sm text-gray-500">
-                        Pagina {events.current_page} din {events.last_page}
+                        Pagina {events.meta.current_page} din {events.meta.last_page}
                     </span>
                     <Button
                         variant="outline"
                         size="sm"
-                        disabled={!events.next_page_url}
-                        onClick={() => handlePageChange(events.next_page_url)}
+                        disabled={!events.links?.next}
+                        onClick={() => handlePageChange(events.links?.next)}
                     >
                         Înainte
                     </Button>

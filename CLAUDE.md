@@ -1,8 +1,8 @@
-# CLAUDE.md — EventPulse
+# CLAUDE.md — Ghes
 
 ## Project Overview
 
-EventPulse is a personalized local event discovery platform. It scrapes events from multiple sources, classifies them with AI, and delivers curated notifications to users based on their interest profiles. Users onboard via a chat interface and refine recommendations through feedback. A discovery engine surfaces novel events to expand user horizons.
+Ghes is a personalized local event discovery platform. It scrapes events from multiple sources, classifies them with AI, and delivers curated notifications to users based on their interest profiles. Users onboard via a chat interface and refine recommendations through feedback. A discovery engine surfaces novel events to expand user horizons.
 
 ## Tech Stack
 

@@ -11,6 +11,7 @@ use App\Services\InterestProfile\ProfileScorer;
 use App\Services\Notification\NotificationComposer;
 use App\Services\Recommendation\DiscoveryEngine;
 use App\Services\Recommendation\DiversityFilter;
+use App\Services\Recommendation\ExperimentAssigner;
 use App\Services\Recommendation\RecommendationEngine;
 
 function makeComposer(): NotificationComposer
@@ -20,6 +21,7 @@ function makeComposer(): NotificationComposer
             profileScorer: new ProfileScorer,
             discoveryEngine: new DiscoveryEngine,
             diversityFilter: new DiversityFilter,
+            experimentAssigner: new ExperimentAssigner,
         ),
     );
 }
@@ -43,7 +45,7 @@ it('composes a notification with event IDs for a user', function () {
     expect($notification)->not->toBeNull();
     expect($notification->user_id)->toBe($user->id);
     expect($notification->event_ids)->not->toBeEmpty();
-    expect($notification->subject)->toContain('EventPulse picks');
+    expect($notification->subject)->toContain('Ghes');
     expect($notification)->toBeInstanceOf(Notification::class);
     $this->assertModelExists($notification);
 });

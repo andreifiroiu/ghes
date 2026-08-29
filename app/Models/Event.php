@@ -33,6 +33,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $address
  * @property string|null $city
  * @property string|null $city_slug
+ * @property string|null $neighborhood
  * @property float|null $latitude
  * @property float|null $longitude
  * @property Carbon|null $starts_at
@@ -50,6 +51,7 @@ use Laravel\Scout\Searchable;
  * @property bool $is_classified
  * @property bool $is_geocoded
  * @property bool $is_enriched
+ * @property bool $is_hidden
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -78,6 +80,7 @@ class Event extends Model
         'address',
         'city',
         'city_slug',
+        'neighborhood',
         'latitude',
         'longitude',
         'starts_at',
@@ -95,6 +98,7 @@ class Event extends Model
         'is_classified',
         'is_geocoded',
         'is_enriched',
+        'is_hidden',
     ];
 
     /**
@@ -121,6 +125,7 @@ class Event extends Model
             'is_classified' => 'boolean',
             'is_geocoded' => 'boolean',
             'is_enriched' => 'boolean',
+            'is_hidden' => 'boolean',
             'category' => EventCategory::class,
         ];
     }
@@ -199,11 +204,25 @@ class Event extends Model
     }
 
     /**
-     * Merged duplicates must not appear in search results.
+     * Scope to events not hidden by an admin.
+     *
+     * @param  Builder<Event>  $query
+     * @return Builder<Event>
+     */
+    public function scopeVisible(Builder $query): Builder
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    /**
+     * Keep admin-hidden events and merged duplicates out of the search index;
+     * Scout removes an already-indexed record as soon as this turns false on
+     * save. Both conditions must hold — a merged duplicate is no more
+     * searchable than a hidden one.
      */
     public function shouldBeSearchable(): bool
     {
-        return $this->merged_into_id === null;
+        return ! $this->is_hidden && $this->merged_into_id === null;
     }
 
     /**

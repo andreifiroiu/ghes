@@ -122,7 +122,9 @@ describe('getEnabledSources', function () {
         foreach ($sources as $source) {
             expect($source['enabled'])->toBeTrue()
                 ->and($source)->toHaveKey('adapter')
-                ->and($source)->toHaveKey('url');
+                // Parameterized HTML scrapers carry a 'url'; API-based ones (eventbrite,
+                // meetup, google_events) carry 'params' instead. Either is valid.
+                ->and(isset($source['url']) || isset($source['params']))->toBeTrue();
         }
     });
 
@@ -161,6 +163,26 @@ describe('runAll and runCity', function () {
 
         $enabledCount = count($orchestrator->getEnabledSources('timisoara'));
         Queue::assertPushed(RunScraperJob::class, $enabledCount);
+    });
+
+    it('runs a brand-new city defined purely in config', function () {
+        Queue::fake();
+
+        // A second city added with config alone — no code changes — should work.
+        config(['eventpulse.cities.cluj' => [
+            'label' => 'Cluj-Napoca',
+            'timezone' => 'Europe/Bucharest',
+            'coordinates' => [46.7712, 23.6236],
+            'radius_km' => 25,
+            'sources' => [
+                ['adapter' => 'allevents', 'url' => 'https://allevents.in/cluj-napoca/all', 'enabled' => true, 'interval_hours' => 6],
+            ],
+        ]]);
+
+        $orchestrator = app(ScraperOrchestrator::class);
+        $orchestrator->runCity('cluj');
+
+        Queue::assertPushed(RunScraperJob::class, 1);
     });
 
     it('dispatches no jobs for a city with no enabled sources', function () {

@@ -24,13 +24,13 @@ it('shows recommendations on dashboard for authenticated user', function () {
         'is_classified' => true,
     ]);
 
-    $response = $this->actingAs($user)->get('/');
+    $response = $this->actingAs($user)->get('/dashboard');
 
     $response->assertStatus(200);
 });
 
 it('requires authentication to view dashboard', function () {
-    $response = $this->get('/');
+    $response = $this->get('/dashboard');
 
     $response->assertRedirect('/login');
 });

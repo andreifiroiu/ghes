@@ -170,6 +170,8 @@ describe('TeatruNationalTmScraper', function (): void {
     });
 
     it('parses April date and time to UTC correctly', function (): void {
+        // Freeze "now" before April so the year-inference resolves to 2026.
+        $this->travelTo('2026-01-15');
         // 07.04 at 19:00 Europe/Bucharest (EEST = UTC+3) → UTC 16:00
         Http::fake(['https://www.tntm.ro/*' => Http::response(tnPage([tnCard([
             'date' => '07.04',
@@ -181,6 +183,8 @@ describe('TeatruNationalTmScraper', function (): void {
     });
 
     it('parses matinee time correctly', function (): void {
+        // Freeze "now" before April so the year-inference resolves to 2026.
+        $this->travelTo('2026-01-15');
         // 26.04 at 11:00 EEST (UTC+3) → UTC 08:00
         Http::fake(['https://www.tntm.ro/*' => Http::response(tnPage([tnCard([
             'date' => '26.04',

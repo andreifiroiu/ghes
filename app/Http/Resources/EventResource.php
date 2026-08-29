@@ -42,6 +42,10 @@ class EventResource extends JsonResource
                     'source' => $source->source,
                     'source_url' => $source->source_url,
                 ])->values()),
+            'current_reaction' => $this->whenLoaded(
+                'reactions',
+                fn () => $this->reactions->first()?->reaction?->value,
+            ),
         ];
     }
 }
