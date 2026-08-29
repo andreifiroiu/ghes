@@ -138,16 +138,17 @@ class FeedbackProcessor
     }
 
     /**
-     * Apply the implicit "clicked" delta behind an outbound click.
+     * Apply the implicit delta behind an activity row the user never asked to
+     * record — an outbound click, or a calendar download.
      *
-     * Unlike a reaction or a bookmark, a click has no row of its own to hold a
-     * reversal ledger and no way for the user to take it back — so the ledger
+     * Unlike a reaction or a bookmark, these have no row of their own to hold a
+     * reversal ledger and no way for the user to take them back — so the ledger
      * lives in the activity row's `context`, and it is written *once* per
-     * (user, event). Without that guard, re-opening a ticket page four times
-     * would move the profile four times, and the loudest signal in the system
-     * would be "this user refreshes a lot".
+     * (user, event, type). Without that guard, re-opening a ticket page four
+     * times would move the profile four times, and the loudest signal in the
+     * system would be "this user refreshes a lot".
      */
-    public function processClick(UserActivityLog $log): void
+    public function processImplicitSignal(UserActivityLog $log): void
     {
         DB::transaction(function () use ($log): void {
             // Same lock discipline as the reaction and bookmark paths: two
@@ -162,9 +163,15 @@ class FeedbackProcessor
                 return;
             }
 
-            // This row's own ledger first. clickAlreadyScored() deliberately
+            $signal = $fresh->type->implicitSignal();
+
+            if ($signal === null) {
+                return;
+            }
+
+            // This row's own ledger first. alreadyScored() deliberately
             // excludes the row being processed so that concurrent sibling
-            // clicks do not block each other — which leaves the row blind to
+            // signals do not block each other — which leaves the row blind to
             // itself. Queues are at-least-once: a worker killed after the
             // commit but before the ack (deploy, OOM, retry_after elapsing)
             // redelivers this exact payload, and without this check the delta
@@ -174,7 +181,7 @@ class FeedbackProcessor
                 return;
             }
 
-            if ($this->clickAlreadyScored($fresh)) {
+            if ($this->alreadyScored($fresh)) {
                 return;
             }
 
@@ -194,15 +201,15 @@ class FeedbackProcessor
 
             $applied = $this->profileUpdater->apply(
                 $fresh->user,
-                $this->profileUpdater->deltaKeysFor($fresh->event, 'clicked', isDiscovery: $isDiscovery),
+                $this->profileUpdater->deltaKeysFor($fresh->event, $signal, isDiscovery: $isDiscovery),
             );
 
             // Only write the ledger when something actually moved. apply()
             // returns [] when every key is already clamped at 1.0, and an empty
             // ledger still satisfies the "already scored" guard — which would
-            // mean that once a user's scores touch the ceiling, no later click
-            // on that event could ever contribute again, not even after decay
-            // pulled them back down.
+            // mean that once a user's scores touch the ceiling, no later
+            // signal on that event could ever contribute again, not even after
+            // decay pulled them back down.
             if ($applied !== []) {
                 $fresh->update([
                     'context' => [...$fresh->context, 'applied_deltas' => $applied],
@@ -211,7 +218,8 @@ class FeedbackProcessor
 
             $this->syncDiscoveryOutcome($fresh->user, $fresh->event_id);
 
-            Log::debug('Processed click', [
+            Log::debug('Processed implicit signal', [
+                'signal' => $signal,
                 'user_id' => $fresh->user_id,
                 'event_id' => $fresh->event_id,
                 'is_discovery' => $isDiscovery,
@@ -220,19 +228,21 @@ class FeedbackProcessor
     }
 
     /**
-     * Whether this user's click on this event has already moved their profile.
+     * Whether this signal has already moved this user's profile for this event.
      *
-     * Keyed on the presence of the ledger rather than on a count of click rows:
-     * unauthenticated and bot clicks also write rows, and counting those would
-     * let a mail scanner's prefetch permanently block the real click that
-     * follows it from ever scoring.
+     * Scoped to the one type, so a click and a calendar download each get their
+     * own contribution — they are different statements and one should not mask
+     * the other. Keyed on the presence of the ledger rather than on a count of
+     * rows: unauthenticated and bot hits also write rows, and counting those
+     * would let a mail scanner's prefetch permanently block the real signal
+     * that follows it from ever scoring.
      */
-    private function clickAlreadyScored(UserActivityLog $log): bool
+    private function alreadyScored(UserActivityLog $log): bool
     {
         return UserActivityLog::query()
             ->where('user_id', $log->user_id)
             ->where('event_id', $log->event_id)
-            ->ofType(ActivityType::EventClick)
+            ->ofType($log->type)
             ->whereNotNull('context->applied_deltas')
             ->whereKeyNot($log->getKey())
             ->exists();
@@ -302,11 +312,11 @@ class FeedbackProcessor
 
         $outcome = $bookmarked ? 'saved' : $reaction?->value;
 
-        // Only consulted once both explicit signals have come up empty, which is
-        // what keeps a click from overriding a thumbs-down.
-        if ($outcome === null && $this->hasClicked($user, $eventId)) {
-            $outcome = 'clicked';
-        }
+        // Only consulted once both explicit signals have come up empty, which
+        // is what keeps an implicit one from overriding a thumbs-down. Among
+        // themselves they rank by commitment: putting an event in your calendar
+        // says more than following its link.
+        $outcome ??= $this->strongestImplicitSignal($user, $eventId);
 
         $discoveryLog->update(['outcome' => $outcome]);
 
@@ -314,20 +324,32 @@ class FeedbackProcessor
     }
 
     /**
-     * Whether this user has followed this event's link out to its source.
+     * The strongest implicit signal this user has left on this event, or null.
      *
      * Bot hits are excluded: a mail scanner prefetching a digest must not be
      * able to resolve someone else's exploration as a hit and quietly push
      * their discovery_openness up.
      */
-    private function hasClicked(User $user, string $eventId): bool
+    private function strongestImplicitSignal(User $user, string $eventId): ?string
     {
-        return UserActivityLog::query()
+        $types = UserActivityLog::query()
             ->where('user_id', $user->id)
             ->where('event_id', $eventId)
-            ->ofType(ActivityType::EventClick)
+            ->ofType(ActivityType::implicit())
             ->human()
-            ->exists();
+            ->pluck('type');
+
+        if ($types->isEmpty()) {
+            return null;
+        }
+
+        // Ordered by engagement weight, so adding a case to ActivityType places
+        // itself in this ladder rather than needing a second list to be kept in
+        // step with the first.
+        return $types
+            ->sortByDesc(fn (ActivityType $type): float => $type->engagementWeight())
+            ->first()
+            ->implicitSignal();
     }
 
     /**

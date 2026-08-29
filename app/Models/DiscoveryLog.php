@@ -21,9 +21,10 @@ class DiscoveryLog extends Model
      * `saved` is the bookmark signal rather than a Reaction case; it is stored
      * here verbatim so a bookmarked discovery event still counts as a success.
      *
-     * `clicked` is the implicit signal: the user never said anything, but they
-     * followed the link out to the source, which is a better answer to "was
-     * this exploration worth making" than silence. It is a looser definition of
+     * `clicked` and `calendar` are the implicit signals: the user never said
+     * anything, but they followed the link out to the source or put the event
+     * in their calendar, which is a better answer to "was this exploration
+     * worth making" than silence. It is a looser definition of
      * a hit than the two explicit signals, so the thresholds tuned against it —
      * `discovery.openness_hit_rate_threshold` and `discovery.suppression_threshold`
      * — are now measured on a larger numerator and want revisiting once there
@@ -31,7 +32,7 @@ class DiscoveryLog extends Model
      *
      * @var list<string>
      */
-    public const POSITIVE_OUTCOMES = ['interested', 'saved', 'clicked'];
+    public const POSITIVE_OUTCOMES = ['interested', 'saved', 'clicked', 'calendar'];
 
     /**
      * The attributes that are mass assignable.

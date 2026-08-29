@@ -11,6 +11,7 @@ const HEADLINE_TYPES = [
     { key: 'event_impression', label: 'Afișări' },
     { key: 'event_view', label: 'Vizualizări' },
     { key: 'event_click', label: 'Clicuri' },
+    { key: 'calendar_download', label: 'În calendar' },
     { key: 'search', label: 'Căutări' },
 ];
 
@@ -18,6 +19,7 @@ const TYPE_LABELS = {
     event_impression: 'Afișare card',
     event_view: 'Vizualizare pagină',
     event_click: 'Click către sursă',
+    calendar_download: 'Adăugat în calendar',
     reaction_interested: 'Mă interesează',
     reaction_not_interested: 'Nu-i pentru mine',
     reaction_cleared: 'Reacție retrasă',

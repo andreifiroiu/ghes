@@ -15,6 +15,7 @@ enum ActivityType: string
     case EventImpression = 'event_impression';
     case EventView = 'event_view';
     case EventClick = 'event_click';
+    case CalendarDownload = 'calendar_download';
     case ReactionInterested = 'reaction_interested';
     case ReactionNotInterested = 'reaction_not_interested';
     case ReactionCleared = 'reaction_cleared';
@@ -36,6 +37,10 @@ enum ActivityType: string
     public function engagementWeight(): float
     {
         return match ($this) {
+            // A calendar entry commits a slot in someone's week. It is the
+            // strongest statement of intent the product can observe — a
+            // bookmark is one reversible tap, this is a plan.
+            self::CalendarDownload => 5.0,
             self::BookmarkAdded => 5.0,
             self::ReactionInterested => 4.0,
             self::EventClick, self::EmailClick => 3.0,
@@ -45,6 +50,40 @@ enum ActivityType: string
             self::ReactionCleared => -1.0,
             self::EventImpression, self::Search, self::EmailOpen => 0.0,
         };
+    }
+
+    /**
+     * The `feedback.deltas` signal this type feeds into the interest profile,
+     * or null for a type that only ever informs analytics and ranking.
+     *
+     * Implicit signals only: reactions and bookmarks reach the profile through
+     * their own rows, which carry a reversal ledger the user can undo. These
+     * cannot be taken back, so they are weaker by design and scored once per
+     * (user, event) — see FeedbackProcessor::processImplicitSignal().
+     *
+     * The name doubles as the value written to `discovery_logs.outcome`, so a
+     * resolved exploration says which signal resolved it.
+     */
+    public function implicitSignal(): ?string
+    {
+        return match ($this) {
+            self::EventClick => 'clicked',
+            self::CalendarDownload => 'calendar',
+            default => null,
+        };
+    }
+
+    /**
+     * Types that can move a profile on their own.
+     *
+     * @return list<self>
+     */
+    public static function implicit(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $type): bool => $type->implicitSignal() !== null,
+        ));
     }
 
     /**
