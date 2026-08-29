@@ -292,6 +292,8 @@ it('freshness bonus decays over time', function () {
 // -- popularitySignal ------------------------------------------------
 
 it('popularity signal normalises to 0-1 range', function () {
+    config(['eventpulse.recommendation.popularity_blend' => 0.0]);
+
     $popular = Event::factory()->create(['popularity_score' => 80]);
     $unpopular = Event::factory()->create(['popularity_score' => 10]);
 
@@ -300,9 +302,45 @@ it('popularity signal normalises to 0-1 range', function () {
 });
 
 it('popularity signal caps at 1.0', function () {
+    config(['eventpulse.recommendation.popularity_blend' => 0.0]);
+
     $event = Event::factory()->create(['popularity_score' => 200]);
 
     expect($this->engine->popularitySignal($event))->toBe(1.0);
+});
+
+it('popularity signal reads only engagement when fully blended', function () {
+    config(['eventpulse.recommendation.popularity_blend' => 1.0]);
+
+    $event = Event::factory()->create([
+        'popularity_score' => 100,
+        'engagement_score' => 20,
+    ]);
+
+    expect($this->engine->popularitySignal($event))->toBe(0.2);
+});
+
+it('popularity signal mixes the scraped and behavioural halves', function () {
+    config(['eventpulse.recommendation.popularity_blend' => 0.5]);
+
+    $event = Event::factory()->create([
+        'popularity_score' => 80,
+        'engagement_score' => 20,
+    ]);
+
+    expect($this->engine->popularitySignal($event))->toBe(0.5);
+});
+
+it('popularity signal does not bury an event that has no engagement yet', function () {
+    config(['eventpulse.recommendation.popularity_blend' => 0.5]);
+
+    // A freshly scraped event cannot have been clicked. Half the blend must
+    // still reach it, or nothing new could ever outrank an established event.
+    $fresh = Event::factory()->create(['popularity_score' => 100, 'engagement_score' => 0]);
+    $ignored = Event::factory()->create(['popularity_score' => 0, 'engagement_score' => 0]);
+
+    expect($this->engine->popularitySignal($fresh))->toBe(0.5)
+        ->and($this->engine->popularitySignal($ignored))->toBe(0.0);
 });
 
 // ---------------------------------------------------------------

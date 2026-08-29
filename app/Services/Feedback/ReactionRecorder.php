@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Feedback;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Jobs\ProcessFeedbackJob;
 use App\Jobs\ReverseProfileDeltaJob;
 use App\Models\User;
 use App\Models\UserEventReaction;
+use App\Services\Activity\ActivityLogger;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -17,15 +20,27 @@ use Illuminate\Support\Facades\DB;
  */
 class ReactionRecorder
 {
+    public function __construct(
+        private readonly ActivityLogger $activity,
+    ) {}
+
     /**
      * Record (or change) a user's reaction to an event.
      *
      * Re-submitting the same reaction is a deliberate no-op: no job, no profile
      * churn. Only a genuine change clears is_processed, which is what lets the
      * processor reverse the old delta before applying the new one.
+     *
+     * $surface only labels the activity row. The caller is the only party that
+     * knows whether this came from the app or from a digest link, and telling
+     * those apart is most of the point of logging reactions at all.
      */
-    public function record(User $user, string $eventId, Reaction $reaction): UserEventReaction
-    {
+    public function record(
+        User $user,
+        string $eventId,
+        Reaction $reaction,
+        ActivitySurface $surface = ActivitySurface::EventDetail,
+    ): UserEventReaction {
         // firstOrCreate, not firstOrNew + save: two concurrent submits (the
         // email confirm page auto-submits *and* offers a button) would both miss
         // the select and both INSERT, and the loser would get a 500 off the
@@ -50,6 +65,19 @@ class ReactionRecorder
             ProcessFeedbackJob::dispatch($row->id, $user->id);
         }
 
+        // Analytics only. The profile side of a reaction is owned by
+        // FeedbackProcessor via the job above; this row exists so a user's
+        // explicit and implicit signals can be read as one timeline. Logged
+        // only on a real change, so a no-op re-submit stays a no-op here too.
+        if ($changed) {
+            $this->activity->log(
+                ActivityType::forReaction($reaction),
+                $surface,
+                eventId: $eventId,
+                user: $user,
+            );
+        }
+
         return $row;
     }
 
@@ -58,8 +86,11 @@ class ReactionRecorder
      *
      * The bookmark on the same event, if any, is deliberately untouched.
      */
-    public function remove(User $user, string $eventId): void
-    {
+    public function remove(
+        User $user,
+        string $eventId,
+        ActivitySurface $surface = ActivitySurface::EventDetail,
+    ): void {
         // Read and delete under the same row lock the processing job takes.
         // Without it this can read applied_deltas while ProcessFeedbackJob is
         // mid-flight, see null, delete the row, and skip the reversal — leaving
@@ -85,5 +116,12 @@ class ReactionRecorder
         if ($appliedDeltas !== []) {
             ReverseProfileDeltaJob::dispatch($user->id, $eventId, $appliedDeltas);
         }
+
+        $this->activity->log(
+            ActivityType::ReactionCleared,
+            $surface,
+            eventId: $eventId,
+            user: $user,
+        );
     }
 }

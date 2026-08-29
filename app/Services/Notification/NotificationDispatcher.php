@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Notification;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Enums\NotificationChannel;
 use App\Models\Notification;
+use App\Services\Activity\ActivityLogger;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -16,6 +19,7 @@ class NotificationDispatcher
     public function __construct(
         private readonly EmailRenderer $emailRenderer,
         private readonly PushSender $pushSender,
+        private readonly ActivityLogger $activity,
     ) {}
 
     /**
@@ -61,6 +65,19 @@ class NotificationDispatcher
         }
 
         $notification->update(['sent_at' => now()]);
+
+        // One impression per event the digest actually put in front of someone.
+        // Without this the digest contributes clicks (its links resolve through
+        // events.go) but no impressions, so the click-through rate divides
+        // email clicks by web impressions and can exceed 100%.
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ActivitySurface::Digest,
+            [...($notification->event_ids ?? []), ...($notification->discovery_event_ids ?? [])],
+            $user,
+            $notification->id,
+            serverOriginated: true,
+        );
 
         Log::info("Notification {$notification->id} sent to user {$user->id} via {$channel->value}");
     }

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 
 const navLinks = [
     { href: '/admin', label: 'Dashboard', exact: true },
+    { href: '/admin/analytics', label: 'Analytics' },
     { href: '/admin/events', label: 'Events' },
     { href: '/admin/events/duplicates', label: 'Duplicates' },
     { href: '/admin/users', label: 'Users' },

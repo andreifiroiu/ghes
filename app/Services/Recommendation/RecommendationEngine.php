@@ -252,13 +252,26 @@ class RecommendationEngine
     }
 
     /**
-     * Normalised popularity: event popularity_score mapped to 0–1,
-     * assuming a practical ceiling of 100.
+     * Normalised popularity, 0–1, blending what the source claimed with what
+     * our users actually did.
+     *
+     * `popularity_score` is scraped attendance plus the admin feature boost —
+     * it says an event looked popular somewhere else. `engagement_score` is
+     * rolled up from our own activity log: clicks, views, saves and reactions
+     * from real people here. Neither alone is right. Scraped-only ranks on a
+     * number no user of ours produced; engagement-only buries every event that
+     * is simply too new to have been clicked yet.
+     *
+     * `recommendation.popularity_blend` controls the mix and can be set to 0.0
+     * to restore the scraped-only behaviour without a deploy.
      */
     public function popularitySignal(Event $event): float
     {
-        $score = $event->popularity_score ?? 0;
+        $blend = max(0.0, min(1.0, (float) config('eventpulse.recommendation.popularity_blend', 0.5)));
 
-        return max(0.0, min(1.0, $score / 100.0));
+        $scraped = max(0.0, min(1.0, ($event->popularity_score ?? 0) / 100.0));
+        $behavioural = max(0.0, min(1.0, ($event->engagement_score ?? 0) / 100.0));
+
+        return ($scraped * (1.0 - $blend)) + ($behavioural * $blend);
     }
 }

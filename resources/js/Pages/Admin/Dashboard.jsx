@@ -7,7 +7,7 @@ import StatTile from '@/Components/StatTile';
  * @param {Object} props.stats
  */
 export default function Dashboard({ stats }) {
-    const { events, users, scraper_runs: runs } = stats;
+    const { events, users, scraper_runs: runs, activity } = stats;
 
     return (
         <AdminLayout title="Dashboard">
@@ -21,6 +21,8 @@ export default function Dashboard({ stats }) {
                 <StatTile label="Onboarded" value={users.onboarded} />
                 <StatTile label="Scraper runs" value={runs.total} />
                 <StatTile label="Failed runs" value={runs.failed} />
+                <StatTile label="Clicks (7d)" value={activity.clicks_7d} />
+                <StatTile label="Views (7d)" value={activity.views_7d} />
             </div>
         </AdminLayout>
     );

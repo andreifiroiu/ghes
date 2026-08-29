@@ -42,6 +42,41 @@ return [
             // big aggregators list everything.
             'source' => 0.05,
         ],
+        // How much of the popularity signal comes from what our users actually
+        // did (events.engagement_score) versus what the source claimed
+        // (events.popularity_score, scraped attendance plus the admin boost).
+        //
+        // 0.0 restores the scraped-only behaviour that predates activity
+        // logging; 1.0 ignores the source entirely. It starts at a half so a
+        // brand-new event, which has no engagement yet by definition, is not
+        // buried under one that has merely been around long enough to collect
+        // clicks.
+        'popularity_blend' => (float) env('EVENTPULSE_POPULARITY_BLEND', 0.5),
+
+        // Event-to-event similarity for the "related events" strip on the event
+        // detail page. Deliberately plain integer points rather than the
+        // normalised [0,1] weights above: nothing consumes the value except an
+        // ordering, so a readable scale beats a calibrated one.
+        'related' => [
+            'limit' => 6,
+            // Candidates pulled from the database before scoring in PHP.
+            'candidate_limit' => 100,
+            // Tags beyond this are dropped from the candidate query, to keep
+            // the OR chain bounded for an over-tagged event.
+            'max_tags_considered' => 10,
+            'points' => [
+                'category' => 3,
+                'tag' => 2,
+                // Cap on the total contributed by shared tags, so tag overlap
+                // cannot drown out every other signal.
+                'tag_cap' => 6,
+                'venue' => 2,
+                'city' => 1,
+                'date_proximity' => 1,
+            ],
+            // Days between the two start times for `date_proximity` to apply.
+            'date_proximity_days' => 14,
+        ],
     ],
     'experiments' => [
         // A/B variants for recommendation scoring weights. Each user is assigned
@@ -78,7 +113,10 @@ return [
         // the bookmark signal (event_bookmarks) — it stacks with a reaction
         // rather than replacing it, and is still the strongest positive signal
         // (an explicit bookmark > a thumbs-up). "ignored" is a passive outcome
-        // applied to un-reacted events in an ageing notification.
+        // applied to un-reacted events in an ageing notification. "clicked" is
+        // the implicit signal: following an event's link out to its source is
+        // real intent, but the user never said anything, so it moves the
+        // profile by a third of what a thumbs-up does.
         // The `source` delta moves one "source:{provider}" key per provider that
         // reported the event. It is the weakest of the three on purpose: which
         // site listed an event says far less about the user than what the event
@@ -89,6 +127,7 @@ return [
             'saved' => ['category' => 0.20, 'tag' => 0.25, 'source' => 0.07],
             'not_interested' => ['category' => -0.15, 'tag' => -0.20, 'source' => -0.05],
             'ignored' => ['category' => -0.02, 'tag' => 0.0, 'source' => -0.01],
+            'clicked' => ['category' => 0.05, 'tag' => 0.05, 'source' => 0.02],
         ],
         // A notification must be at least this old before its un-reacted events
         // are treated as "ignored" and passively decayed.
@@ -334,6 +373,43 @@ return [
         'decay_interval_days' => 7,
         'min_score' => 0.0,
         'max_score' => 1.0,
+    ],
+    'activity' => [
+        // Raw activity rows are the only unbounded growth in the schema. The
+        // derived engagement_score on events survives the prune, so ranking
+        // does not forget what the pruned rows taught it.
+        'retention_days' => (int) env('EVENTPULSE_ACTIVITY_RETENTION_DAYS', 180),
+
+        // Rolling window the engagement aggregate reads. Shorter than the
+        // retention window on purpose: ranking should follow what people want
+        // now, not what they wanted six months ago.
+        'engagement_window_days' => (int) env('EVENTPULSE_ENGAGEMENT_WINDOW_DAYS', 60),
+
+        // Weighted engagement total that maps to a full 100. Well below what a
+        // genuinely popular event reaches, so the top of the catalogue
+        // saturates rather than letting one runaway event flatten every other
+        // score toward zero.
+        'engagement_ceiling' => (int) env('EVENTPULSE_ENGAGEMENT_CEILING', 50),
+
+        // Substrings matched case-insensitively against the User-Agent to flag
+        // a hit as automated. Mail scanners and link prefetchers fetch every
+        // URL in a digest at delivery time, so without this the digest would
+        // appear to have a near-perfect click-through rate. Flagged hits are
+        // still stored — they are real traffic — but excluded from rates and
+        // from ranking.
+        //
+        // Deliberately NOT listed: mail image proxies (Gmail's GoogleImageProxy,
+        // Yahoo's YahooMailProxy). They fetch <img> only, never a link, so they
+        // cannot inflate a click — and they fetch when the reader opens the
+        // message, which makes that request the open signal rather than noise.
+        // Listing them would report zero opens forever.
+        'bot_user_agents' => [
+            'bot', 'crawler', 'spider', 'slurp', 'preview', 'fetcher', 'scanner',
+            'curl', 'wget', 'python-requests', 'go-http-client', 'headlesschrome',
+            'proofpoint', 'barracuda', 'mimecast', 'symantec', 'microsoft office',
+            'skypeuripreview', 'bingpreview', 'facebookexternalhit', 'whatsapp',
+            'telegrambot',
+        ],
     ],
     'llm' => [
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),

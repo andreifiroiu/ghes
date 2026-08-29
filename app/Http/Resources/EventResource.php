@@ -27,17 +27,31 @@ class EventResource extends JsonResource
             'venue' => $this->venue,
             'address' => $this->address,
             'city' => $this->city,
+            'latitude' => $this->latitude,
+            'longitude' => $this->longitude,
             'starts_at' => $this->starts_at?->toIso8601String(),
             'ends_at' => $this->ends_at?->toIso8601String(),
             'price_min' => $this->price_min,
             'price_max' => $this->price_max,
+            'currency' => $this->currency,
             'is_free' => $this->is_free,
             'image_url' => $this->image_url,
             'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
+            // What the UI should actually link to. Goes through our redirect so
+            // the click is recorded, then lands on source_url. Kept alongside
+            // source_url rather than replacing it so API consumers that only
+            // want the destination still have it.
+            'click_url' => route('events.go', ['event' => $this->id]),
             'sources_count' => $this->sources_count,
+            // Deduplicated by URL: event_sources is unique on
+            // (source, url_key, occurrence_key), and merging two occurrences of
+            // one listing repoints both rows onto the survivor — which would
+            // otherwise render the same vendor button twice, under a duplicate
+            // React key.
             'sources' => $this->whenLoaded('sources', fn () => $this->sources
+                ->unique('source_url')
                 ->map(fn ($source): array => [
                     'source' => $source->source,
                     'source_url' => $source->source_url,

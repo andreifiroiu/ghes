@@ -41,5 +41,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::prefix('admin')->name('api.admin.')->middleware('can:access-admin')->group(function () {
         Route::get('events/stats', [AdminStatsController::class, 'eventStats'])->name('events.stats');
+        Route::get('activity/stats', [AdminStatsController::class, 'activityStats'])->name('activity.stats');
     });
 });

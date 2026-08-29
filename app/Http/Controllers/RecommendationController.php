@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Models\User;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Processing\EventTextNormalizer;
 use App\Services\Recommendation\DashboardStatsBuilder;
 use App\Services\Recommendation\RecommendationEngine;
@@ -26,6 +29,7 @@ class RecommendationController extends Controller
     public function __construct(
         private readonly RecommendationEngine $recommendationEngine,
         private readonly DashboardStatsBuilder $dashboardStats,
+        private readonly ActivityLogger $activity,
     ) {}
 
     public function index(Request $request): Response
@@ -60,12 +64,28 @@ class RecommendationController extends Controller
         $citySlug = EventTextNormalizer::citySlug($user->city);
         $hasUsableCity = $citySlug !== null;
 
+        $weekendEvents = $this->weekendEvents($user);
+
+        // Every list in one call: an impression is an impression regardless of
+        // which rail it came from, and the discovery flag already lives in
+        // discovery_logs for anyone who needs to tell them apart. The weekend
+        // rail counts too — it is on screen, so leaving it out would undercount
+        // exactly the events the page pushes hardest.
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ActivitySurface::Dashboard,
+            [
+                ...$recommendations->pluck('id'),
+                ...$discoveryEvents->pluck('id'),
+                ...$weekendEvents->pluck('id'),
+            ],
+            $user,
+        );
+
         return Inertia::render('Dashboard/Index', [
             'recommendations' => EventResource::collection($recommendations)->resolve(),
             'discoveryEvents' => EventResource::collection($discoveryEvents)->resolve(),
-            'weekendEvents' => EventResource::collection(
-                $this->weekendEvents($user),
-            )->resolve(),
+            'weekendEvents' => EventResource::collection($weekendEvents)->resolve(),
             'stats' => $stats,
             'city' => $hasUsableCity ? $user->city : $this->cityLabel(),
             // Drives the empty states: they need to distinguish "no profile
@@ -135,12 +155,19 @@ class RecommendationController extends Controller
 
         $recommendations = Event::whereIn('id', $batch->recommendedEventIds)
             ->withUserContext($user)->get();
+        $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)
+            ->withUserContext($user)->get();
+
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ActivitySurface::Api,
+            [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
+            $user,
+        );
 
         return response()->json([
             'recommendations' => EventResource::collection($recommendations),
-            'discovery' => EventResource::collection(
-                Event::whereIn('id', $batch->discoveryEventIds)->withUserContext($user)->get(),
-            ),
+            'discovery' => EventResource::collection($discoveryEvents),
             'total_score' => $batch->totalScore,
         ]);
     }
