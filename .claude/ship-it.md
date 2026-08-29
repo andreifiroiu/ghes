@@ -144,12 +144,16 @@ internal-only writes nothing, which is a valid outcome.
   `api.eu.mailgun.net`; an EU domain queried against the US host answers **401**, which
   reads like a bad key. `MAIL_FROM_ADDRESS` must also sit on the verified sending
   domain or Mailgun 403s it.
-- **`RecommendationEngineTest::it ranks higher-scored events first` is flaky and fails
-  silently.** Its `expect()` sits behind `if ($musicPos !== false && $techPos !== false)`,
-  so when discovery displaces an event from the batch the test reports **risky** (zero
-  assertions) instead of failing — seen in ~2 of 6 runs on `main` too. A run showing
-  `1 risky` in `tests/Feature/Services/Recommendation` is pre-existing, not your change;
-  confirm by re-running before you go hunting.
+- ~~**`RecommendationEngineTest::it ranks higher-scored events first` is flaky and fails
+  silently.**~~ **Fixed.** Its `expect()` used to sit behind
+  `if ($musicPos !== false && $techPos !== false)`, so when discovery displaced an event
+  from the batch the test reported **risky** (zero assertions) instead of failing — seen
+  in ~2 of 6 runs. The cause was `UserFactory`'s random `discovery_openness` (0.1–0.9):
+  at high openness `round($limit * $openness)` claimed almost every slot, leaving one of
+  the two events out of `recommendedEventIds`. The test now pins `discovery_openness`
+  and asserts unconditionally. **`1 risky` in `tests/Feature/Services/Recommendation` is
+  no longer expected** — if you see it, it is a new one. The underlying trap stands: a
+  test whose only assertion is inside an `if` reports risky, not failed.
 
 ## Conventions worth knowing
 

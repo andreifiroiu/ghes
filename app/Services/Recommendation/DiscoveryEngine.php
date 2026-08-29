@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
+use App\Services\Processing\EventTextNormalizer;
 use Illuminate\Support\Collection;
 
 class DiscoveryEngine
@@ -23,9 +24,10 @@ class DiscoveryEngine
      * rarely engages with — skipping categories under serendipity suppression
      * and anything the user has already reacted to or bookmarked.
      *
+     * @param  list<string>  $excludeEventIds  Events already used elsewhere in the batch.
      * @return Collection<int, Event>
      */
-    public function discoverForUser(User $user, int $count = 2): Collection
+    public function discoverForUser(User $user, int $count = 2, array $excludeEventIds = []): Collection
     {
         if ($count < 1) {
             return collect();
@@ -38,17 +40,31 @@ class DiscoveryEngine
             ->values()
             ->all();
 
-        $trending = $this->trendingEvents($user, $engagedEventIds, $count);
+        // Preferred pass: also avoid anything already recommended in the same
+        // batch, so the dashboard never shows one event as both a
+        // recommendation and a discovery.
+        $events = $this->gather(
+            $user,
+            $count,
+            array_values(array_unique(array_merge($engagedEventIds, $excludeEventIds))),
+        );
 
-        $excludeIds = array_merge($engagedEventIds, $trending->pluck('id')->all());
-        $remaining = $count - $trending->count();
+        // But that exclusion must never be allowed to empty the slot. In a thin
+        // catalogue — the exact situation a small city is in — the diversity
+        // filter pulls the off-profile events into the recommendations, leaving
+        // discovery nothing to draw from, and both the dashboard section and
+        // the digest's exploration block silently disappear. A repeated card is
+        // the lesser failure, so top up without the batch exclusion.
+        if ($events->count() < $count && $excludeEventIds !== []) {
+            $topUp = $this->gather(
+                $user,
+                $count - $events->count(),
+                array_merge($engagedEventIds, $events->pluck('id')->all()),
+            );
 
-        $categoryEvents = $remaining > 0
-            ? $this->categoryDiscovery($user, $excludeIds, $remaining)
-            : collect();
-
-        /** @var Collection<int, Event> $events */
-        $events = $trending->concat($categoryEvents)->take($count)->values();
+            /** @var Collection<int, Event> $events */
+            $events = $events->concat($topUp)->take($count)->values();
+        }
 
         // Log each surfaced discovery once per (user, event) for analytics,
         // suppression, and hit-rate tuning.
@@ -63,6 +79,36 @@ class DiscoveryEngine
         });
 
         return $events;
+    }
+
+    /**
+     * One discovery pass: trending first, then low-interest categories.
+     *
+     * @param  list<string>  $excludeIds
+     * @return Collection<int, Event>
+     */
+    private function gather(User $user, int $count, array $excludeIds): Collection
+    {
+        if ($count < 1) {
+            return collect();
+        }
+
+        $trending = $this->trendingEvents($user, $excludeIds, $count);
+
+        $remaining = $count - $trending->count();
+
+        $categoryEvents = $remaining > 0
+            ? $this->categoryDiscovery(
+                $user,
+                array_merge($excludeIds, $trending->pluck('id')->all()),
+                $remaining,
+            )
+            : collect();
+
+        /** @var Collection<int, Event> $gathered */
+        $gathered = $trending->concat($categoryEvents)->take($count)->values();
+
+        return $gathered;
     }
 
     /**
@@ -118,12 +164,17 @@ class DiscoveryEngine
             return collect();
         }
 
+        $citySlug = EventTextNormalizer::citySlug($user->city);
+
         $events = Event::upcoming()
             ->visible()
             ->canonical()
             ->where('is_classified', true)
             ->whereIn('id', $trendingCounts->keys()->all())
-            ->when($user->city, fn ($query) => $query->where('city', $user->city))
+            ->when(
+                $citySlug !== null,
+                fn ($query) => $query->where('city_slug', $citySlug),
+            )
             ->get();
 
         return $events
@@ -161,12 +212,14 @@ class DiscoveryEngine
             $lowScoreCategories,
         ));
 
-        $events = $this->fetchDiscoveryEvents($preferred, $excludeIds, $count, $user->city);
+        $citySlug = EventTextNormalizer::citySlug($user->city);
+
+        $events = $this->fetchDiscoveryEvents($preferred, $excludeIds, $count, $citySlug);
 
         if ($events->count() < $count) {
             $usedIds = array_merge($excludeIds, $events->pluck('id')->all());
             $events = $events->concat(
-                $this->fetchDiscoveryEvents($lowScoreCategories, $usedIds, $count - $events->count(), $user->city),
+                $this->fetchDiscoveryEvents($lowScoreCategories, $usedIds, $count - $events->count(), $citySlug),
             );
         }
 
@@ -179,9 +232,10 @@ class DiscoveryEngine
      *
      * @param  list<string>  $categories
      * @param  list<string>  $excludeIds
+     * @param  string|null  $citySlug  Normalised city slug, not the raw label.
      * @return Collection<int, Event>
      */
-    private function fetchDiscoveryEvents(array $categories, array $excludeIds, int $count, ?string $city = null): Collection
+    private function fetchDiscoveryEvents(array $categories, array $excludeIds, int $count, ?string $citySlug = null): Collection
     {
         if ($categories === [] || $count < 1) {
             return collect();
@@ -193,7 +247,7 @@ class DiscoveryEngine
             ->whereIn('category', $categories)
             ->whereNotIn('id', $excludeIds)
             ->where('is_classified', true)
-            ->when($city, fn ($query) => $query->where('city', $city))
+            ->when($citySlug !== null, fn ($query) => $query->where('city_slug', $citySlug))
             ->inRandomOrder()
             ->limit($count)
             ->get();

@@ -2,6 +2,7 @@
 
 use App\Jobs\ApplyPassiveDecayJob;
 use App\Jobs\CleanupExpiredEventsJob;
+use App\Jobs\PruneActivityLogsJob;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('eventpulse:scrape')
@@ -27,12 +28,22 @@ Schedule::command('eventpulse:decay-profiles')
     ->weekly()
     ->withoutOverlapping();
 
+// Before the notification run, so the digest ranks on engagement that includes
+// yesterday's clicks rather than the day before's.
+Schedule::command('eventpulse:aggregate-engagement')
+    ->dailyAt('06:00')
+    ->withoutOverlapping();
+
 Schedule::job(new CleanupExpiredEventsJob)
     ->dailyAt('04:00')
     ->withoutOverlapping();
 
 Schedule::job(new ApplyPassiveDecayJob)
     ->dailyAt('03:30')
+    ->withoutOverlapping();
+
+Schedule::job(new PruneActivityLogsJob)
+    ->weeklyOn(1, '04:30')
     ->withoutOverlapping();
 
 Schedule::command('horizon:snapshot')

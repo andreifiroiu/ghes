@@ -2,6 +2,42 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Rezolvat — Pagina de start nu mai rămâne goală (#17)
+
+Dacă orașul din profilul tău era scris fără diacritice — „Timisoara" în loc de
+„Timișoara" — pagina de start nu-ți arăta niciun eveniment, deși în Ghes existau
+destule și le vedeai fără probleme în lista de evenimente. Acum orașul se
+potrivește indiferent de diacritice sau de scrierea cu majuscule, așa că
+recomandările și descoperirile îți apar cum trebuie. Dacă îți schimbi orașul din
+profil, lista se actualizează imediat.
+
+## 2026-08-29 — Îmbunătățit — Pagina de start îți arată mai mult (#17)
+
+Pagina de start are acum o secțiune „În weekend" cu ce se întâmplă sâmbătă și
+duminică, un rând cu câte evenimente viitoare sunt în orașul tău, câte ai salvat
+și cât de complet e profilul tău de interese, plus scurtături către categorii.
+Când nu avem ce să-ți arătăm îți spunem și de ce — n-ai terminat conversația de
+la început, nu ți-ai ales orașul, sau chiar nu e nimic programat — în loc să
+lăsăm pagina goală. În plus, recomandările apar în ordinea în care ți se
+potrivesc, iar un eveniment la care ai zis „nu-i pentru mine" nu mai rămâne
+agățat în secțiunea de weekend.
+
+## 2026-08-29 — Nou — Poți ajunge la eveniment direct din e-mail (#16)
+
+Până acum, e-mailul cu recomandări îți spunea ce se întâmplă, dar nu aveai cum să
+ajungi la eveniment din el: titlurile erau simplu text, iar singurele butoane erau
+cele de reacție. Acum fiecare eveniment din e-mail are un link „Vezi detalii" care
+te duce la pagina lui din Ghes, cu harta, descrierea completă și toate site-urile
+de unde poți lua bilete.
+
+## 2026-08-29 — Îmbunătățit — Recomandările învață și din evenimentele pe care le deschizi (#16)
+
+Până acum, Ghes se lua doar după reacțiile tale explicite — „mă interesează",
+„salvat", „nu-i pentru mine". Acum reține și când deschizi un eveniment ca să-i vezi
+detaliile: e un semn mai slab decât o reacție, dar tot îți spune ceva despre gusturi,
+așa că profilul tău se reglează și din el. În plus, evenimentele pe care lumea chiar
+le deschide urcă în recomandări, nu doar cele care păreau populare la sursă.
+
 ## 2026-08-29 — Nou — Fiecare eveniment are acum pagina lui în Ghes (#15)
 
 Când dai clic pe un eveniment ajungi la pagina lui din Ghes, nu direct pe site-ul de

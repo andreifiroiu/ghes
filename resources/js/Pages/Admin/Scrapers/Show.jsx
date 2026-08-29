@@ -7,7 +7,7 @@ import { Badge } from '@/Components/ui/Badge';
 import Pagination from '@/Components/Pagination';
 import DailyBarChart from '@/Components/Admin/DailyBarChart';
 import RunStatusBadge from '@/Components/Admin/RunStatusBadge';
-import StatCard from '@/Components/Admin/StatCard';
+import StatTile from '@/Components/StatTile';
 import { formatDuration, formatRunTime } from '@/lib/dates';
 
 /**
@@ -104,22 +104,22 @@ export default function ScraperShow({ source, stats, range, ranges = [], runs })
             )}
 
             <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-                <StatCard
+                <StatTile
                     label="Events found"
                     value={totals.found.toLocaleString()}
                     hint={`over ${range} days`}
                 />
-                <StatCard
+                <StatTile
                     label="New events"
                     value={totals.created.toLocaleString()}
                     hint={`${totals.updated.toLocaleString()} updated`}
                 />
-                <StatCard
+                <StatTile
                     label="Success rate"
                     value={health.success_rate === null ? '—' : `${Math.round(health.success_rate * 100)}%`}
                     hint={`${totals.completed} ok · ${totals.failed} failed${totals.running > 0 ? ` · ${totals.running} open` : ''}`}
                 />
-                <StatCard
+                <StatTile
                     label="In database"
                     value={health.events_total.toLocaleString()}
                     hint={`${health.events_upcoming.toLocaleString()} upcoming`}

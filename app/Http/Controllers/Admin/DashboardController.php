@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\ActivityType;
 use App\Enums\ScraperRunStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\ScraperRun;
 use App\Models\User;
+use App\Models\UserActivityLog;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,6 +18,8 @@ class DashboardController extends Controller
 {
     public function index(): Response
     {
+        $lastWeek = now()->subDays(7);
+
         return Inertia::render('Admin/Dashboard', [
             'stats' => [
                 'events' => [
@@ -32,6 +36,20 @@ class DashboardController extends Controller
                 'scraper_runs' => [
                     'total' => ScraperRun::count(),
                     'failed' => ScraperRun::where('status', ScraperRunStatus::Failed)->count(),
+                ],
+                // Headline engagement only — the full report lives under
+                // /admin/analytics, which this is meant to point at.
+                'activity' => [
+                    'clicks_7d' => UserActivityLog::query()
+                        ->human()
+                        ->ofType(ActivityType::EventClick)
+                        ->where('created_at', '>=', $lastWeek)
+                        ->count(),
+                    'views_7d' => UserActivityLog::query()
+                        ->human()
+                        ->ofType(ActivityType::EventView)
+                        ->where('created_at', '>=', $lastWeek)
+                        ->count(),
                 ],
             ],
         ]);

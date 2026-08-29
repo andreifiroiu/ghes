@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\EventCategory;
+use App\Services\Processing\EventTextNormalizer;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -46,6 +47,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $image_url
  * @property array<string, mixed>|null $metadata
  * @property int $popularity_score
+ * @property int $engagement_score
  * @property int $sources_count
  * @property Carbon|null $last_seen_at
  * @property bool $is_classified
@@ -93,6 +95,7 @@ class Event extends Model
         'image_url',
         'metadata',
         'popularity_score',
+        'engagement_score',
         'sources_count',
         'last_seen_at',
         'is_classified',
@@ -120,6 +123,7 @@ class Event extends Model
             'latitude' => 'float',
             'longitude' => 'float',
             'popularity_score' => 'integer',
+            'engagement_score' => 'integer',
             'sources_count' => 'integer',
             'is_free' => 'boolean',
             'is_classified' => 'boolean',
@@ -224,6 +228,56 @@ class Event extends Model
     public function mergedDuplicates(): HasMany
     {
         return $this->hasMany(Event::class, 'merged_into_id');
+    }
+
+    /**
+     * Keep `city_slug` derived from `city` on every write.
+     *
+     * Recommendations, discovery, related events and the dashboard counts all
+     * filter on `city_slug`, while the admin edit form writes plain `city`.
+     * Without this an admin correcting a mis-scraped city leaves the slug
+     * pointing at the old one, and the event silently disappears from every
+     * personalised list while still looking correct in the admin table. The
+     * nightly `eventpulse:dedupe-events` backfill only revisits rows whose slug
+     * is NULL, so a stale-but-present slug would never heal.
+     *
+     * Every writer that already sets both (EventPipeline, EventMerger, the
+     * factory, the backfill command) computes the identical value, so this is
+     * a no-op for them.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Event $event): void {
+            if ($event->isDirty('city') || $event->city_slug === null) {
+                $event->city_slug = EventTextNormalizer::citySlug($event->city);
+            }
+        });
+    }
+
+    /**
+     * Follow a merged duplicate to the event it now lives under.
+     *
+     * Links in already-sent digests point at ids that may since have been
+     * merged away; they must still resolve to the surviving event rather than
+     * showing — or recording activity against — a stale duplicate. The hop
+     * count is bounded because a merge chain is data, and a cycle in it would
+     * otherwise hang the request rather than surface as a bad row.
+     */
+    public function resolveCanonical(int $maxHops = 5): self
+    {
+        $event = $this;
+
+        for ($hop = 0; $event->merged_into_id !== null && $hop < $maxHops; $hop++) {
+            $canonical = $event->canonicalEvent;
+
+            if ($canonical === null) {
+                break;
+            }
+
+            $event = $canonical;
+        }
+
+        return $event;
     }
 
     /**

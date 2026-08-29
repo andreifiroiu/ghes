@@ -12,6 +12,7 @@ use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\EventSource;
+use App\Models\UserActivityLog;
 use App\Models\UserEventReaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -184,6 +185,12 @@ class EventMerger
         DB::transaction(function () use ($canonical, $duplicate, $syncSearch): void {
             EventSource::where('event_id', $duplicate->id)->update(['event_id' => $canonical->id]);
             DiscoveryLog::where('event_id', $duplicate->id)->update(['event_id' => $canonical->id]);
+
+            // Activity moves wholesale — no uniqueness to reconcile, unlike
+            // reactions and bookmarks below. Left behind, an event's engagement
+            // would split across however many copies of it we happened to
+            // scrape, and each half would rank as if it were unpopular.
+            UserActivityLog::where('event_id', $duplicate->id)->update(['event_id' => $canonical->id]);
 
             $this->moveReactions($canonical, $duplicate);
             $this->moveBookmarks($canonical, $duplicate);

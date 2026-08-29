@@ -8,6 +8,7 @@ use App\DTOs\RecommendationBatch;
 use App\Models\Event;
 use App\Models\User;
 use App\Services\InterestProfile\ProfileScorer;
+use App\Services\Processing\EventTextNormalizer;
 use DateTimeImmutable;
 
 class RecommendationEngine
@@ -70,11 +71,17 @@ class RecommendationEngine
             ->merge($user->bookmarks()->pluck('event_id'))
             ->unique();
 
+        // Match on the normalised slug, not the raw label. Events carry the
+        // scraper's spelling ("Timișoara") while users.city is free text from
+        // the onboarding chat ("Timisoara"), so an exact comparison here drops
+        // every candidate and empties the dashboard.
+        $citySlug = EventTextNormalizer::citySlug($user->city);
+
         $candidates = Event::upcoming()
             ->visible()
             ->canonical()
             ->where('is_classified', true)
-            ->when($user->city, fn ($q) => $q->where('city', $user->city))
+            ->when($citySlug !== null, fn ($q) => $q->where('city_slug', $citySlug))
             ->whereNotIn('id', $engagedEventIds)
             // Order before limiting: without it the 200 candidates are an
             // arbitrary slice, so the same user can get different results
@@ -105,11 +112,17 @@ class RecommendationEngine
         );
         $recommended = $diverseEvents->take($recommendationCount);
 
-        // Discovery events
-        $discoveryEvents = $this->discoveryEngine->discoverForUser($user, $discoveryCount);
+        $recommendedIds = $recommended->pluck('id')->toArray();
+
+        // Discovery events, excluding what was just recommended so the same
+        // event cannot occupy both sections of the dashboard.
+        $discoveryEvents = $this->discoveryEngine->discoverForUser(
+            $user,
+            $discoveryCount,
+            $recommendedIds,
+        );
 
         // Average score of recommended set
-        $recommendedIds = $recommended->pluck('id')->toArray();
         $totalScore = $scored
             ->whereIn('event.id', $recommendedIds)
             ->avg('score') ?? 0.0;
@@ -169,14 +182,19 @@ class RecommendationEngine
     /**
      * 1.0 when user and event share the same city, 0.3 otherwise.
      * If the user has no city set, default to 0.5 (neutral).
+     *
+     * Compared on the normalised slug so scoring agrees with the candidate
+     * filter in recommend() about diacritics as well as case.
      */
     public function locationMatch(User $user, Event $event): float
     {
-        if (! $user->city) {
+        $userCitySlug = EventTextNormalizer::citySlug($user->city);
+
+        if ($userCitySlug === null) {
             return 0.5;
         }
 
-        return mb_strtolower($user->city) === mb_strtolower((string) $event->city)
+        return $userCitySlug === EventTextNormalizer::citySlug($event->city)
             ? 1.0
             : 0.3;
     }
@@ -234,13 +252,26 @@ class RecommendationEngine
     }
 
     /**
-     * Normalised popularity: event popularity_score mapped to 0–1,
-     * assuming a practical ceiling of 100.
+     * Normalised popularity, 0–1, blending what the source claimed with what
+     * our users actually did.
+     *
+     * `popularity_score` is scraped attendance plus the admin feature boost —
+     * it says an event looked popular somewhere else. `engagement_score` is
+     * rolled up from our own activity log: clicks, views, saves and reactions
+     * from real people here. Neither alone is right. Scraped-only ranks on a
+     * number no user of ours produced; engagement-only buries every event that
+     * is simply too new to have been clicked yet.
+     *
+     * `recommendation.popularity_blend` controls the mix and can be set to 0.0
+     * to restore the scraped-only behaviour without a deploy.
      */
     public function popularitySignal(Event $event): float
     {
-        $score = $event->popularity_score ?? 0;
+        $blend = max(0.0, min(1.0, (float) config('eventpulse.recommendation.popularity_blend', 0.5)));
 
-        return max(0.0, min(1.0, $score / 100.0));
+        $scraped = max(0.0, min(1.0, ($event->popularity_score ?? 0) / 100.0));
+        $behavioural = max(0.0, min(1.0, ($event->engagement_score ?? 0) / 100.0));
+
+        return ($scraped * (1.0 - $blend)) + ($behavioural * $blend);
     }
 }

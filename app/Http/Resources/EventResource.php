@@ -39,6 +39,11 @@ class EventResource extends JsonResource
             'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
+            // What the UI should actually link to. Goes through our redirect so
+            // the click is recorded, then lands on source_url. Kept alongside
+            // source_url rather than replacing it so API consumers that only
+            // want the destination still have it.
+            'click_url' => route('events.go', ['event' => $this->id]),
             'sources_count' => $this->sources_count,
             // Deduplicated by URL: event_sources is unique on
             // (source, url_key, occurrence_key), and merging two occurrences of
