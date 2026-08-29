@@ -6,6 +6,7 @@ use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
+use App\Models\EventSource;
 use App\Models\Notification;
 use App\Models\User;
 use App\Models\UserActivityLog;
@@ -176,4 +177,43 @@ it('survives array-shaped query params on the public redirect', function () {
         ->assertRedirect('https://iabilet.ro/concert-x');
 
     expect(UserActivityLog::sole()->surface)->toBe(ActivitySurface::EventsIndex);
+});
+
+it('sends the click to the provider the reader picked', function () {
+    $event = Event::factory()->create(['source_url' => 'https://iabilet.ro/canonical']);
+    EventSource::factory()->forSource('allevents')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://allevents.in/concert-x',
+    ]);
+
+    // The detail page offers a button per provider that listed the event, so
+    // `s` says which was chosen.
+    $this->withHeaders(browserHeaders())
+        ->get("/go/{$event->id}?s=allevents")
+        ->assertRedirect('https://allevents.in/concert-x');
+
+    expect(UserActivityLog::sole()->context['source'])->toBe('allevents');
+});
+
+it('ignores a provider the event was never listed by', function () {
+    $event = Event::factory()->create(['source_url' => 'https://iabilet.ro/canonical']);
+    EventSource::factory()->forSource('allevents')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://allevents.in/concert-x',
+    ]);
+
+    // `s` selects among this event's own stored URLs — it never supplies one.
+    // Naming a provider that did not list this event falls back to the
+    // canonical URL rather than trusting the caller.
+    $this->withHeaders(browserHeaders())
+        ->get("/go/{$event->id}?s=evil-source")
+        ->assertRedirect('https://iabilet.ro/canonical');
+});
+
+it('ignores an array-shaped provider selection', function () {
+    $event = Event::factory()->create(['source_url' => 'https://iabilet.ro/canonical']);
+
+    $this->withHeaders(browserHeaders())
+        ->get("/go/{$event->id}?s[]=a&s[]=b")
+        ->assertRedirect('https://iabilet.ro/canonical');
 });

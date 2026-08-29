@@ -9,13 +9,18 @@ use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
+use App\Models\Notification;
 use App\Services\Activity\ActivityLogger;
+use App\Services\Events\IcsGenerator;
+use App\Services\Recommendation\RelatedEventFinder;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class EventController extends Controller
 {
@@ -34,6 +39,8 @@ class EventController extends Controller
     private array $appliedFilters = [];
 
     public function __construct(
+        private readonly RelatedEventFinder $relatedEventFinder,
+        private readonly IcsGenerator $icsGenerator,
         private readonly ActivityLogger $activity,
     ) {}
 
@@ -51,27 +58,100 @@ class EventController extends Controller
 
     public function show(Request $request, Event $event): Response
     {
+        return Inertia::render('Events/Show', $this->detailProps($request, $event, ActivitySurface::EventDetail));
+    }
+
+    /**
+     * Download the event as an iCalendar file.
+     *
+     * Web-only by design: an .ics download is a browser affordance, and the API
+     * clients consume `starts_at`/`ends_at` from the resource directly.
+     */
+    public function calendar(Request $request, Event $event): HttpResponse
+    {
         $event = $event->resolveCanonical();
 
         abort_if($event->is_hidden, 404);
 
+        // Scrapers store events whose date they could not parse. Handing one to
+        // a calendar would silently book a two-hour slot starting whenever the
+        // button was pressed, which reads as a real commitment.
+        abort_if($event->starts_at === null, 404);
+
+        return response($this->icsGenerator->generate($event), 200, [
+            'Content-Type' => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="'.$this->icsGenerator->filename($event).'"',
+        ]);
+    }
+
+    /**
+     * Props shared by the Inertia detail page and its API twin, so a change to
+     * one cannot silently leave the other behind.
+     *
+     * @return array{event: EventResource, relatedEvents: array<int, mixed>}
+     */
+    private function detailProps(Request $request, Event $event, ActivitySurface $surface): array
+    {
+        $event = $event->resolveCanonical();
+
+        abort_if($event->is_hidden, 404);
+
+        $user = $request->user();
+
+        // Logged here rather than in show()/apiShow() so the two entry points
+        // cannot drift: whichever one is called, the view is recorded against
+        // the canonical event and the surface its caller named. A `?from=` on
+        // the web page overrides that default — it is how a digest link
+        // identifies itself, now that the digest lands here rather than jumping
+        // straight to the ticket site.
         $this->activity->log(
             ActivityType::EventView,
-            ActivitySurface::EventDetail,
+            $surface === ActivitySurface::EventDetail
+                ? ActivitySurface::fromRequest($request->query('from'), ActivitySurface::EventDetail)
+                : $surface,
             eventId: $event->id,
-            user: $request->user(),
+            user: $user,
+            notificationId: $this->notificationIdFrom($request),
         );
 
-        if (($user = $request->user()) !== null) {
+        // `sources` is loaded for guests too — the detail page lists every
+        // provider that reported the event, not only the one it was scraped
+        // under.
+        $event->load(['sources' => fn ($query) => $query->orderBy('source')]);
+
+        if ($user !== null) {
             $event->load([
                 'reactions' => fn ($query) => $query->where('user_id', $user->id),
                 'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
             ]);
         }
 
-        return Inertia::render('Events/Show', [
+        return [
             'event' => new EventResource($event),
-        ]);
+            // `resolve()` flattens away the `data` envelope: this is a plain
+            // list, not a paginator, so the page consumes it as an array.
+            'relatedEvents' => EventResource::collection(
+                $this->relatedEventFinder->find($event, $user),
+            )->resolve(),
+        ];
+    }
+
+    /**
+     * The digest a tracked link came from, if `n` names a real one.
+     *
+     * Shape-checked before the lookup: notification ids are Postgres uuids, so
+     * querying one with arbitrary text raises rather than returning nothing,
+     * and this is a public route.
+     */
+    private function notificationIdFrom(Request $request): ?string
+    {
+        $id = $request->query('n');
+
+        if (! is_string($id) || ! Str::isUuid($id)) {
+            return null;
+        }
+
+        return Notification::whereKey($id)->value('id');
     }
 
     /**
@@ -229,24 +309,11 @@ class EventController extends Controller
 
     public function apiShow(Request $request, Event $event): JsonResponse
     {
-        $event = $event->resolveCanonical();
+        $props = $this->detailProps($request, $event, ActivitySurface::Api);
 
-        abort_if($event->is_hidden, 404);
-
-        $this->activity->log(
-            ActivityType::EventView,
-            ActivitySurface::Api,
-            eventId: $event->id,
-            user: $request->user(),
-        );
-
-        if (($user = $request->user()) !== null) {
-            $event->load([
-                'reactions' => fn ($query) => $query->where('user_id', $user->id),
-                'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
-            ]);
-        }
-
-        return (new EventResource($event))->response();
+        return response()->json([
+            'data' => $props['event']->resolve(),
+            'relatedEvents' => $props['relatedEvents'],
+        ]);
     }
 }

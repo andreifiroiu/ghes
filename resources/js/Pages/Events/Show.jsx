@@ -5,27 +5,41 @@ import { Button } from '@/Components/ui/Button';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
 import ReactionButtons from '@/Components/Events/ReactionButtons';
 import SaveButton from '@/Components/Events/SaveButton';
+import ShareButton from '@/Components/Events/ShareButton';
+import EventList from '@/Components/Events/EventList';
+import { formatPrice } from '@/lib/price';
+import { sourceLabel } from '@/lib/sources';
 
 /**
+ * Event detail page.
+ *
  * @param {Object} props
- * @param {Object} props.event
+ * @param {Object} props.event - Serialized by App\Http\Resources\EventResource
  * @param {string} props.event.id
  * @param {string} props.event.title
  * @param {string} [props.event.description]
  * @param {string} [props.event.image_url]
  * @param {string} [props.event.starts_at]
  * @param {string} [props.event.ends_at]
- * @param {string} [props.event.venue_name]
- * @param {string} [props.event.venue_address]
+ * @param {string} [props.event.venue]
+ * @param {string} [props.event.address]
+ * @param {string} [props.event.city]
+ * @param {number|null} [props.event.latitude]
+ * @param {number|null} [props.event.longitude]
  * @param {string} [props.event.category]
  * @param {Array<string>} [props.event.tags]
- * @param {string} [props.event.price]
+ * @param {number|null} [props.event.price_min]
+ * @param {number|null} [props.event.price_max]
+ * @param {boolean} [props.event.is_free]
+ * @param {string} [props.event.source]
  * @param {string} [props.event.source_url]
- * @param {string} [props.event.click_url] Tracked redirect to source_url; prefer this over source_url.
+ * @param {Array<{source: string, source_url: string}>} [props.event.sources]
+ * @param {string} [props.event.click_url] Tracked redirect; carries the click through to the ticket site.
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
+ * @param {Array<Object>} [props.relatedEvents]
  */
-export default function Show({ event }) {
+export default function Show({ event, relatedEvents = [] }) {
     const { auth } = usePage().props;
     const isGuest = !auth?.user;
 
@@ -41,9 +55,43 @@ export default function Show({ event }) {
         });
     };
 
+    const priceLabel = formatPrice(event);
+    const isGeocoded = event.latitude != null && event.longitude != null;
+
+    // Every provider that listed this event. Merged duplicates contribute one
+    // entry each, so a popular event offers a choice of ticket vendors. Falls
+    // back to the single scraped URL when the sources table has nothing.
+    const ticketLinks =
+        event.sources?.length > 0
+            ? event.sources
+            : event.source_url
+              ? [{ source: event.source, source_url: event.source_url }]
+              : [];
+
+    /**
+     * Route a ticket link through the tracked redirect so the click is
+     * recorded. `s` names which provider was chosen — the server resolves it
+     * against the event's own sources, so it selects a destination rather than
+     * supplying one. Falls back to the raw URL if the prop predates tracking.
+     *
+     * @param {{source: string, source_url: string}} link
+     */
+    const trackedTicketUrl = (link) =>
+        event.click_url
+            ? `${event.click_url}?from=event_detail&s=${encodeURIComponent(link.source)}`
+            : link.source_url;
+
     return (
         <AppLayout>
-            <Head title={event.title} />
+            <Head title={event.title}>
+                {event.description && (
+                    <meta
+                        head-key="description"
+                        name="description"
+                        content={event.description.slice(0, 160)}
+                    />
+                )}
+            </Head>
 
             <div className="mb-6">
                 <Link
@@ -55,6 +103,7 @@ export default function Show({ event }) {
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        aria-hidden="true"
                     >
                         <path
                             strokeLinecap="round"
@@ -85,6 +134,7 @@ export default function Show({ event }) {
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
+                                    aria-hidden="true"
                                 >
                                     <path
                                         strokeLinecap="round"
@@ -151,6 +201,7 @@ export default function Show({ event }) {
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -174,13 +225,14 @@ export default function Show({ event }) {
                             )}
 
                             {/* Venue */}
-                            {(event.venue_name || event.venue_address) && (
+                            {(event.venue || event.address || event.city) && (
                                 <div className="flex items-start gap-3">
                                     <svg
                                         className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0"
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -196,14 +248,19 @@ export default function Show({ event }) {
                                         />
                                     </svg>
                                     <div>
-                                        {event.venue_name && (
+                                        {event.venue && (
                                             <p className="text-sm font-medium text-gray-900">
-                                                {event.venue_name}
+                                                {event.venue}
                                             </p>
                                         )}
-                                        {event.venue_address && (
+                                        {event.address && (
                                             <p className="text-sm text-gray-500">
-                                                {event.venue_address}
+                                                {event.address}
+                                            </p>
+                                        )}
+                                        {event.city && (
+                                            <p className="text-sm text-gray-500">
+                                                {event.city}
                                             </p>
                                         )}
                                     </div>
@@ -211,13 +268,14 @@ export default function Show({ event }) {
                             )}
 
                             {/* Price */}
-                            {event.price && (
+                            {priceLabel && (
                                 <div className="flex items-start gap-3">
                                     <svg
                                         className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0"
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
+                                        aria-hidden="true"
                                     >
                                         <path
                                             strokeLinecap="round"
@@ -227,51 +285,125 @@ export default function Show({ event }) {
                                         />
                                     </svg>
                                     <p className="text-sm font-medium text-indigo-600">
-                                        {event.price}
+                                        {priceLabel}
                                     </p>
                                 </div>
                             )}
 
-                            {/* Source link */}
-                            {event.source_url && (
-                                <a
-                                    href={
-                                        event.click_url
-                                            ? `${event.click_url}?from=event_detail`
-                                            : event.source_url
-                                    }
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <Button variant="outline" className="w-full mt-2">
-                                        Vezi sursa originală
-                                    </Button>
-                                </a>
+                            {/* Ticket links — one per provider that listed this event */}
+                            {ticketLinks.length > 0 && (
+                                <div className="pt-2 space-y-2">
+                                    {ticketLinks.length > 1 && (
+                                        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                                            Disponibil pe
+                                        </p>
+                                    )}
+                                    {ticketLinks.map((link) => (
+                                        <a
+                                            key={link.source_url}
+                                            href={trackedTicketUrl(link)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                        >
+                                            <Button
+                                                variant="outline"
+                                                className="w-full"
+                                            >
+                                                {ticketLinks.length > 1
+                                                    ? sourceLabel(link.source)
+                                                    : 'Vezi sursa originală'}
+                                            </Button>
+                                        </a>
+                                    ))}
+                                </div>
                             )}
+
+                            {/* Actions. The calendar download is offered only
+                                for a dated event — the route 404s otherwise,
+                                because a calendar entry invented from an
+                                unparsed date reads as a real commitment. */}
+                            <div className="space-y-2">
+                                {event.starts_at ? (
+                                    <a
+                                        href={`/events/${event.id}/calendar.ics`}
+                                        className="block"
+                                    >
+                                        <Button variant="outline" className="w-full">
+                                            <svg
+                                                className="w-4 h-4 mr-2"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                                aria-hidden="true"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                                />
+                                            </svg>
+                                            Adaugă în calendar
+                                        </Button>
+                                    </a>
+                                ) : (
+                                    <p className="text-sm text-gray-500">
+                                        Data nu este confirmată.
+                                    </p>
+                                )}
+                                <ShareButton title={event.title} />
+                            </div>
                         </CardContent>
                     </Card>
 
-                    {/* Map placeholder — desktop only while it holds no map */}
+                    {/* Map — desktop only; the sidebar is already long on mobile */}
                     <Card className="hidden lg:block">
                         <CardContent className="p-0">
-                            <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-                                <div className="text-center">
-                                    <svg
-                                        className="w-10 h-10 mx-auto mb-2"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                            {isGeocoded ? (
+                                <div className="overflow-hidden rounded-lg">
+                                    <iframe
+                                        title={`Hartă: ${event.venue || event.title}`}
+                                        className="w-full aspect-square border-0"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer"
+                                        src={openStreetMapEmbed(
+                                            event.latitude,
+                                            event.longitude
+                                        )}
+                                    />
+                                    <a
+                                        href={`https://www.openstreetmap.org/?mlat=${event.latitude}&mlon=${event.longitude}#map=16/${event.latitude}/${event.longitude}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block px-4 py-3 text-sm text-indigo-600 hover:text-indigo-700"
                                     >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={1.5}
-                                            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                                        />
-                                    </svg>
-                                    <p className="text-sm">Hartă</p>
+                                        Vezi pe hartă
+                                    </a>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+                                    <div className="text-center">
+                                        <svg
+                                            className="w-10 h-10 mx-auto mb-2"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={1.5}
+                                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                                            />
+                                        </svg>
+                                        <p className="text-sm">
+                                            Locație neconfirmată
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -314,6 +446,41 @@ export default function Show({ event }) {
                     </Card>
                 </div>
             </div>
+
+            {/* Related events — omitted entirely when nothing scored */}
+            {relatedEvents.length > 0 && (
+                <section className="mt-12">
+                    <h2 className="text-xl font-bold text-gray-900 mb-6">
+                        Evenimente similare
+                    </h2>
+                    <EventList
+                        events={relatedEvents}
+                        showReactions={!isGuest}
+                    />
+                </section>
+            )}
         </AppLayout>
     );
+}
+
+/**
+ * OpenStreetMap's embeddable map, centred on a small bounding box around the
+ * point with a marker on it. Used instead of a mapping library so the page
+ * stays dependency-free — this is the app's only third-party embed.
+ *
+ * @param {number} latitude
+ * @param {number} longitude
+ * @returns {string}
+ */
+function openStreetMapEmbed(latitude, longitude) {
+    // Roughly a 500m box, which frames a venue without losing the street names.
+    const padding = 0.004;
+    const bbox = [
+        longitude - padding,
+        latitude - padding,
+        longitude + padding,
+        latitude + padding,
+    ].join(',');
+
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude},${longitude}`;
 }

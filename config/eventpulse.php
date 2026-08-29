@@ -52,6 +52,31 @@ return [
         // buried under one that has merely been around long enough to collect
         // clicks.
         'popularity_blend' => (float) env('EVENTPULSE_POPULARITY_BLEND', 0.5),
+
+        // Event-to-event similarity for the "related events" strip on the event
+        // detail page. Deliberately plain integer points rather than the
+        // normalised [0,1] weights above: nothing consumes the value except an
+        // ordering, so a readable scale beats a calibrated one.
+        'related' => [
+            'limit' => 6,
+            // Candidates pulled from the database before scoring in PHP.
+            'candidate_limit' => 100,
+            // Tags beyond this are dropped from the candidate query, to keep
+            // the OR chain bounded for an over-tagged event.
+            'max_tags_considered' => 10,
+            'points' => [
+                'category' => 3,
+                'tag' => 2,
+                // Cap on the total contributed by shared tags, so tag overlap
+                // cannot drown out every other signal.
+                'tag_cap' => 6,
+                'venue' => 2,
+                'city' => 1,
+                'date_proximity' => 1,
+            ],
+            // Days between the two start times for `date_proximity` to apply.
+            'date_proximity_days' => 14,
+        ],
     ],
     'experiments' => [
         // A/B variants for recommendation scoring weights. Each user is assigned

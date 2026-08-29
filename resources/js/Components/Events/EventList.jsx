@@ -5,13 +5,11 @@ import EventCard from '@/Components/Events/EventCard';
  * @param {Array<Object>} props.events
  * @param {string} [props.emptyMessage]
  * @param {boolean} [props.showReactions] - Off for guests, who cannot react
- * @param {string} [props.surface] - Where the list is rendered, recorded with outbound clicks
  */
 export default function EventList({
     events = [],
     emptyMessage = 'Niciun eveniment găsit.',
     showReactions = true,
-    surface = 'events_index',
 }) {
     if (events.length === 0) {
         return (
@@ -41,7 +39,6 @@ export default function EventList({
                     key={event.id}
                     event={event}
                     showReactions={showReactions}
-                    surface={surface}
                 />
             ))}
         </div>

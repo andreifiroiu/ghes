@@ -31,15 +31,40 @@ it('embeds the open pixel in the digest', function () {
     expect($html)->toContain(route('notifications.open', ['notification' => $this->notification->id], false));
 });
 
-it('links each card through the tracked redirect', function () {
+it('links each card to the event page in the app', function () {
     $html = $this->renderer->render($this->notification);
 
-    // The digest had no event links at all before tracking; this is the link
-    // that makes a digest click a thing that can happen.
-    expect($html)->toContain(route('events.go', ['event' => $this->event->id], false))
+    // The digest had no event links at all before this; it now lands on the
+    // event's own page — the map, the description and every ticket provider —
+    // which is also where a card click lands in the app. `from` and `n` label
+    // the resulting view so the digest keeps its attribution.
+    expect($html)->toContain(route('events.show', ['event' => $this->event->id], false))
         ->and($html)->toContain('from=digest')
         ->and($html)->toContain("n={$this->notification->id}")
         ->and($html)->toContain('Vezi detalii');
+});
+
+it('attributes a view arriving from the digest to the digest', function () {
+    $this->withoutVite();
+
+    $this->withHeaders(browserHeaders())
+        ->get("/events/{$this->event->id}?from=digest&n={$this->notification->id}")
+        ->assertOk();
+
+    $log = UserActivityLog::ofType(ActivityType::EventView)->sole();
+
+    expect($log->surface)->toBe(ActivitySurface::Digest)
+        ->and($log->notification_id)->toBe($this->notification->id);
+});
+
+it('ignores a junk notification id on the event page', function () {
+    $this->withoutVite();
+
+    $this->withHeaders(browserHeaders())
+        ->get("/events/{$this->event->id}?from=digest&n=not-a-uuid")
+        ->assertOk();
+
+    expect(UserActivityLog::ofType(ActivityType::EventView)->sole()->notification_id)->toBeNull();
 });
 
 it('carries the notification id inside the signed reaction urls', function () {

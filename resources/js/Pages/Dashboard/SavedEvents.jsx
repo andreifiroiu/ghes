@@ -11,7 +11,6 @@ export default function SavedEvents({ events = [] }) {
         <AppLayout title="Evenimente salvate">
             <Head title="Evenimente salvate" />
             <EventList
-                surface="dashboard"
                 events={events}
                 emptyMessage="Nu ai salvat niciun eveniment. Răsfoiește evenimentele și adaugă-le la favorite pe cele care îți plac."
             />

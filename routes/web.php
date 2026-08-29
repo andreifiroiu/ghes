@@ -65,6 +65,9 @@ Route::get('events/{event}', [EventController::class, 'show'])
     ->whereUuid('event')
     ->middleware('throttle:120,1')
     ->name('events.show');
+Route::get('events/{event}/calendar.ics', [EventController::class, 'calendar'])
+    ->whereUuid('event')
+    ->name('events.calendar');
 
 // Auth (guest only)
 Route::middleware('guest')->group(function () {

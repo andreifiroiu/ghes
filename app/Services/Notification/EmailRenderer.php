@@ -45,10 +45,13 @@ class EmailRenderer
                     'not_interested' => URL::temporarySignedRoute('reactions.email', $expiry, $params('not_interested')),
                     'saved' => URL::temporarySignedRoute('reactions.email', $expiry, $params('saved')),
                 ],
-                // Unsigned on purpose: this is a public redirect to the event's
-                // own source, carrying no authority. Signing it would only make
-                // the link expire.
-                'click_url' => route('events.go', [
+                // The event's own page, not a jump straight to the ticket site:
+                // it carries the map, the full description and every provider
+                // selling tickets, and it is where a card click lands in the app
+                // — a digest that skipped it would be the one inconsistent
+                // surface. Unsigned on purpose, since it is public and carries
+                // no authority; `from` and `n` only label the resulting view.
+                'click_url' => route('events.show', [
                     'event' => $event->id,
                     'from' => 'digest',
                     'n' => $notification->id,

@@ -7,7 +7,8 @@ Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 Până acum, e-mailul cu recomandări îți spunea ce se întâmplă, dar nu aveai cum să
 ajungi la eveniment din el: titlurile erau simplu text, iar singurele butoane erau
 cele de reacție. Acum fiecare eveniment din e-mail are un link „Vezi detalii" care
-te duce direct la pagina unde poți lua bilet sau afla mai multe.
+te duce la pagina lui din Ghes, cu harta, descrierea completă și toate site-urile
+de unde poți lua bilete.
 
 ## 2026-08-29 — Îmbunătățit — Recomandările învață și din evenimentele pe care le deschizi (#16)
 
@@ -16,6 +17,19 @@ Până acum, Ghes se lua doar după reacțiile tale explicite — „mă interes
 detaliile: e un semn mai slab decât o reacție, dar tot îți spune ceva despre gusturi,
 așa că profilul tău se reglează și din el. În plus, evenimentele pe care lumea chiar
 le deschide urcă în recomandări, nu doar cele care păreau populare la sursă.
+## 2026-08-29 — Nou — Fiecare eveniment are acum pagina lui în Ghes (#15)
+
+Când dai clic pe un eveniment ajungi la pagina lui din Ghes, nu direct pe site-ul de
+bilete. Găsești acolo locul și adresa, prețul, o hartă cu punctul exact, descrierea
+completă și toate site-urile de unde poți lua bilete — nu doar unul. Poți adăuga
+evenimentul în calendarul tău sau trimite linkul mai departe, iar jos vezi evenimente
+similare, ca să nu te oprești la primul.
+
+## 2026-08-29 — Rezolvat — Locul și prețul apar acum pe pagina unui eveniment (#15)
+
+Pe pagina unui eveniment, locul de desfășurare, adresa și prețul lipseau cu totul —
+rămâneau goale oricare ar fi fost evenimentul. Acum apar acolo unde le aștepți,
+inclusiv intervalul de preț când biletele costă diferit.
 
 ## 2026-08-29 — Îmbunătățit — Reacțiile tale reglează acum și sursele de evenimente (#13)
 
