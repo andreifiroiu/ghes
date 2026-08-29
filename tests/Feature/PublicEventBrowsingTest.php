@@ -138,3 +138,24 @@ it('keeps the weekend in progress rather than skipping to the next one', functio
 it('does not let an event id shadow the saved-events route', function () {
     $this->get('/events/saved')->assertRedirect(route('login'));
 });
+
+it('paginates the events list at the configured page size', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    Event::factory()->count(3)->create(['starts_at' => now()->addDay()]);
+
+    $this->get('/events')
+        ->assertStatus(200)
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 2)
+            ->where('events.meta.per_page', 2));
+});
+
+it('paginates the events api at the configured page size', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    Event::factory()->count(3)->create(['starts_at' => now()->addDay()]);
+
+    $this->actingAs(User::factory()->create())->getJson('/api/events')
+        ->assertStatus(200)
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.per_page', 2);
+});

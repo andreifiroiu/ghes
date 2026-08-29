@@ -83,3 +83,13 @@ it('cannot delete itself', function () {
 
     expect(User::find($this->admin->id))->not->toBeNull();
 });
+
+it('paginates the admin users list at the configured page size', function () {
+    config(['eventpulse.pagination.admin_users' => 2]);
+    User::factory()->count(3)->create();
+
+    $this->actingAs($this->admin)->get('/admin/users')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('users.data', 2)
+            ->where('users.meta.per_page', 2));
+});

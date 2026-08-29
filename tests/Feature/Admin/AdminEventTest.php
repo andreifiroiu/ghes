@@ -162,3 +162,13 @@ it('offers every source that produced an event as a filter option', function () 
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('sources', ['allevents', 'iabilet']));
 });
+
+it('paginates the admin events list at the configured page size', function () {
+    config(['eventpulse.pagination.admin_events' => 2]);
+    Event::factory()->count(3)->create();
+
+    $this->actingAs($this->admin)->get('/admin/events')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 2)
+            ->where('events.meta.per_page', 2));
+});

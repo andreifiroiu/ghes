@@ -68,7 +68,7 @@ class EventController extends Controller
 
         [$sort, $direction] = $this->sortFor($request);
 
-        $events = $query->orderBy($sort, $direction)->paginate(20)->withQueryString();
+        $events = $query->orderBy($sort, $direction)->paginate((int) config('eventpulse.pagination.admin_events', 20))->withQueryString();
 
         return Inertia::render('Admin/Events/Index', [
             'events' => AdminEventResource::collection($events),
