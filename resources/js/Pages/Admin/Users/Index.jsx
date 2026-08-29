@@ -31,14 +31,14 @@ export default function UsersIndex({ users, filters = {} }) {
         <AdminLayout title="Users">
             <Head title="Admin — Users" />
 
-            <form onSubmit={submit} className="flex gap-2 mb-4">
+            <form onSubmit={submit} className="flex flex-wrap gap-2 mb-4">
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or email…" className="max-w-xs" />
                 <Button type="submit">Search</Button>
             </form>
 
             <Card>
                 <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[560px] text-sm">
                         <thead className="bg-gray-50 text-left text-gray-500">
                             <tr>
                                 <th className="px-4 py-2">Name</th>
@@ -60,7 +60,7 @@ export default function UsersIndex({ users, filters = {} }) {
                                     <td className="px-4 py-2">{user.reactions_count ?? 0}</td>
                                     <td className="px-4 py-2 text-right space-x-3 whitespace-nowrap">
                                         <Link href={`/admin/users/${user.id}`} className="text-[#FF5733] hover:underline">View</Link>
-                                        <button onClick={() => destroy(user.id)} className="text-red-600 hover:underline">Delete</button>
+                                        <button onClick={() => destroy(user.id)} className="inline-flex min-h-11 items-center text-red-600 hover:underline sm:min-h-0">Delete</button>
                                     </td>
                                 </tr>
                             ))}

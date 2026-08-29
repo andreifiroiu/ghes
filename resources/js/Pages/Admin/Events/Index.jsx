@@ -65,7 +65,7 @@ export default function EventsIndex({ events, filters = {}, categories = [] }) {
 
             <Card>
                 <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[720px] text-sm">
                         <thead className="bg-gray-50 text-left text-gray-500">
                             <tr>
                                 <th className="px-4 py-2">Title</th>
@@ -92,12 +92,12 @@ export default function EventsIndex({ events, filters = {}, categories = [] }) {
                                     </td>
                                     <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                                         <Link href={`/admin/events/${event.id}/edit`} className="text-[#FF5733] hover:underline">Edit</Link>
-                                        <button onClick={() => post(`/admin/events/${event.id}/hide`)} className="text-gray-600 hover:underline">
+                                        <button onClick={() => post(`/admin/events/${event.id}/hide`)} className="inline-flex min-h-11 items-center text-gray-600 hover:underline sm:min-h-0">
                                             {event.is_hidden ? 'Unhide' : 'Hide'}
                                         </button>
-                                        <button onClick={() => post(`/admin/events/${event.id}/feature`)} className="text-gray-600 hover:underline">Boost</button>
-                                        <button onClick={() => reprocess(event.id, 'classify')} className="text-gray-600 hover:underline">Re-classify</button>
-                                        <button onClick={() => destroy(event.id)} className="text-red-600 hover:underline">Delete</button>
+                                        <button onClick={() => post(`/admin/events/${event.id}/feature`)} className="inline-flex min-h-11 items-center text-gray-600 hover:underline sm:min-h-0">Boost</button>
+                                        <button onClick={() => reprocess(event.id, 'classify')} className="inline-flex min-h-11 items-center text-gray-600 hover:underline sm:min-h-0">Re-classify</button>
+                                        <button onClick={() => destroy(event.id)} className="inline-flex min-h-11 items-center text-red-600 hover:underline sm:min-h-0">Delete</button>
                                     </td>
                                 </tr>
                             ))}

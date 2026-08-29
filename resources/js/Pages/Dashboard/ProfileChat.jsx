@@ -103,7 +103,7 @@ export default function ProfileChat({ messages: initialMessages = [] }) {
         <AppLayout title="Actualizează-ți preferințele">
             <Head title="Actualizează preferințele" />
 
-            <div className="max-w-2xl mx-auto flex flex-col h-[70vh] bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="max-w-2xl mx-auto flex flex-col h-[calc(100dvh-17rem)] min-h-[20rem] sm:h-[70vh] sm:min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <ChatWindow messages={messages} isTyping={isTyping} />
 
                 {profile && (
@@ -119,7 +119,7 @@ export default function ProfileChat({ messages: initialMessages = [] }) {
                     <p className="px-4 pb-2 text-sm text-red-600">{error}</p>
                 )}
 
-                <div className="border-t border-gray-200 bg-white p-4 space-y-3">
+                <div className="border-t border-gray-200 bg-white p-4 space-y-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4">
                     <form onSubmit={handleSubmit} className="flex items-center gap-2">
                         <Input
                             value={input}
@@ -127,7 +127,6 @@ export default function ProfileChat({ messages: initialMessages = [] }) {
                             placeholder="ex. „M-am apucat de ceramică” sau „nu mai vreau evenimente de networking”"
                             disabled={isSending || !!profile}
                             className="flex-1"
-                            autoFocus
                         />
                         <Button
                             type="submit"

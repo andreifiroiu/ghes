@@ -24,7 +24,7 @@ export default function ChatBubble({ role, content, timestamp }) {
                         : 'bg-gray-100 text-gray-900 rounded-bl-md'
                 )}
             >
-                <p className="whitespace-pre-wrap">{content}</p>
+                <p className="whitespace-pre-wrap break-words">{content}</p>
                 {timestamp && (
                     <p
                         className={cn(

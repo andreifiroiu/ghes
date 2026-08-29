@@ -125,7 +125,7 @@ export default function Profile({ user }) {
                                                 <button
                                                     type="button"
                                                     onClick={handleResendVerification}
-                                                    className="text-xs text-indigo-600 hover:underline"
+                                                    className="inline-flex min-h-11 items-center text-xs text-indigo-600 hover:underline sm:min-h-0"
                                                 >
                                                     Retrimite emailul
                                                 </button>
@@ -150,13 +150,13 @@ export default function Profile({ user }) {
                 <div className="lg:col-span-2 space-y-6">
                     {/* Category scores */}
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <CardTitle className="text-lg">
                                 Categorii de interes
                             </CardTitle>
                             <Link
                                 href="/profile/chat"
-                                className="text-sm font-medium text-[#FF5733] hover:underline"
+                                className="inline-flex min-h-11 items-center text-sm font-medium text-[#FF5733] hover:underline sm:min-h-0"
                             >
                                 Actualizează prin chat
                             </Link>
@@ -236,20 +236,29 @@ export default function Profile({ user }) {
                                     <p className="text-sm text-gray-500">
                                         Cât de deschis ești să primești evenimente în afara intereselor obișnuite.
                                     </p>
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-sm text-gray-400 shrink-0">Concentrat</span>
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+                                        <span className="hidden text-sm text-gray-400 shrink-0 sm:inline">
+                                            Concentrat
+                                        </span>
                                         <input
                                             type="range"
                                             min="0"
                                             max="100"
                                             step="5"
+                                            aria-label="Deschidere spre descoperire"
                                             value={Math.round(data.discovery_openness * 100)}
                                             onChange={(e) =>
                                                 setData('discovery_openness', parseInt(e.target.value) / 100)
                                             }
-                                            className="flex-1 accent-indigo-600"
+                                            className="w-full flex-1 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-gray-400 shrink-0">Aventuros</span>
+                                        <span className="hidden text-sm text-gray-400 shrink-0 sm:inline">
+                                            Aventuros
+                                        </span>
+                                        <div className="flex justify-between text-sm text-gray-400 sm:hidden">
+                                            <span>Concentrat</span>
+                                            <span>Aventuros</span>
+                                        </div>
                                     </div>
                                     <p className="text-center text-sm font-medium text-gray-700">
                                         {Math.round(data.discovery_openness * 100)}%

@@ -34,8 +34,9 @@ const SOURCE_LABELS = {
  * @param {string} [props.event.source_url]
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
+ * @param {boolean} [props.showReactions] - Off for guests, who cannot react or save
  */
-export default function EventCard({ event }) {
+export default function EventCard({ event, showReactions = true }) {
     const formattedDate = event.starts_at
         ? new Date(event.starts_at).toLocaleDateString(undefined, {
               weekday: 'short',
@@ -120,15 +121,17 @@ export default function EventCard({ event }) {
                     )}
                 </CardContent>
             </a>
-            <div className="px-4 pb-4 mt-auto flex items-center gap-2">
-                <ReactionButtons
-                    eventId={event.id}
-                    currentReaction={event.current_reaction}
-                />
-                <div className="ml-auto">
-                    <SaveButton eventId={event.id} isSaved={event.is_saved} />
+            {showReactions && (
+                <div className="px-4 pb-4 mt-auto flex items-center gap-2">
+                    <ReactionButtons
+                        eventId={event.id}
+                        currentReaction={event.current_reaction}
+                    />
+                    <div className="ml-auto">
+                        <SaveButton eventId={event.id} isSaved={event.is_saved} />
+                    </div>
                 </div>
-            </div>
+            )}
         </Card>
     );
 }

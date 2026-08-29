@@ -19,7 +19,7 @@ export default function Login() {
         <>
             <Head title="Intră în cont — Ghes" />
             <div
-                className="min-h-screen flex flex-col items-center justify-center px-4"
+                className="min-h-[100dvh] flex flex-col items-center justify-center px-4 py-8"
                 style={{ backgroundColor: '#0A1128' }}
             >
                 <Link href="/" className="mb-8">
@@ -89,7 +89,7 @@ export default function Login() {
                             </div>
                             <a
                                 href="/auth/google/redirect"
-                                className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                className="w-full inline-flex min-h-11 sm:min-h-10 items-center justify-center gap-2 rounded-md border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                             >
                                 <img src="https://www.google.com/favicon.ico" alt="" className="h-4 w-4" />
                                 Continuă cu Google

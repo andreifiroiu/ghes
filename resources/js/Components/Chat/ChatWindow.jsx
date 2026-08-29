@@ -11,11 +11,13 @@ export default function ChatWindow({ messages = [], isTyping = false }) {
     const bottomRef = useRef(null);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        // `block: 'nearest'` keeps this inside the message list; without it the
+        // whole document scrolls on mobile every time a message arrives.
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, [messages, isTyping]);
 
     return (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
             {messages.length === 0 && (
                 <div className="flex items-center justify-center h-full text-gray-400 text-sm">
                     Începe o conversație pentru a-ți configura preferințele.

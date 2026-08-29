@@ -39,7 +39,7 @@ export default function Scrapers({ runs, cities = [], adapters = {} }) {
             <Card className="mb-6 max-w-2xl">
                 <CardHeader><CardTitle className="text-lg">Run scrapers</CardTitle></CardHeader>
                 <CardContent>
-                    <form onSubmit={run} className="flex flex-wrap gap-2 items-end">
+                    <form onSubmit={run} className="flex flex-wrap gap-2 items-end [&>div]:w-full [&>div]:sm:w-auto">
                         <div>
                             <Select value={city} onChange={(e) => handleCityChange(e.target.value)}>
                                 <option value="">All cities</option>
@@ -63,7 +63,7 @@ export default function Scrapers({ runs, cities = [], adapters = {} }) {
 
             <Card>
                 <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[560px] text-sm">
                         <thead className="bg-gray-50 text-left text-gray-500">
                             <tr>
                                 <th className="px-4 py-2">Source</th>

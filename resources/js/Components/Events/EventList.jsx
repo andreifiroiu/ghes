@@ -4,10 +4,12 @@ import EventCard from '@/Components/Events/EventCard';
  * @param {Object} props
  * @param {Array<Object>} props.events
  * @param {string} [props.emptyMessage]
+ * @param {boolean} [props.showReactions] - Off for guests, who cannot react
  */
 export default function EventList({
     events = [],
     emptyMessage = 'Niciun eveniment găsit.',
+    showReactions = true,
 }) {
     if (events.length === 0) {
         return (
@@ -33,7 +35,11 @@ export default function EventList({
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {events.map((event) => (
-                <EventCard key={event.id} event={event} />
+                <EventCard
+                    key={event.id}
+                    event={event}
+                    showReactions={showReactions}
+                />
             ))}
         </div>
     );

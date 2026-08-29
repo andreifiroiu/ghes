@@ -34,6 +34,15 @@ Route::post('reactions/{user}/{event}/{reaction}', [EmailReactionController::cla
     ->name('reactions.email.confirm')
     ->middleware('signed');
 
+// Public, read-only event browsing. The landing page sends guests here, so they
+// can see real events before signing up; reacting and saving stay authenticated.
+// `{event}` is constrained to a UUID so this cannot shadow `events/saved`,
+// which is declared later inside the auth group.
+Route::get('events', [EventController::class, 'index'])->name('events.index');
+Route::get('events/{event}', [EventController::class, 'show'])
+    ->whereUuid('event')
+    ->name('events.show');
+
 // Auth (guest only)
 Route::middleware('guest')->group(function () {
     Route::get('register', [RegisterController::class, 'create'])->name('register');
@@ -58,10 +67,8 @@ Route::middleware('auth')->group(function () {
     // Dashboard / Recommendations
     Route::get('dashboard', [RecommendationController::class, 'index'])->name('dashboard');
 
-    // Events
-    Route::get('events', [EventController::class, 'index'])->name('events.index');
+    // Events (browsing is public — see above; saved events are per-user)
     Route::get('events/saved', [BookmarkController::class, 'index'])->name('events.saved');
-    Route::get('events/{event}', [EventController::class, 'show'])->name('events.show');
 
     // Feedback (JSON response)
     Route::post('feedback', [FeedbackController::class, 'store'])->name('feedback.store');

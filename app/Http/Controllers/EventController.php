@@ -22,7 +22,7 @@ class EventController extends Controller
 
         return Inertia::render('Events/Index', [
             'events' => EventResource::collection($events),
-            'filters' => $request->only(['search', 'category', 'city', 'date']),
+            'filters' => $request->only(['search', 'category', 'city', 'date', 'range']),
         ]);
     }
 
@@ -32,10 +32,12 @@ class EventController extends Controller
 
         abort_if($event->is_hidden, 404);
 
-        $event->load([
-            'reactions' => fn ($query) => $query->where('user_id', $request->user()->id),
-            'bookmarks' => fn ($query) => $query->where('user_id', $request->user()->id),
-        ]);
+        if (($user = $request->user()) !== null) {
+            $event->load([
+                'reactions' => fn ($query) => $query->where('user_id', $user->id),
+                'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
+            ]);
+        }
 
         return Inertia::render('Events/Show', [
             'event' => new EventResource($event),
@@ -55,8 +57,14 @@ class EventController extends Controller
         $query = Event::upcoming()
             ->visible()
             ->canonical()
-            ->withUserContext($user)
             ->orderBy('starts_at', 'asc');
+
+        // Guests browse the same list read-only. `withUserContext()` takes a
+        // non-nullable User, and a guest has no reaction or bookmark state to
+        // load anyway.
+        if ($user !== null) {
+            $query->withUserContext($user);
+        }
 
         if ($request->filled('search')) {
             $searchIds = Event::search($request->string('search')->toString())->keys();
@@ -86,13 +94,42 @@ class EventController extends Controller
             }
         }
 
-        $dismissedEventIds = $user->reactions()
-            ->where('reaction', Reaction::NotInterested)
-            ->pluck('event_id');
+        if ($request->string('range')->toString() === 'weekend') {
+            [$start, $end] = $this->weekendRange();
 
-        $query->whereNotIn('id', $dismissedEventIds);
+            $query->whereBetween('starts_at', [$start, $end]);
+        }
+
+        if ($user !== null) {
+            $dismissedEventIds = $user->reactions()
+                ->where('reaction', Reaction::NotInterested)
+                ->pluck('event_id');
+
+            $query->whereNotIn('id', $dismissedEventIds);
+        }
 
         return $query;
+    }
+
+    /**
+     * The upcoming weekend in the city's timezone, as a UTC range. During a
+     * weekend it means the one in progress, not the next one.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function weekendRange(): array
+    {
+        $now = Carbon::now($this->cityTimezone());
+
+        $start = $now->isSaturday() || $now->isSunday()
+            ? $now->copy()->startOfDay()
+            : $now->copy()->next(Carbon::SATURDAY)->startOfDay();
+
+        $end = $now->isSunday()
+            ? $start->copy()->endOfDay()
+            : $start->copy()->addDay()->endOfDay();
+
+        return [$start->utc(), $end->utc()];
     }
 
     /**
@@ -145,10 +182,12 @@ class EventController extends Controller
 
         abort_if($event->is_hidden, 404);
 
-        $event->load([
-            'reactions' => fn ($query) => $query->where('user_id', $request->user()->id),
-            'bookmarks' => fn ($query) => $query->where('user_id', $request->user()->id),
-        ]);
+        if (($user = $request->user()) !== null) {
+            $event->load([
+                'reactions' => fn ($query) => $query->where('user_id', $user->id),
+                'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
+            ]);
+        }
 
         return (new EventResource($event))->response();
     }

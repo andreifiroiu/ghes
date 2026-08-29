@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import EventList from '@/Components/Events/EventList';
 import { Input } from '@/Components/ui/Input';
@@ -18,6 +18,8 @@ import { CATEGORIES } from '@/lib/categories';
  * @param {string} [props.filters.date]
  */
 export default function Index({ events = {}, filters = {} }) {
+    const { auth } = usePage().props;
+    const isGuest = !auth?.user;
     const eventData = events.data || events;
     const [search, setSearch] = useState(filters.search || '');
     const activeCategory = filters.category || null;
@@ -60,6 +62,22 @@ export default function Index({ events = {}, filters = {} }) {
         <AppLayout title="Evenimente">
             <Head title="Evenimente" />
 
+            {/* Guests see the same list read-only — nudge them toward a profile */}
+            {isGuest && (
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[#FF5733]/20 bg-[#FF5733]/5 px-5 py-4">
+                    <p className="text-sm text-gray-700">
+                        Vezi tot ce se întâmplă în oraș. Cu un cont, lista se rescrie
+                        după gusturile tale.
+                    </p>
+                    <Link
+                        href="/register"
+                        className="inline-flex min-h-11 items-center whitespace-nowrap rounded-full bg-[#FF5733] px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 sm:min-h-0"
+                    >
+                        Înregistrează-te
+                    </Link>
+                </div>
+            )}
+
             {/* Search bar */}
             <form onSubmit={handleSearch} className="mb-4">
                 <div className="flex gap-2">
@@ -84,13 +102,14 @@ export default function Index({ events = {}, filters = {} }) {
                     min={today}
                     value={activeDate}
                     onChange={(e) => handleDateChange(e.target.value)}
-                    className="w-auto"
+                    className="w-full sm:w-auto"
                 />
                 {activeDate && (
                     <Button
                         type="button"
                         variant="ghost"
                         size="sm"
+                        className="min-h-11 sm:min-h-0"
                         onClick={() => handleDateChange(null)}
                     >
                         Toate datele
@@ -105,7 +124,7 @@ export default function Index({ events = {}, filters = {} }) {
                         key={value}
                         onClick={() => handleCategoryFilter(value)}
                         className={cn(
-                            'inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+                            'inline-flex min-h-11 items-center rounded-full px-4 py-1.5 text-sm font-medium transition-colors sm:min-h-0',
                             activeCategory === value
                                 ? 'bg-indigo-600 text-white'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -120,6 +139,7 @@ export default function Index({ events = {}, filters = {} }) {
             <EventList
                 events={Array.isArray(eventData) ? eventData : []}
                 emptyMessage="Niciun eveniment nu corespunde căutării. Încearcă alte cuvinte cheie sau filtre."
+                showReactions={!isGuest}
             />
 
             {/* Pagination */}
@@ -128,6 +148,7 @@ export default function Index({ events = {}, filters = {} }) {
                     <Button
                         variant="outline"
                         size="sm"
+                        className="min-h-11 sm:min-h-0"
                         disabled={!events.links?.prev}
                         onClick={() => handlePageChange(events.links?.prev)}
                     >
@@ -139,6 +160,7 @@ export default function Index({ events = {}, filters = {} }) {
                     <Button
                         variant="outline"
                         size="sm"
+                        className="min-h-11 sm:min-h-0"
                         disabled={!events.links?.next}
                         onClick={() => handlePageChange(events.links?.next)}
                     >
