@@ -7,15 +7,23 @@ namespace App\Http\Controllers;
 use App\Enums\Reaction;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
+use App\Services\Events\IcsGenerator;
+use App\Services\Recommendation\RelatedEventFinder;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class EventController extends Controller
 {
+    public function __construct(
+        private readonly RelatedEventFinder $relatedEventFinder,
+        private readonly IcsGenerator $icsGenerator,
+    ) {}
+
     public function index(Request $request): Response
     {
         $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
@@ -28,20 +36,66 @@ class EventController extends Controller
 
     public function show(Request $request, Event $event): Response
     {
+        return Inertia::render('Events/Show', $this->detailProps($request, $event));
+    }
+
+    /**
+     * Download the event as an iCalendar file.
+     *
+     * Web-only by design: an .ics download is a browser affordance, and the API
+     * clients consume `starts_at`/`ends_at` from the resource directly.
+     */
+    public function calendar(Request $request, Event $event): HttpResponse
+    {
         $event = $this->resolveCanonical($event);
 
         abort_if($event->is_hidden, 404);
 
-        if (($user = $request->user()) !== null) {
+        // Scrapers store events whose date they could not parse. Handing one to
+        // a calendar would silently book a two-hour slot starting whenever the
+        // button was pressed, which reads as a real commitment.
+        abort_if($event->starts_at === null, 404);
+
+        return response($this->icsGenerator->generate($event), 200, [
+            'Content-Type' => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="'.$this->icsGenerator->filename($event).'"',
+        ]);
+    }
+
+    /**
+     * Props shared by the Inertia detail page and its API twin, so a change to
+     * one cannot silently leave the other behind.
+     *
+     * @return array{event: EventResource, relatedEvents: array<int, mixed>}
+     */
+    private function detailProps(Request $request, Event $event): array
+    {
+        $event = $this->resolveCanonical($event);
+
+        abort_if($event->is_hidden, 404);
+
+        $user = $request->user();
+
+        // `sources` is loaded for guests too — the detail page lists every
+        // provider that reported the event, not only the one it was scraped
+        // under.
+        $event->load(['sources' => fn ($query) => $query->orderBy('source')]);
+
+        if ($user !== null) {
             $event->load([
                 'reactions' => fn ($query) => $query->where('user_id', $user->id),
                 'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
             ]);
         }
 
-        return Inertia::render('Events/Show', [
+        return [
             'event' => new EventResource($event),
-        ]);
+            // `resolve()` flattens away the `data` envelope: this is a plain
+            // list, not a paginator, so the page consumes it as an array.
+            'relatedEvents' => EventResource::collection(
+                $this->relatedEventFinder->find($event, $user),
+            )->resolve(),
+        ];
     }
 
     /**
@@ -178,17 +232,11 @@ class EventController extends Controller
 
     public function apiShow(Request $request, Event $event): JsonResponse
     {
-        $event = $this->resolveCanonical($event);
+        $props = $this->detailProps($request, $event);
 
-        abort_if($event->is_hidden, 404);
-
-        if (($user = $request->user()) !== null) {
-            $event->load([
-                'reactions' => fn ($query) => $query->where('user_id', $user->id),
-                'bookmarks' => fn ($query) => $query->where('user_id', $user->id),
-            ]);
-        }
-
-        return (new EventResource($event))->response();
+        return response()->json([
+            'data' => $props['event']->resolve(),
+            'relatedEvents' => $props['relatedEvents'],
+        ]);
     }
 }
