@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Enums\Reaction;
+use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use App\Models\Notification;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class EventController extends Controller
 {
+    use ResolvesCity;
+
     /**
      * Filter keys recorded with a search, and echoed back to the page.
      *
@@ -264,38 +267,6 @@ class EventController extends Controller
         }
 
         return $query;
-    }
-
-    /**
-     * The upcoming weekend in the city's timezone, as a UTC range. During a
-     * weekend it means the one in progress, not the next one.
-     *
-     * @return array{0: Carbon, 1: Carbon}
-     */
-    private function weekendRange(): array
-    {
-        $now = Carbon::now($this->cityTimezone());
-
-        $start = $now->isSaturday() || $now->isSunday()
-            ? $now->copy()->startOfDay()
-            : $now->copy()->next(Carbon::SATURDAY)->startOfDay();
-
-        $end = $now->isSunday()
-            ? $start->copy()->endOfDay()
-            : $start->copy()->addDay()->endOfDay();
-
-        return [$start->utc(), $end->utc()];
-    }
-
-    /**
-     * Resolve the timezone used to interpret a user-selected calendar date,
-     * defaulting to the configured default city's timezone.
-     */
-    private function cityTimezone(): string
-    {
-        $city = (string) config('eventpulse.default_city');
-
-        return (string) config("eventpulse.cities.{$city}.timezone", config('app.timezone'));
     }
 
     public function apiIndex(Request $request): JsonResponse

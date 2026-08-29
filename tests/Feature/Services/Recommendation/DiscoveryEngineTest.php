@@ -430,3 +430,39 @@ it('surfaces a trending event once enough distinct users engage', function () {
 
     expect($discoveries->pluck('id'))->toContain($trending->id);
 });
+
+// ---------------------------------------------------------------
+// City matching – normalised on the slug, not the raw label
+// ---------------------------------------------------------------
+
+it('discovers events whose city label differs from the user city only by diacritics', function () {
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+    ]);
+
+    Event::factory()->count(5)->create([
+        'category' => EventCategory::Arts,
+        'city' => 'Timișoara',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    expect($this->engine->discoverForUser($user, 2))->not->toBeEmpty();
+});
+
+it('does not discover events from a genuinely different city', function () {
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+    ]);
+
+    Event::factory()->count(5)->create([
+        'category' => EventCategory::Arts,
+        'city' => 'Cluj-Napoca',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    expect($this->engine->discoverForUser($user, 2))->toBeEmpty();
+});
