@@ -2,6 +2,15 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Rezolvat — Recomandările țin din nou cont mai mult de ce te interesează acum (#7)
+
+Profilul tău de interese ar fi trebuit să se împrospăteze săptămânal, așa încât ce
+ți-a plăcut acum câteva luni să cântărească mai puțin decât ce ți-a plăcut zilele
+astea. Împrospătarea nu a apucat niciodată să ruleze — se oprea cu o eroare înainte
+să schimbe ceva — așa că interesele vechi rămâneau la fel de puternice ca cele noi.
+Acum funcționează, iar recomandările tale ar trebui să urmărească mai îndeaproape ce
+îți place în ultima vreme.
+
 ## 2026-08-29 — Nou — Poți salva un eveniment și să spui, separat, că te interesează (#6)
 
 Până acum butoanele se anulau între ele: dacă salvai un eveniment pe care îl

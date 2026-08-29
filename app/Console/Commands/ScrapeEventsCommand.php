@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\LogsConsoleOutput;
 use App\Services\Scraping\ScraperOrchestrator;
 use Illuminate\Console\Command;
 
 class ScrapeEventsCommand extends Command
 {
+    use LogsConsoleOutput;
+
     protected $signature = 'eventpulse:scrape
         {--city= : Run scrapers for a specific city key (default: all cities)}
         {--source= : Run a specific adapter key within the city (requires --city)}

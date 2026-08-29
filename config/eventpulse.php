@@ -19,6 +19,12 @@ use App\Services\Scraping\Adapters\ZileSiNoptiScraper;
 return [
     'admin_emails' => array_filter(explode(',', (string) env('EVENTPULSE_ADMIN_EMAILS', ''))),
 
+    'logging' => [
+        // Channel the artisan commands mirror their terminal output to.
+        // Empty falls back to the application's default log channel.
+        'console_channel' => env('EVENTPULSE_CONSOLE_LOG_CHANNEL'),
+    ],
+
     'recommendation' => [
         'weights' => [
             'category' => 0.30,
