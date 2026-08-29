@@ -55,3 +55,21 @@ it('handles mixed known and unknown tags', function () {
     $score = $this->scorer->calculateTagScore($profile, ['jazz', 'rock']);
     expect($score)->toBe(0.4);
 });
+
+it('calculates average source score across the reporting providers', function () {
+    $profile = [
+        'source:iabilet' => 0.9,
+        'source:allevents' => 0.5,
+        'source:meetup' => 0.1,
+    ];
+
+    $score = $this->scorer->calculateSourceScore($profile, ['iabilet', 'allevents']);
+    expect($score)->toEqualWithDelta(0.7, 0.0001);
+});
+
+it('returns zero source score for events with no known sources', function () {
+    $profile = ['source:iabilet' => 0.9];
+
+    expect($this->scorer->calculateSourceScore($profile, []))->toBe(0.0);
+    expect($this->scorer->calculateSourceScore($profile, ['unknown']))->toBe(0.0);
+});

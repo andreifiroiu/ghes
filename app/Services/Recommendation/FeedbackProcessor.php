@@ -53,7 +53,9 @@ class FeedbackProcessor
                 return;
             }
 
-            $fresh->loadMissing(['user', 'event']);
+            // event.sources, not just event: deltaKeysFor() credits every provider
+            // that reported it, and processUnprocessed() runs this in a loop.
+            $fresh->loadMissing(['user', 'event.sources']);
 
             $reactionValue = $fresh->reaction->value;
 
@@ -107,7 +109,7 @@ class FeedbackProcessor
                 return;
             }
 
-            $fresh->loadMissing(['user', 'event']);
+            $fresh->loadMissing(['user', 'event.sources']);
 
             $isDiscovery = DiscoveryLog::query()
                 ->where('user_id', $fresh->user_id)
@@ -299,7 +301,7 @@ class FeedbackProcessor
         $count = 0;
         $hadDiscovery = false;
 
-        foreach (Event::whereIn('id', $ignoredEventIds)->get() as $event) {
+        foreach (Event::whereIn('id', $ignoredEventIds)->with('sources')->get() as $event) {
             $discoveryLog = DiscoveryLog::query()
                 ->where('user_id', $user->id)
                 ->where('event_id', $event->id)

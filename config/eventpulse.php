@@ -26,14 +26,21 @@ return [
     ],
 
     'recommendation' => [
+        // Must sum to 1.0 — scoreEvent() is a plain weighted sum, not a
+        // normalised average, so a set that sums to less silently caps every
+        // event below 1.0.
         'weights' => [
-            'category' => 0.30,
-            'tags' => 0.25,
+            'category' => 0.28,
+            'tags' => 0.22,
             'location' => 0.15,
             'time' => 0.10,
             'price' => 0.05,
             'freshness' => 0.05,
             'popularity' => 0.10,
+            // How much the providers that reported an event count. Deliberately
+            // small: a source is a proxy for taste, not taste itself, and the
+            // big aggregators list everything.
+            'source' => 0.05,
         ],
     ],
     'experiments' => [
@@ -42,22 +49,24 @@ return [
         // 'control' mirrors recommendation.weights.
         'recommendation_weights' => [
             'control' => [
-                'category' => 0.30,
-                'tags' => 0.25,
+                'category' => 0.28,
+                'tags' => 0.22,
                 'location' => 0.15,
                 'time' => 0.10,
                 'price' => 0.05,
                 'freshness' => 0.05,
                 'popularity' => 0.10,
+                'source' => 0.05,
             ],
             'freshness_boost' => [
                 'category' => 0.25,
-                'tags' => 0.20,
+                'tags' => 0.18,
                 'location' => 0.15,
                 'time' => 0.10,
                 'price' => 0.05,
                 'freshness' => 0.15,
-                'popularity' => 0.10,
+                'popularity' => 0.07,
+                'source' => 0.05,
             ],
         ],
     ],
@@ -70,11 +79,16 @@ return [
         // rather than replacing it, and is still the strongest positive signal
         // (an explicit bookmark > a thumbs-up). "ignored" is a passive outcome
         // applied to un-reacted events in an ageing notification.
+        // The `source` delta moves one "source:{provider}" key per provider that
+        // reported the event. It is the weakest of the three on purpose: which
+        // site listed an event says far less about the user than what the event
+        // is, and an aggregator that lists everything would otherwise drown out
+        // the category and tag signal.
         'deltas' => [
-            'interested' => ['category' => 0.15, 'tag' => 0.20],
-            'saved' => ['category' => 0.20, 'tag' => 0.25],
-            'not_interested' => ['category' => -0.15, 'tag' => -0.20],
-            'ignored' => ['category' => -0.02, 'tag' => 0.0],
+            'interested' => ['category' => 0.15, 'tag' => 0.20, 'source' => 0.05],
+            'saved' => ['category' => 0.20, 'tag' => 0.25, 'source' => 0.07],
+            'not_interested' => ['category' => -0.15, 'tag' => -0.20, 'source' => -0.05],
+            'ignored' => ['category' => -0.02, 'tag' => 0.0, 'source' => -0.01],
         ],
         // A notification must be at least this old before its un-reacted events
         // are treated as "ignored" and passively decayed.

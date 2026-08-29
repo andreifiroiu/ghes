@@ -7,6 +7,7 @@ use App\Enums\Reaction;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\EventBookmark;
+use App\Models\EventSource;
 use App\Models\Notification;
 use App\Models\User;
 use App\Models\UserEventReaction;
@@ -256,6 +257,80 @@ it('applies passive decay to ignored events in old notifications', function () {
     expect($user->interest_profile['music'])->toEqualWithDelta(0.48, 0.0001);
     expect($user->interest_profile['sports'])->toBe(0.5);
     expect($notification->decay_applied_at)->not->toBeNull();
+});
+
+it('applies the source penalty to ignored events', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.5, 'source:iabilet' => 0.4],
+    ]);
+
+    $ignored = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$ignored->id],
+        'discovery_event_ids' => [],
+        'sent_at' => now()->subDays(4),
+    ]);
+
+    $this->processor->applyPassiveDecay();
+
+    expect($user->fresh()->interest_profile['source:iabilet'])->toEqualWithDelta(0.39, 0.0001);
+});
+
+it('reacting to an event moves the score of every provider that reported it', function () {
+    $user = User::factory()->create(['interest_profile' => []]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    EventSource::factory()->forSource('iabilet')->create(['event_id' => $event->id]);
+    EventSource::factory()->forSource('allevents')->create(['event_id' => $event->id]);
+
+    $reaction = UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+        'reaction' => Reaction::Interested,
+        'is_processed' => false,
+    ]);
+
+    $this->processor->processReaction($reaction);
+
+    $profile = $user->fresh()->interest_profile;
+    expect($profile['source:iabilet'])->toEqualWithDelta(0.05, 0.0001)
+        ->and($profile['source:allevents'])->toEqualWithDelta(0.05, 0.0001);
+
+    // The ledger must carry the source keys, or removing the reaction strands them.
+    expect($reaction->fresh()->applied_deltas)
+        ->toHaveKeys(['source:iabilet', 'source:allevents']);
+});
+
+it('removing a reaction reverses the source score it applied', function () {
+    $user = User::factory()->create(['interest_profile' => ['source:iabilet' => 0.3]]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    $reaction = UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+        'reaction' => Reaction::Interested,
+        'is_processed' => false,
+    ]);
+
+    $this->processor->processReaction($reaction);
+    $applied = $reaction->fresh()->applied_deltas;
+    $this->processor->reverseSignal($user->fresh(), $event->id, $applied);
+
+    expect($user->fresh()->interest_profile['source:iabilet'])->toEqualWithDelta(0.3, 0.0001);
 });
 
 it('does not decay notifications still inside the ignore window', function () {
