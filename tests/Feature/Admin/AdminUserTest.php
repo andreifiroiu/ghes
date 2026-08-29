@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use Inertia\Testing\AssertableInertia;
@@ -37,7 +38,11 @@ it('shows a user with insights', function () {
     UserEventReaction::factory()->create([
         'user_id' => $user->id,
         'event_id' => $event->id,
-        'reaction' => Reaction::Saved,
+        'reaction' => Reaction::Interested,
+    ]);
+    EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
     ]);
 
     $this->actingAs($this->admin)->get("/admin/users/{$user->id}")
@@ -46,6 +51,7 @@ it('shows a user with insights', function () {
             ->component('Admin/Users/Show')
             ->where('user.id', $user->id)
             ->has('insights.interest_profile')
+            ->where('insights.bookmarks', 1)
             ->has('insights.discovery'));
 });
 

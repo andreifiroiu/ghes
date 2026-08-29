@@ -19,6 +19,12 @@ use App\Services\Scraping\Adapters\ZileSiNoptiScraper;
 return [
     'admin_emails' => array_filter(explode(',', (string) env('EVENTPULSE_ADMIN_EMAILS', ''))),
 
+    'logging' => [
+        // Channel the artisan commands mirror their terminal output to.
+        // Empty falls back to the application's default log channel.
+        'console_channel' => env('EVENTPULSE_CONSOLE_LOG_CHANNEL'),
+    ],
+
     'recommendation' => [
         'weights' => [
             'category' => 0.30,
@@ -56,15 +62,18 @@ return [
         ],
     ],
     'feedback' => [
-        // Per-reaction profile adjustments: distinct deltas for the event's
-        // category score and for each of its tag scores. "saved" is treated as
-        // the strongest positive signal (an explicit bookmark > a thumbs-up).
+        // Per-signal profile adjustments: distinct deltas for the event's
+        // category score and for each of its tag scores.
+        //
+        // Only "interested" and "not_interested" are Reaction cases. "saved" is
+        // the bookmark signal (event_bookmarks) — it stacks with a reaction
+        // rather than replacing it, and is still the strongest positive signal
+        // (an explicit bookmark > a thumbs-up). "ignored" is a passive outcome
+        // applied to un-reacted events in an ageing notification.
         'deltas' => [
             'interested' => ['category' => 0.15, 'tag' => 0.20],
             'saved' => ['category' => 0.20, 'tag' => 0.25],
-            'not_interested' => ['category' => -0.10, 'tag' => -0.15],
-            'hidden' => ['category' => -0.25, 'tag' => -0.30],
-            'link_opened' => ['category' => 0.05, 'tag' => 0.05],
+            'not_interested' => ['category' => -0.15, 'tag' => -0.20],
             'ignored' => ['category' => -0.02, 'tag' => 0.0],
         ],
         // A notification must be at least this old before its un-reacted events

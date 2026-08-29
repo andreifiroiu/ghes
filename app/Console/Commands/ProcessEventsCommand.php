@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\LogsConsoleOutput;
 use App\Jobs\ClassifyEventJob;
 use App\Models\Event;
 use Illuminate\Console\Command;
@@ -11,6 +12,8 @@ use Illuminate\Support\Collection;
 
 class ProcessEventsCommand extends Command
 {
+    use LogsConsoleOutput;
+
     protected $signature = 'eventpulse:process-events';
 
     protected $description = 'Queue classification for events that have not been classified yet';

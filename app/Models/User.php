@@ -77,32 +77,19 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Tags the user has suppressed via "hide like this".
-     *
-     * Stored in the interest profile as "negtag:{tag}" keys; used as a hard
-     * filter to exclude matching events from recommendations and discovery.
-     *
-     * @return list<string>
-     */
-    public function negativeTags(): array
-    {
-        $tags = [];
-
-        foreach ($this->interest_profile ?? [] as $key => $value) {
-            if (str_starts_with((string) $key, 'negtag:')) {
-                $tags[] = substr((string) $key, 7);
-            }
-        }
-
-        return $tags;
-    }
-
-    /**
      * @return HasMany<UserEventReaction, $this>
      */
     public function reactions(): HasMany
     {
         return $this->hasMany(UserEventReaction::class);
+    }
+
+    /**
+     * @return HasMany<EventBookmark, $this>
+     */
+    public function bookmarks(): HasMany
+    {
+        return $this->hasMany(EventBookmark::class);
     }
 
     /**

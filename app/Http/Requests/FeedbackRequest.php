@@ -22,7 +22,7 @@ class FeedbackRequest extends FormRequest
     {
         return [
             'event_id' => ['required', 'uuid', 'exists:events,id'],
-            'reaction' => ['required', 'string', Rule::in(array_column(Reaction::cases(), 'value'))],
+            'reaction' => ['required', Rule::enum(Reaction::class)],
         ];
     }
 }

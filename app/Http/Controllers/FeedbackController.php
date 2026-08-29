@@ -7,31 +7,23 @@ namespace App\Http\Controllers;
 use App\Enums\Reaction;
 use App\Http\Requests\DeleteFeedbackRequest;
 use App\Http\Requests\FeedbackRequest;
-use App\Jobs\ProcessFeedbackJob;
-use App\Models\UserEventReaction;
+use App\Services\Feedback\ReactionRecorder;
 use Illuminate\Http\JsonResponse;
 
 class FeedbackController extends Controller
 {
+    public function __construct(
+        private readonly ReactionRecorder $reactions,
+    ) {}
+
     public function store(FeedbackRequest $request): JsonResponse
     {
         /** @var array{event_id: string, reaction: string} $validated */
         $validated = $request->validated();
 
-        $user = $request->user();
         $reaction = Reaction::from($validated['reaction']);
 
-        $userReaction = UserEventReaction::updateOrCreate(
-            [
-                'user_id' => $user->id,
-                'event_id' => $validated['event_id'],
-            ],
-            [
-                'reaction' => $reaction,
-            ],
-        );
-
-        ProcessFeedbackJob::dispatch($userReaction->id);
+        $this->reactions->record($request->user(), $validated['event_id'], $reaction);
 
         return response()->json([
             'message' => 'Feedback recorded.',
@@ -44,10 +36,7 @@ class FeedbackController extends Controller
         /** @var array{event_id: string} $validated */
         $validated = $request->validated();
 
-        UserEventReaction::query()
-            ->where('user_id', $request->user()->id)
-            ->where('event_id', $validated['event_id'])
-            ->delete();
+        $this->reactions->remove($request->user(), $validated['event_id']);
 
         return response()->json([
             'message' => 'Feedback removed.',

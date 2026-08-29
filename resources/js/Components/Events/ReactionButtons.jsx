@@ -1,12 +1,15 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
+import { sendFeedback } from '@/lib/feedback';
 
+/**
+ * Taste signals only. These two are mutually exclusive — bookmarking lives in
+ * SaveButton and is independent, so an event can be both interesting and saved.
+ */
 const reactions = [
-    { key: 'interested', emoji: '\u2764\uFE0F', label: 'Interesant' },
-    { key: 'not_interested', emoji: '\uD83D\uDC4E', label: 'Nu-i pentru mine' },
-    { key: 'saved', emoji: '\uD83D\uDD16', label: 'Salveaza' },
-    { key: 'hidden', emoji: '\uD83D\uDE48', label: 'Ascunde' },
+    { key: 'interested', emoji: '❤️', label: 'Mă interesează' },
+    { key: 'not_interested', emoji: '👎', label: 'Nu-i pentru mine' },
 ];
 
 /**
@@ -17,6 +20,7 @@ const reactions = [
 export default function ReactionButtons({ eventId, currentReaction = null }) {
     const [active, setActive] = useState(currentReaction);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleReaction = useCallback(
         async (reactionKey) => {
@@ -24,58 +28,56 @@ export default function ReactionButtons({ eventId, currentReaction = null }) {
             const previousReaction = active;
             setActive(newReaction);
             setLoading(true);
+            setError(null);
 
-            try {
-                const response = await fetch('/feedback', {
-                    method: newReaction === null ? 'DELETE' : 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
-                        Accept: 'application/json',
-                    },
-                    body: JSON.stringify(
-                        newReaction === null
-                            ? { event_id: eventId }
-                            : { event_id: eventId, reaction: newReaction }
-                    ),
-                });
+            const result = await sendFeedback(
+                '/feedback',
+                newReaction === null ? 'DELETE' : 'POST',
+                newReaction === null
+                    ? { event_id: eventId }
+                    : { event_id: eventId, reaction: newReaction }
+            );
 
-                if (!response.ok) {
-                    setActive(previousReaction);
-                }
-            } catch {
+            if (!result.ok) {
                 setActive(previousReaction);
-            } finally {
-                setLoading(false);
+                setError(result.message);
             }
+
+            setLoading(false);
         },
         [eventId, active]
     );
 
     return (
-        <div className="flex items-center gap-1 flex-wrap">
-            {reactions.map(({ key, emoji, label }) => (
-                <Button
-                    key={key}
-                    variant={active === key ? 'default' : 'ghost'}
-                    size="sm"
-                    disabled={loading}
-                    onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleReaction(key);
-                    }}
-                    className={cn(
-                        'text-xs',
-                        active === key && 'bg-indigo-600 text-white'
-                    )}
-                >
-                    <span>{emoji}</span>
-                    <span className="hidden sm:inline">{label}</span>
-                </Button>
-            ))}
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
+                {reactions.map(({ key, emoji, label }) => (
+                    <Button
+                        key={key}
+                        variant={active === key ? 'default' : 'ghost'}
+                        size="sm"
+                        disabled={loading}
+                        aria-pressed={active === key}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleReaction(key);
+                        }}
+                        className={cn(
+                            'text-xs',
+                            active === key && 'bg-indigo-600 text-white'
+                        )}
+                    >
+                        <span>{emoji}</span>
+                        <span className="hidden sm:inline">{label}</span>
+                    </Button>
+                ))}
+            </div>
+            {error && (
+                <p role="alert" className="text-xs text-red-600">
+                    {error}
+                </p>
+            )}
         </div>
     );
 }

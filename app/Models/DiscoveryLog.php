@@ -16,6 +16,16 @@ class DiscoveryLog extends Model
     use HasFactory, HasUuids;
 
     /**
+     * Outcomes that count as a discovery "hit".
+     *
+     * `saved` is the bookmark signal rather than a Reaction case; it is stored
+     * here verbatim so a bookmarked discovery event still counts as a success.
+     *
+     * @var list<string>
+     */
+    public const POSITIVE_OUTCOMES = ['interested', 'saved'];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>

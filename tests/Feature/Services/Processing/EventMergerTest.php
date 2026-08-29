@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 use App\DTOs\RawEvent;
 use App\Enums\Reaction;
+use App\Jobs\ReverseProfileDeltaJob;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\EventSource;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\Processing\EventMerger;
+use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     $this->merger = app(EventMerger::class);
@@ -84,6 +87,69 @@ it('drops the duplicate reaction when the user already reacted to the canonical 
         ->and(UserEventReaction::where('user_id', $user->id)->count())->toBe(1);
 });
 
+it('moves a bookmark onto the canonical event', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $bookmark = EventBookmark::factory()->processed()->create([
+        'user_id' => $user->id,
+        'event_id' => $duplicate->id,
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect($bookmark->fresh()->event_id)->toBe($canonical->id);
+});
+
+it('keeps the earlier created_at when both sides were bookmarked', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $kept = EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $canonical->id,
+        'created_at' => now()->subDays(1),
+    ]);
+    $dropped = EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $duplicate->id,
+        'created_at' => now()->subDays(5),
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect(EventBookmark::find($dropped->id))->toBeNull()
+        ->and(EventBookmark::where('user_id', $user->id)->count())->toBe(1)
+        ->and($kept->fresh()->created_at->toDateString())
+        ->toBe(now()->subDays(5)->toDateString());
+});
+
+it('a merge does not destroy a bookmark held only on the duplicate', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    // The user reacted to the canonical and bookmarked the duplicate: the
+    // reaction collides and is dropped, but the bookmark must survive.
+    UserEventReaction::create([
+        'user_id' => $user->id,
+        'event_id' => $canonical->id,
+        'reaction' => Reaction::Interested,
+        'is_processed' => true,
+    ]);
+    EventBookmark::factory()->processed()->create([
+        'user_id' => $user->id,
+        'event_id' => $duplicate->id,
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect(EventBookmark::where('user_id', $user->id)->where('event_id', $canonical->id)->exists())
+        ->toBeTrue();
+});
+
 it('repoints discovery logs at the canonical event', function () {
     $user = User::factory()->create();
     $canonical = Event::factory()->create();
@@ -145,4 +211,71 @@ it('keeps first_seen_at at the original sighting when a source is re-scraped', f
         ->toBe($firstSeen->toDateTimeString())
         ->and($second->fresh()->last_seen_at->toDateTimeString())
         ->toBe('2026-08-20 09:00:00');
+});
+
+it('reverses a dropped reaction ledger instead of stranding it in the profile', function () {
+    // The collision branch deletes the duplicate's row, and that row's ledger is
+    // the only thing that could ever reverse its delta. Dedupe runs nightly, so
+    // stranding it would accumulate drift silently.
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    UserEventReaction::create([
+        'user_id' => $user->id,
+        'event_id' => $canonical->id,
+        'reaction' => Reaction::Interested,
+        'is_processed' => true,
+    ]);
+    UserEventReaction::create([
+        'user_id' => $user->id,
+        'event_id' => $duplicate->id,
+        'reaction' => Reaction::Interested,
+        'applied_deltas' => ['music' => 0.15],
+        'is_processed' => true,
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    Queue::assertPushed(ReverseProfileDeltaJob::class, fn ($job) => $job->userId === $user->id
+        && $job->appliedDeltas === ['music' => 0.15]);
+});
+
+it('reverses a dropped bookmark ledger on collision', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    EventBookmark::factory()->processed()->create([
+        'user_id' => $user->id,
+        'event_id' => $canonical->id,
+    ]);
+    EventBookmark::factory()->processed()->create([
+        'user_id' => $user->id,
+        'event_id' => $duplicate->id,
+        'applied_deltas' => ['music' => 0.20],
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    Queue::assertPushed(ReverseProfileDeltaJob::class, fn ($job) => $job->appliedDeltas === ['music' => 0.20]);
+});
+
+it('does not dispatch a reversal for a dropped row with no ledger', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    EventBookmark::factory()->create(['user_id' => $user->id, 'event_id' => $canonical->id]);
+    EventBookmark::factory()->create(['user_id' => $user->id, 'event_id' => $duplicate->id]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    Queue::assertNotPushed(ReverseProfileDeltaJob::class);
 });

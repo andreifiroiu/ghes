@@ -46,6 +46,11 @@ class EventResource extends JsonResource
                 'reactions',
                 fn () => $this->reactions->first()?->reaction?->value,
             ),
+            'is_saved' => $this->whenLoaded(
+                'bookmarks',
+                fn (): bool => $this->bookmarks->isNotEmpty(),
+                false,
+            ),
         ];
     }
 }

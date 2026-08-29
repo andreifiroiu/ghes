@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\LogsConsoleOutput;
 use App\DTOs\RawEvent;
 use App\Models\Event;
 use App\Models\EventSource;
@@ -25,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  */
 class DedupeEventsCommand extends Command
 {
+    use LogsConsoleOutput;
+
     protected $signature = 'eventpulse:dedupe-events
         {--city= : Limit to one configured city key}
         {--since= : Only consider events starting on or after this date}

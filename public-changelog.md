@@ -2,6 +2,37 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Rezolvat — Recomandările țin din nou cont mai mult de ce te interesează acum (#7)
+
+Profilul tău de interese ar fi trebuit să se împrospăteze săptămânal, așa încât ce
+ți-a plăcut acum câteva luni să cântărească mai puțin decât ce ți-a plăcut zilele
+astea. Împrospătarea nu a apucat niciodată să ruleze — se oprea cu o eroare înainte
+să schimbe ceva — așa că interesele vechi rămâneau la fel de puternice ca cele noi.
+Acum funcționează, iar recomandările tale ar trebui să urmărească mai îndeaproape ce
+îți place în ultima vreme.
+
+## 2026-08-29 — Nou — Poți salva un eveniment și să spui, separat, că te interesează (#6)
+
+Până acum butoanele se anulau între ele: dacă salvai un eveniment pe care îl
+marcaseși „mă interesează", semnalul acela se pierdea. Acum sunt două lucruri
+diferite — salvarea îți ține evenimentul în listă, iar reacția spune ce fel de
+evenimente vrei să vezi — și le poți folosi pe amândouă pe același eveniment.
+
+## 2026-08-29 — Îmbunătățit — Un singur buton pentru „nu mă interesează" (#6)
+
+Am scos butonul „Ascunde". Arăta la fel ca „Nu-i pentru mine", dar pe lângă
+eveniment îți ascundea în tăcere toate evenimentele cu aceleași etichete, definitiv
+și fără să poți da înapoi — o singură apăsare greșită putea să îți scoată din
+recomandări un gen întreg. Blocajele făcute până acum au fost șterse, așa că e
+posibil să vezi din nou evenimente care îți dispăruseră.
+
+## 2026-08-29 — Rezolvat — Când te răzgândești, recomandările se actualizează (#6)
+
+Dacă schimbai reacția la un eveniment sau o ștergeai, profilul tău de interese
+rămânea cu reacția veche, așa că recomandările nu se schimbau. Acum reacția nouă
+înlocuiește corect ce era înainte, iar dacă renunți la o reacție efectul ei dispare
+cu totul.
+
 ## 2026-08-29 — Îmbunătățit — Un eveniment apare o singură dată, oricâte surse îl anunță (#3)
 
 Până acum, un concert anunțat pe mai multe site-uri îți apărea de mai multe ori în

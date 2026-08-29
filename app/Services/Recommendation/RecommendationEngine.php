@@ -62,28 +62,24 @@ class RecommendationEngine
      */
     public function recommend(User $user, int $limit = 8): RecommendationBatch
     {
-        $reactedEventIds = $user->reactions()->pluck('event_id');
+        // Anything the user has already engaged with — reacted to or bookmarked
+        // — is not a candidate for re-recommendation.
+        $engagedEventIds = $user->reactions()->pluck('event_id')
+            ->merge($user->bookmarks()->pluck('event_id'))
+            ->unique();
 
         $candidates = Event::upcoming()
             ->visible()
             ->canonical()
             ->where('is_classified', true)
             ->when($user->city, fn ($q) => $q->where('city', $user->city))
-            ->whereNotIn('id', $reactedEventIds)
+            ->whereNotIn('id', $engagedEventIds)
             // Order before limiting: without it the 200 candidates are an
             // arbitrary slice, so the same user can get different results
             // from one request to the next.
             ->orderBy('starts_at')
             ->limit(200)
             ->get();
-
-        // Hard-filter events carrying tags the user has suppressed.
-        $negativeTags = $user->negativeTags();
-        if ($negativeTags !== []) {
-            $candidates = $candidates->reject(
-                fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
-            )->values();
-        }
 
         // Score every candidate
         $scored = $candidates

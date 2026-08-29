@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\Reaction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Resources\UserResource;
@@ -44,15 +43,16 @@ class ProfileController extends Controller
             ->whereNotNull('outcome')
             ->get(['outcome']);
 
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
         $resolvedCount = $resolvedDiscovery->count();
-        $discoveryHits = $resolvedDiscovery->whereIn('outcome', $positive)->count();
+        $discoveryHits = $resolvedDiscovery->whereIn('outcome', DiscoveryLog::POSITIVE_OUTCOMES)->count();
 
         return response()->json([
             'reactions' => [
                 'total' => $user->reactions()->count(),
                 'by_type' => $reactionCounts,
-                'saved' => $reactionCounts[Reaction::Saved->value] ?? 0,
+                // Bookmarks are their own signal now; the key is kept for API
+                // compatibility but sourced from event_bookmarks.
+                'saved' => $user->bookmarks()->count(),
             ],
             'discovery' => [
                 'openness' => (float) $user->discovery_openness,

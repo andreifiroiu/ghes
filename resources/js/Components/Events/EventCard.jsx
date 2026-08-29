@@ -1,6 +1,7 @@
 import { Card, CardContent } from '@/Components/ui/Card';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
 import ReactionButtons from '@/Components/Events/ReactionButtons';
+import SaveButton from '@/Components/Events/SaveButton';
 
 const SOURCE_LABELS = {
     iabilet: 'iaBilet',
@@ -32,6 +33,7 @@ const SOURCE_LABELS = {
  * @param {string} [props.event.source]
  * @param {string} [props.event.source_url]
  * @param {string|null} [props.event.current_reaction]
+ * @param {boolean} [props.event.is_saved]
  */
 export default function EventCard({ event }) {
     const formattedDate = event.starts_at
@@ -118,11 +120,14 @@ export default function EventCard({ event }) {
                     )}
                 </CardContent>
             </a>
-            <div className="px-4 pb-4 mt-auto">
+            <div className="px-4 pb-4 mt-auto flex items-center gap-2">
                 <ReactionButtons
                     eventId={event.id}
                     currentReaction={event.current_reaction}
                 />
+                <div className="ml-auto">
+                    <SaveButton eventId={event.id} isSaved={event.is_saved} />
+                </div>
             </div>
         </Card>
     );

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use Inertia\Testing\AssertableInertia;
@@ -18,10 +19,9 @@ it('shows only the user saved events', function () {
     $saved = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_classified' => true]);
     $interested = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_classified' => true]);
 
-    UserEventReaction::factory()->create([
+    EventBookmark::factory()->create([
         'user_id' => $user->id,
         'event_id' => $saved->id,
-        'reaction' => Reaction::Saved,
     ]);
     UserEventReaction::factory()->create([
         'user_id' => $user->id,
@@ -44,10 +44,9 @@ it('does not show another user saved events', function () {
     $other = User::factory()->create();
 
     $event = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_classified' => true]);
-    UserEventReaction::factory()->create([
+    EventBookmark::factory()->create([
         'user_id' => $other->id,
         'event_id' => $event->id,
-        'reaction' => Reaction::Saved,
     ]);
 
     $this->actingAs($user)
@@ -58,4 +57,29 @@ it('does not show another user saved events', function () {
 
 it('requires authentication to view saved events', function () {
     $this->get('/events/saved')->assertRedirect('/login');
+});
+
+it('shows an event that is both saved and reacted to', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_classified' => true]);
+
+    UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+        'reaction' => Reaction::Interested,
+    ]);
+    EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/events/saved')
+        ->assertStatus(200)
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events', 1)
+            ->where('events.0.id', $event->id)
+            ->where('events.0.current_reaction', 'interested')
+            ->where('events.0.is_saved', true)
+        );
 });

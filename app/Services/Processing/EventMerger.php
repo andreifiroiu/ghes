@@ -7,8 +7,10 @@ namespace App\Services\Processing;
 use App\DTOs\RawEvent;
 use App\Jobs\ClassifyEventJob;
 use App\Jobs\DownloadEventImageJob;
+use App\Jobs\ReverseProfileDeltaJob;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\EventSource;
 use App\Models\UserEventReaction;
 use Carbon\CarbonImmutable;
@@ -184,6 +186,7 @@ class EventMerger
             DiscoveryLog::where('event_id', $duplicate->id)->update(['event_id' => $canonical->id]);
 
             $this->moveReactions($canonical, $duplicate);
+            $this->moveBookmarks($canonical, $duplicate);
 
             Event::withoutSyncingToSearch(function () use ($canonical, $duplicate): void {
                 $duplicate->forceFill(['merged_into_id' => $canonical->id])->save();
@@ -245,6 +248,11 @@ class EventMerger
      * already reacted to the canonical event the duplicate's row is dropped.
      * It is never re-processed: its feedback delta was already applied to the
      * user's interest profile, and replaying it would double-count.
+     *
+     * Dropping the row would otherwise strand that delta forever — the ledger
+     * being deleted is the only thing that could ever reverse it — so the
+     * dropped row's contribution is reversed before it goes. Dedupe runs
+     * nightly, so without this the drift accumulates silently.
      */
     private function moveReactions(Event $canonical, Event $duplicate): void
     {
@@ -255,12 +263,62 @@ class EventMerger
                 ->exists();
 
             if ($alreadyReacted) {
+                $appliedDeltas = $reaction->applied_deltas ?? [];
+
                 $reaction->delete();
+
+                if ($appliedDeltas !== []) {
+                    ReverseProfileDeltaJob::dispatch($reaction->user_id, $duplicate->id, $appliedDeltas);
+                }
 
                 continue;
             }
 
             $reaction->forceFill(['event_id' => $canonical->id])->save();
+        }
+    }
+
+    /**
+     * Move a duplicate's bookmarks onto the canonical event.
+     *
+     * event_bookmarks is unique on (user_id, event_id). When the user has
+     * bookmarked both sides, the duplicate's row is dropped but the earlier
+     * created_at wins, so "saved on" reflects when the user actually saved the
+     * event rather than which copy survived deduplication. As with reactions,
+     * the dropped row's delta is reversed first so it is not stranded in the
+     * profile with no ledger.
+     *
+     * Like reactions, the surviving row keeps its applied_deltas ledger and is
+     * never re-processed — its delta is already in the profile, and the ledger
+     * is what lets un-saving reverse it correctly even though the canonical
+     * event's tags may differ from the ones the delta was applied to.
+     */
+    private function moveBookmarks(Event $canonical, Event $duplicate): void
+    {
+        foreach ($duplicate->bookmarks()->cursor() as $bookmark) {
+            $existing = EventBookmark::query()
+                ->where('user_id', $bookmark->user_id)
+                ->where('event_id', $canonical->id)
+                ->first();
+
+            if ($existing !== null) {
+                if ($bookmark->created_at !== null
+                    && ($existing->created_at === null || $bookmark->created_at->lt($existing->created_at))) {
+                    $existing->forceFill(['created_at' => $bookmark->created_at])->save();
+                }
+
+                $appliedDeltas = $bookmark->applied_deltas ?? [];
+
+                $bookmark->delete();
+
+                if ($appliedDeltas !== []) {
+                    ReverseProfileDeltaJob::dispatch($bookmark->user_id, $duplicate->id, $appliedDeltas);
+                }
+
+                continue;
+            }
+
+            $bookmark->forceFill(['event_id' => $canonical->id])->save();
         }
     }
 
