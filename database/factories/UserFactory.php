@@ -63,12 +63,15 @@ class UserFactory extends Factory
 
     /**
      * Indicate that the user has not completed onboarding.
+     *
+     * An empty profile, not null: the column is NOT NULL with a '{}' default,
+     * and the model types the attribute as an array.
      */
     public function notOnboarded(): static
     {
         return $this->state(fn (array $attributes) => [
             'onboarding_completed' => false,
-            'interest_profile' => null,
+            'interest_profile' => [],
         ]);
     }
 }
