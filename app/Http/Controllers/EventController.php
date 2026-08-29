@@ -7,10 +7,8 @@ namespace App\Http\Controllers;
 use App\Enums\Reaction;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -34,7 +32,10 @@ class EventController extends Controller
 
         abort_if($event->is_hidden, 404);
 
-        $event->load(['reactions' => fn ($query) => $query->where('user_id', $request->user()->id)]);
+        $event->load([
+            'reactions' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'bookmarks' => fn ($query) => $query->where('user_id', $request->user()->id),
+        ]);
 
         return Inertia::render('Events/Show', [
             'event' => new EventResource($event),
@@ -54,7 +55,7 @@ class EventController extends Controller
         $query = Event::upcoming()
             ->visible()
             ->canonical()
-            ->with(['reactions' => fn ($q) => $q->where('user_id', $user->id)])
+            ->withUserContext($user)
             ->orderBy('starts_at', 'asc');
 
         if ($request->filled('search')) {
@@ -86,7 +87,7 @@ class EventController extends Controller
         }
 
         $dismissedEventIds = $user->reactions()
-            ->whereIn('reaction', [Reaction::NotInterested, Reaction::Hidden])
+            ->where('reaction', Reaction::NotInterested)
             ->pluck('event_id');
 
         $query->whereNotIn('id', $dismissedEventIds);
@@ -131,37 +132,6 @@ class EventController extends Controller
         return (string) config("eventpulse.cities.{$city}.timezone", config('app.timezone'));
     }
 
-    public function saved(Request $request): Response
-    {
-        return Inertia::render('Dashboard/SavedEvents', [
-            'events' => EventResource::collection($this->savedEventsFor($request->user()))->resolve(),
-        ]);
-    }
-
-    public function apiSaved(Request $request): JsonResponse
-    {
-        return EventResource::collection($this->savedEventsFor($request->user()))->response();
-    }
-
-    /**
-     * Upcoming events the user has bookmarked, soonest first.
-     *
-     * @return Collection<int, Event>
-     */
-    private function savedEventsFor(User $user): Collection
-    {
-        $savedEventIds = $user->reactions()
-            ->where('reaction', Reaction::Saved)
-            ->pluck('event_id');
-
-        return Event::whereIn('id', $savedEventIds)
-            ->visible()
-            ->canonical()
-            ->with(['reactions' => fn ($query) => $query->where('user_id', $user->id)])
-            ->orderBy('starts_at')
-            ->get();
-    }
-
     public function apiIndex(Request $request): JsonResponse
     {
         $events = $this->browseQuery($request)->paginate(20)->withQueryString();
@@ -175,7 +145,10 @@ class EventController extends Controller
 
         abort_if($event->is_hidden, 404);
 
-        $event->load(['reactions' => fn ($query) => $query->where('user_id', $request->user()->id)]);
+        $event->load([
+            'reactions' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'bookmarks' => fn ($query) => $query->where('user_id', $request->user()->id),
+        ]);
 
         return (new EventResource($event))->response();
     }

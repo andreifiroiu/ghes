@@ -69,7 +69,7 @@ it('clamps score to minimum 0.0', function () {
         'tags' => [],
     ]);
 
-    $this->updater->updateFromFeedback($user, $event, 'hidden');
+    $this->updater->updateFromFeedback($user, $event, 'not_interested');
 
     $user->refresh();
     expect($user->interest_profile['technology'])->toBeGreaterThanOrEqual(0.0);
@@ -129,33 +129,42 @@ it('applies distinct category and tag deltas for interested', function () {
     expect($user->interest_profile['tag:jazz'])->toEqualWithDelta(0.20, 0.0001);
 });
 
-it('adds negative tags when hiding an event', function () {
-    $user = User::factory()->create(['interest_profile' => []]);
+it('returns the effective delta actually applied, not the nominal one', function () {
+    // 0.95 + 0.20 clamps to 1.0, so only 0.05 was really applied. Reversal has
+    // to undo 0.05 or the profile drifts.
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.95]]);
     $event = Event::factory()->create([
         'category' => EventCategory::Music,
-        'tags' => ['techno', 'late-night'],
+        'tags' => [],
     ]);
 
-    $this->updater->updateFromFeedback($user, $event, 'hidden');
+    $applied = $this->updater->updateFromFeedback($user, $event, 'saved');
 
-    $user->refresh();
-    expect($user->negativeTags())->toContain('techno')->toContain('late-night');
+    expect($applied['music'])->toEqualWithDelta(0.05, 0.0001);
+    expect($user->fresh()->interest_profile['music'])->toEqualWithDelta(1.0, 0.0001);
 });
 
-it('clears negative tags when a positive reaction arrives', function () {
-    $user = User::factory()->create([
-        'interest_profile' => ['negtag:techno' => 1.0, 'negtag:jazz' => 1.0],
-    ]);
+it('reverts exactly what was applied, even at a clamp boundary', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.95]]);
     $event = Event::factory()->create([
         'category' => EventCategory::Music,
-        'tags' => ['techno'],
+        'tags' => ['jazz'],
     ]);
 
-    $this->updater->updateFromFeedback($user, $event, 'saved');
+    $applied = $this->updater->updateFromFeedback($user, $event, 'saved');
+    $this->updater->revert($user, $applied);
 
     $user->refresh();
-    expect($user->negativeTags())->not->toContain('techno');
-    expect($user->negativeTags())->toContain('jazz');
+    expect($user->interest_profile['music'])->toEqualWithDelta(0.95, 0.0001);
+    expect($user->interest_profile['tag:jazz'])->toEqualWithDelta(0.0, 0.0001);
+});
+
+it('reverting an empty ledger leaves the profile untouched', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.4]]);
+
+    $this->updater->revert($user, []);
+
+    expect($user->fresh()->interest_profile['music'])->toEqualWithDelta(0.4, 0.0001);
 });
 
 it('applies a small negative category decay for ignored events', function () {

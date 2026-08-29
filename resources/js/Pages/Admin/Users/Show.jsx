@@ -89,7 +89,10 @@ export default function UserShow({ user, insights }) {
                                 {Object.entries(reactions).map(([type, count]) => (
                                     <Badge key={type}>{type}: {count}</Badge>
                                 ))}
-                                {Object.keys(reactions).length === 0 && <span className="text-gray-400">None</span>}
+                                <Badge>saved: {insights.bookmarks ?? 0}</Badge>
+                                {Object.keys(reactions).length === 0 && insights.bookmarks === 0 && (
+                                    <span className="text-gray-400">None</span>
+                                )}
                             </div>
                         </div>
                         <div>

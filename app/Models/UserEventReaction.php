@@ -12,7 +12,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
+ * A user's taste signal on an event.
+ *
+ * Bookmarks live in EventBookmark, not here — see App\Enums\Reaction.
+ *
  * @property Reaction $reaction
+ * @property ?array<string, float> $applied_deltas
  */
 class UserEventReaction extends Model
 {
@@ -33,6 +38,7 @@ class UserEventReaction extends Model
         'user_id',
         'event_id',
         'reaction',
+        'applied_deltas',
         'is_processed',
     ];
 
@@ -45,6 +51,7 @@ class UserEventReaction extends Model
     {
         return [
             'reaction' => Reaction::class,
+            'applied_deltas' => 'array',
             'is_processed' => 'boolean',
         ];
     }

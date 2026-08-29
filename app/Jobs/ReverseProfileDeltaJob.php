@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Models\UserEventReaction;
+use App\Models\User;
 use App\Services\Recommendation\FeedbackProcessor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +15,14 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class ProcessFeedbackJob implements ShouldQueue
+/**
+ * Undo the profile contribution of a signal the user has removed.
+ *
+ * Shared by un-reacting and un-saving. The delta map travels in the payload
+ * rather than being read back from the row, because the row is deleted as soon
+ * as the user removes the signal.
+ */
+class ReverseProfileDeltaJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -24,9 +31,13 @@ class ProcessFeedbackJob implements ShouldQueue
 
     public int $tries = 5;
 
+    /**
+     * @param  array<string, float>  $appliedDeltas
+     */
     public function __construct(
-        public readonly string $reactionId,
         public readonly string $userId,
+        public readonly string $eventId,
+        public readonly array $appliedDeltas,
     ) {
         $this->onQueue('processing');
     }
@@ -60,33 +71,20 @@ class ProcessFeedbackJob implements ShouldQueue
 
     public function handle(FeedbackProcessor $processor): void
     {
-        Log::info('ProcessFeedbackJob: processing reaction', ['reaction_id' => $this->reactionId]);
+        $user = User::find($this->userId);
 
-        $reaction = UserEventReaction::find($this->reactionId);
-
-        if ($reaction === null) {
-            // Un-reacted before the job dequeued. Nothing was applied, so there
-            // is nothing to undo — this is a normal outcome, not a failure.
-            Log::info('ProcessFeedbackJob: reaction removed before processing', [
-                'reaction_id' => $this->reactionId,
-            ]);
-
+        if ($user === null) {
             return;
         }
 
-        $processor->processReaction($reaction);
-
-        Log::info('ProcessFeedbackJob: done', [
-            'reaction_id' => $this->reactionId,
-            'user_id' => $reaction->user_id,
-            'event_id' => $reaction->event_id,
-        ]);
+        $processor->reverseSignal($user, $this->eventId, $this->appliedDeltas);
     }
 
     public function failed(Throwable $e): void
     {
-        Log::error('ProcessFeedbackJob: failed permanently', [
-            'reaction_id' => $this->reactionId,
+        Log::error('ReverseProfileDeltaJob: failed permanently', [
+            'user_id' => $this->userId,
+            'event_id' => $this->eventId,
             'error' => $e->getMessage(),
         ]);
     }

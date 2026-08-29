@@ -19,7 +19,7 @@
         <h1>Reacție înregistrată</h1>
         <p>
             Ai marcat <strong>{{ $event->title }}</strong> ca
-            <strong>{{ str_replace('_', ' ', $reaction->value) }}</strong>.
+            <strong>{{ $label }}</strong>.
         </p>
         <p style="margin-top:16px;"><a href="{{ route('dashboard') }}">Deschide Ghes &rarr;</a></p>
     </div>

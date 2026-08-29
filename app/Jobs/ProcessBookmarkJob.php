@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Models\UserEventReaction;
+use App\Models\EventBookmark;
 use App\Services\Recommendation\FeedbackProcessor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class ProcessFeedbackJob implements ShouldQueue
+class ProcessBookmarkJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -25,7 +25,7 @@ class ProcessFeedbackJob implements ShouldQueue
     public int $tries = 5;
 
     public function __construct(
-        public readonly string $reactionId,
+        public readonly string $bookmarkId,
         public readonly string $userId,
     ) {
         $this->onQueue('processing');
@@ -60,33 +60,20 @@ class ProcessFeedbackJob implements ShouldQueue
 
     public function handle(FeedbackProcessor $processor): void
     {
-        Log::info('ProcessFeedbackJob: processing reaction', ['reaction_id' => $this->reactionId]);
+        $bookmark = EventBookmark::find($this->bookmarkId);
 
-        $reaction = UserEventReaction::find($this->reactionId);
-
-        if ($reaction === null) {
-            // Un-reacted before the job dequeued. Nothing was applied, so there
-            // is nothing to undo — this is a normal outcome, not a failure.
-            Log::info('ProcessFeedbackJob: reaction removed before processing', [
-                'reaction_id' => $this->reactionId,
-            ]);
-
+        if ($bookmark === null) {
+            // Unsaved before the job ran; the reversal path owns the profile now.
             return;
         }
 
-        $processor->processReaction($reaction);
-
-        Log::info('ProcessFeedbackJob: done', [
-            'reaction_id' => $this->reactionId,
-            'user_id' => $reaction->user_id,
-            'event_id' => $reaction->event_id,
-        ]);
+        $processor->processBookmark($bookmark);
     }
 
     public function failed(Throwable $e): void
     {
-        Log::error('ProcessFeedbackJob: failed permanently', [
-            'reaction_id' => $this->reactionId,
+        Log::error('ProcessBookmarkJob: failed permanently', [
+            'bookmark_id' => $this->bookmarkId,
             'error' => $e->getMessage(),
         ]);
     }

@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Enums\Reaction;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
-class FeedbackRequest extends FormRequest
+class BookmarkRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -22,7 +20,6 @@ class FeedbackRequest extends FormRequest
     {
         return [
             'event_id' => ['required', 'uuid', 'exists:events,id'],
-            'reaction' => ['required', Rule::enum(Reaction::class)],
         ];
     }
 }

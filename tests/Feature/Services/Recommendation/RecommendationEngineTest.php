@@ -6,6 +6,7 @@ use App\DTOs\RecommendationBatch;
 use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\InterestProfile\ProfileScorer;
@@ -370,13 +371,15 @@ it('includes discovery events in the batch', function () {
     expect($batch->discoveryEventIds)->not->toBeEmpty();
 });
 
-it('excludes events carrying the user negative tags', function () {
+it('does not suppress a whole tag when one event is marked not-interested', function () {
+    // The retired "Ascunde" reaction used to blacklist every tag on the event,
+    // permanently and invisibly. A negative reaction is now scoped to the event.
     $user = User::factory()->create([
-        'interest_profile' => ['music' => 0.9, 'negtag:techno' => 1.0],
+        'interest_profile' => ['music' => 0.9],
         'city' => 'Bucharest',
     ]);
 
-    $blocked = Event::factory()->create([
+    $dismissed = Event::factory()->create([
         'category' => EventCategory::Music,
         'tags' => ['techno'],
         'city' => 'Bucharest',
@@ -384,18 +387,47 @@ it('excludes events carrying the user negative tags', function () {
         'is_classified' => true,
     ]);
 
-    $allowed = Event::factory()->create([
+    $sameTag = Event::factory()->create([
         'category' => EventCategory::Music,
-        'tags' => ['jazz'],
+        'tags' => ['techno'],
         'city' => 'Bucharest',
         'starts_at' => now()->addDays(3),
         'is_classified' => true,
     ]);
 
+    UserEventReaction::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $dismissed->id,
+        'reaction' => Reaction::NotInterested,
+    ]);
+
     $batch = $this->engine->recommend($user, 8);
 
-    expect($batch->recommendedEventIds)->not->toContain($blocked->id);
-    expect($batch->recommendedEventIds)->toContain($allowed->id);
+    expect($batch->recommendedEventIds)->not->toContain($dismissed->id);
+    expect($batch->recommendedEventIds)->toContain($sameTag->id);
+});
+
+it('excludes events the user has bookmarked', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9],
+        'city' => 'Bucharest',
+    ]);
+
+    $saved = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'city' => 'Bucharest',
+        'starts_at' => now()->addDays(3),
+        'is_classified' => true,
+    ]);
+
+    EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $saved->id,
+    ]);
+
+    $batch = $this->engine->recommend($user, 8);
+
+    expect($batch->recommendedEventIds)->not->toContain($saved->id);
 });
 
 it('excludes hidden events from recommendations', function () {

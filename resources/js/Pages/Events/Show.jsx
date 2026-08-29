@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
 import ReactionButtons from '@/Components/Events/ReactionButtons';
+import SaveButton from '@/Components/Events/SaveButton';
 
 /**
  * @param {Object} props
@@ -21,6 +22,7 @@ import ReactionButtons from '@/Components/Events/ReactionButtons';
  * @param {string} [props.event.price]
  * @param {string} [props.event.source_url]
  * @param {string|null} [props.event.current_reaction]
+ * @param {boolean} [props.event.is_saved]
  */
 export default function Show({ event }) {
     const formatDateTime = (dateStr) => {
@@ -271,10 +273,16 @@ export default function Show({ event }) {
                             <p className="text-sm font-medium text-gray-700 mb-3">
                                 Ce părere ai?
                             </p>
-                            <ReactionButtons
-                                eventId={event.id}
-                                currentReaction={event.current_reaction}
-                            />
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <ReactionButtons
+                                    eventId={event.id}
+                                    currentReaction={event.current_reaction}
+                                />
+                                <SaveButton
+                                    eventId={event.id}
+                                    isSaved={event.is_saved}
+                                />
+                            </div>
                         </CardContent>
                     </Card>
                 </div>

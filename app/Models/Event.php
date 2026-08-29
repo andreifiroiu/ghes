@@ -139,6 +139,28 @@ class Event extends Model
     }
 
     /**
+     * @return HasMany<EventBookmark, $this>
+     */
+    public function bookmarks(): HasMany
+    {
+        return $this->hasMany(EventBookmark::class);
+    }
+
+    /**
+     * Eager-load this user's reaction and bookmark, so EventResource can expose
+     * `current_reaction` and `is_saved` without an N+1.
+     *
+     * @param  Builder<Event>  $query
+     */
+    public function scopeWithUserContext(Builder $query, User $user): void
+    {
+        $query->with([
+            'reactions' => fn ($relation) => $relation->where('user_id', $user->id),
+            'bookmarks' => fn ($relation) => $relation->where('user_id', $user->id),
+        ]);
+    }
+
+    /**
      * @return HasMany<DiscoveryLog, $this>
      */
     public function discoveryLogs(): HasMany

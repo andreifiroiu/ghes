@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
-use App\Enums\Reaction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminUserUpdateRequest;
 use App\Http\Resources\AdminUserResource;
@@ -49,9 +48,8 @@ class UserController extends Controller
             ->whereNotNull('outcome')
             ->get(['outcome']);
 
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
         $resolvedCount = $resolvedDiscovery->count();
-        $hits = $resolvedDiscovery->whereIn('outcome', $positive)->count();
+        $hits = $resolvedDiscovery->whereIn('outcome', DiscoveryLog::POSITIVE_OUTCOMES)->count();
 
         $recentReactions = $user->reactions()
             ->with('event:id,title')
@@ -70,6 +68,7 @@ class UserController extends Controller
             'insights' => [
                 'interest_profile' => $user->interest_profile,
                 'reactions_by_type' => $reactionCounts,
+                'bookmarks' => $user->bookmarks()->count(),
                 'discovery' => [
                     'openness' => (float) $user->discovery_openness,
                     'resolved' => $resolvedCount,
