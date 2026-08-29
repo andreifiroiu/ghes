@@ -173,7 +173,7 @@ export default function Notifications({ settings = {}, vapidPublicKey = null }) 
                                 </Button>
                             </div>
                         </CardContent>
-                        <CardFooter className="flex items-center gap-4">
+                        <CardFooter className="flex flex-wrap items-center gap-4">
                             <Button type="submit" disabled={processing}>
                                 {processing ? 'Saving...' : 'Save Settings'}
                             </Button>

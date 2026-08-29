@@ -50,7 +50,7 @@ export default function ReactionButtons({ eventId, currentReaction = null }) {
 
     return (
         <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
                 {reactions.map(({ key, emoji, label }) => (
                     <Button
                         key={key}
@@ -58,13 +58,15 @@ export default function ReactionButtons({ eventId, currentReaction = null }) {
                         size="sm"
                         disabled={loading}
                         aria-pressed={active === key}
+                        aria-label={label}
+                        title={label}
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             handleReaction(key);
                         }}
                         className={cn(
-                            'text-xs',
+                            'text-xs min-h-11 min-w-11 sm:min-h-0 sm:min-w-0',
                             active === key && 'bg-indigo-600 text-white'
                         )}
                     >

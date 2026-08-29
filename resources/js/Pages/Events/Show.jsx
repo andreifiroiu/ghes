@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
@@ -25,6 +25,9 @@ import SaveButton from '@/Components/Events/SaveButton';
  * @param {boolean} [props.event.is_saved]
  */
 export default function Show({ event }) {
+    const { auth } = usePage().props;
+    const isGuest = !auth?.user;
+
     const formatDateTime = (dateStr) => {
         if (!dateStr) return null;
         return new Date(dateStr).toLocaleDateString('ro-RO', {
@@ -63,7 +66,7 @@ export default function Show({ event }) {
                 </Link>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:items-start">
                 {/* Main content */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Hero image */}
@@ -100,7 +103,7 @@ export default function Show({ event }) {
                                 <CategoryBadge category={event.category} />
                             )}
                         </div>
-                        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 break-words">
                             {event.title}
                         </h1>
                     </div>
@@ -112,7 +115,7 @@ export default function Show({ event }) {
                                 <h2 className="text-lg font-semibold text-gray-900 mb-3">
                                     Despre acest eveniment
                                 </h2>
-                                <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+                                <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap break-words">
                                     {event.description}
                                 </div>
                             </CardContent>
@@ -134,8 +137,8 @@ export default function Show({ event }) {
                     )}
                 </div>
 
-                {/* Sidebar */}
-                <div className="space-y-6">
+                {/* Sidebar — hoisted above the description on mobile */}
+                <div className="space-y-6 order-first lg:order-none">
                     {/* Details card */}
                     <Card>
                         <CardContent className="p-6 space-y-4">
@@ -243,8 +246,8 @@ export default function Show({ event }) {
                         </CardContent>
                     </Card>
 
-                    {/* Map placeholder */}
-                    <Card>
+                    {/* Map placeholder — desktop only while it holds no map */}
+                    <Card className="hidden lg:block">
                         <CardContent className="p-0">
                             <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
                                 <div className="text-center">
@@ -267,22 +270,41 @@ export default function Show({ event }) {
                         </CardContent>
                     </Card>
 
-                    {/* Reactions */}
+                    {/* Reactions — guests get the pitch instead */}
                     <Card>
                         <CardContent className="p-4">
-                            <p className="text-sm font-medium text-gray-700 mb-3">
-                                Ce părere ai?
-                            </p>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <ReactionButtons
-                                    eventId={event.id}
-                                    currentReaction={event.current_reaction}
-                                />
-                                <SaveButton
-                                    eventId={event.id}
-                                    isSaved={event.is_saved}
-                                />
-                            </div>
+                            {isGuest ? (
+                                <>
+                                    <p className="text-sm font-medium text-gray-700 mb-1">
+                                        Îți place genul ăsta?
+                                    </p>
+                                    <p className="text-sm text-gray-500 mb-3">
+                                        Fă-ți cont și primești evenimente pe gustul tău,
+                                        fără să mai cauți.
+                                    </p>
+                                    <Link href="/register">
+                                        <Button className="w-full">
+                                            Înregistrează-te gratuit
+                                        </Button>
+                                    </Link>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm font-medium text-gray-700 mb-3">
+                                        Ce părere ai?
+                                    </p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <ReactionButtons
+                                            eventId={event.id}
+                                            currentReaction={event.current_reaction}
+                                        />
+                                        <SaveButton
+                                            eventId={event.id}
+                                            isSaved={event.is_saved}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

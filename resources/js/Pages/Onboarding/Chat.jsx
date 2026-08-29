@@ -111,10 +111,10 @@ export default function Chat({
     return (
         <>
             <Head title="Bun venit la Ghes" />
-            <div className="min-h-screen bg-gray-50 flex flex-col">
+            <div className="h-[100dvh] bg-gray-50 flex flex-col">
                 {/* Header */}
                 <div className="bg-white border-b border-gray-200 px-4 py-4">
-                    <div className="max-w-2xl mx-auto flex items-center justify-between">
+                    <div className="max-w-2xl mx-auto flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <h1 className="text-xl font-bold text-indigo-600">
                                 Ghes
@@ -138,7 +138,7 @@ export default function Chat({
                 </div>
 
                 {/* Chat area */}
-                <div className="flex-1 max-w-2xl mx-auto w-full flex flex-col">
+                <div className="flex-1 min-h-0 max-w-2xl mx-auto w-full flex flex-col">
                     <ChatWindow messages={messages} isTyping={isTyping} />
 
                     {/* Profile preview after confirmation */}
@@ -152,7 +152,7 @@ export default function Chat({
                     )}
 
                     {/* Input area */}
-                    <div className="border-t border-gray-200 bg-white p-4">
+                    <div className="border-t border-gray-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                         <form
                             onSubmit={handleSubmit}
                             className="flex items-center gap-2"
@@ -167,7 +167,6 @@ export default function Chat({
                                 }
                                 disabled={isSending || !!profile}
                                 className="flex-1"
-                                autoFocus
                             />
                             <Button
                                 type="submit"

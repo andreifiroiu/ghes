@@ -10,17 +10,71 @@
 @theme {
     --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+
+    /* Ghes brand palette — see "Branding manual.md" */
+    --color-navy: #0a1128;
+    --color-persimmon: #ff5733;
+    --color-ghost: #f8f9fa;
+
     --color-background: #ffffff;
     --color-foreground: #09090b;
-    --color-primary: #4f46e5;
+    --color-primary: #ff5733;
     --color-primary-foreground: #ffffff;
     --color-muted: #f4f4f5;
     --color-muted-foreground: #71717a;
     --color-border: #e4e4e7;
-    --color-ring: #4f46e5;
+    --color-ring: #ff5733;
     --color-destructive: #ef4444;
     --color-destructive-foreground: #ffffff;
     --radius-sm: 0.25rem;
     --radius-md: 0.375rem;
     --radius-lg: 0.5rem;
+
+    --animate-ghes-pulse: ghes-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes ghes-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.25;
+    }
+}
+
+/*
+ * Landing-page chrome. The v2 design ships these as bare `body` and `a` rules,
+ * but the rest of the app is a light UI — applying them globally would invert
+ * every other page. Scoped to the landing root instead.
+ *
+ * These MUST live in `@layer base`. Unlayered CSS beats every layered rule
+ * regardless of specificity, so an unlayered `a { color: inherit }` here would
+ * silently outrank every `text-*` utility Tailwind emits into `@layer
+ * utilities` — painting CTA labels with the inherited colour instead of their
+ * own. Inside `base`, utilities win as they should.
+ *
+ * Note there is deliberately no blanket `a:hover { color: persimmon }`, though
+ * the design ships one: it would repaint CTA labels persimmon on a persimmon
+ * button. The design cancels that inline per element; we instead put
+ * `hover:text-persimmon` only on the links that actually want it.
+ */
+@layer base {
+    .landing-root {
+        background-color: var(--color-navy);
+        color: var(--color-ghost);
+        text-wrap: pretty;
+    }
+
+    .landing-root a {
+        color: inherit;
+        text-decoration: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-ghes-pulse {
+        animation: none;
+    }
 }

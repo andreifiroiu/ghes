@@ -46,12 +46,17 @@ export default function SaveButton({ eventId, isSaved = false }) {
                 size="sm"
                 disabled={loading}
                 aria-pressed={saved}
+                aria-label={saved ? 'Salvat' : 'Salvează'}
+                title={saved ? 'Salvat' : 'Salvează'}
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     handleToggle();
                 }}
-                className={cn('text-xs', saved && 'bg-amber-500 text-white')}
+                className={cn(
+                    'text-xs min-h-11 min-w-11 sm:min-h-0 sm:min-w-0',
+                    saved && 'bg-amber-500 text-white'
+                )}
             >
                 <span>🔖</span>
                 <span className="hidden sm:inline">

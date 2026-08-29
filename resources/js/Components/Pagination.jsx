@@ -17,13 +17,13 @@ export default function Pagination({ paginator }) {
     }
 
     return (
-        <div className="mt-4 flex flex-wrap gap-1">
+        <div className="mt-4 flex flex-wrap gap-2">
             {links.map((link, i) => (
                 <button
                     key={i}
                     disabled={!link.url}
                     onClick={() => link.url && router.get(link.url)}
-                    className={`px-3 py-1 text-sm rounded ${link.active ? 'bg-[#0A1128] text-white' : 'bg-white border'} ${!link.url ? 'opacity-40' : ''}`}
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded px-3 py-2 text-sm sm:min-h-0 sm:min-w-0 sm:py-1 ${link.active ? 'bg-[#0A1128] text-white' : 'bg-white border'} ${!link.url ? 'opacity-40' : ''}`}
                     dangerouslySetInnerHTML={{ __html: link.label }}
                 />
             ))}
