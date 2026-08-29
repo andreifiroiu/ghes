@@ -4,19 +4,25 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\Notification;
 use App\Models\User;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Bookmarks\BookmarkService;
 use App\Services\Feedback\ReactionRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 
 class EmailReactionController extends Controller
 {
     public function __construct(
         private readonly ReactionRecorder $reactions,
         private readonly BookmarkService $bookmarks,
+        private readonly ActivityLogger $activity,
     ) {}
 
     /**
@@ -52,15 +58,46 @@ class EmailReactionController extends Controller
         $label = $this->labelFor($reaction);
 
         match ($reaction) {
-            'saved' => $this->bookmarks->add($user, $event->id),
-            'hidden' => $this->reactions->record($user, $event->id, Reaction::NotInterested),
-            default => $this->reactions->record($user, $event->id, Reaction::from($reaction)),
+            'saved' => $this->bookmarks->add($user, $event->id, ActivitySurface::Digest),
+            'hidden' => $this->reactions->record($user, $event->id, Reaction::NotInterested, ActivitySurface::Digest),
+            default => $this->reactions->record($user, $event->id, Reaction::from($reaction), ActivitySurface::Digest),
         };
+
+        // Logged on the POST, never on the GET above: a scanner that prefetches
+        // the link would otherwise be recorded as a reader who clicked it.
+        $this->activity->log(
+            ActivityType::EmailClick,
+            ActivitySurface::Digest,
+            eventId: $event->id,
+            user: $user,
+            notificationId: $this->notificationIdFrom($request),
+            context: ['action' => $reaction],
+        );
 
         return response()->view('emails.reaction-confirmed', [
             'event' => $event,
             'label' => $label,
         ]);
+    }
+
+    /**
+     * The digest this link came from, if `n` names a real one.
+     *
+     * Two separate reasons to resolve rather than trust: notification_id is a
+     * foreign key, so a stale id from an expired digest would fail the insert
+     * and cost us the whole row; and the primary key is a Postgres `uuid`, so
+     * looking it up with arbitrary text raises a QueryException instead of
+     * returning nothing.
+     */
+    private function notificationIdFrom(Request $request): ?string
+    {
+        $id = $request->query('n');
+
+        if (! is_string($id) || ! Str::isUuid($id)) {
+            return null;
+        }
+
+        return Notification::whereKey($id)->value('id');
     }
 
     /**

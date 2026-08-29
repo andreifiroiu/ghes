@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\NotificationChannel;
 use App\Models\Notification;
 use App\Models\User;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Notification\EmailRenderer;
 use App\Services\Notification\NotificationDispatcher;
 use App\Services\Notification\PushSender;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Mail;
 
 function makeDispatcher(PushSender $pushSender): NotificationDispatcher
 {
-    return new NotificationDispatcher(new EmailRenderer, $pushSender);
+    return new NotificationDispatcher(new EmailRenderer, $pushSender, app(ActivityLogger::class));
 }
 
 function makePendingNotification(User $user): Notification

@@ -34,6 +34,7 @@ import { sourceLabel } from '@/lib/sources';
  * @param {string} [props.event.source]
  * @param {string} [props.event.source_url]
  * @param {Array<{source: string, source_url: string}>} [props.event.sources]
+ * @param {string} [props.event.click_url] Tracked redirect; carries the click through to the ticket site.
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
  * @param {Array<Object>} [props.relatedEvents]
@@ -66,6 +67,19 @@ export default function Show({ event, relatedEvents = [] }) {
             : event.source_url
               ? [{ source: event.source, source_url: event.source_url }]
               : [];
+
+    /**
+     * Route a ticket link through the tracked redirect so the click is
+     * recorded. `s` names which provider was chosen — the server resolves it
+     * against the event's own sources, so it selects a destination rather than
+     * supplying one. Falls back to the raw URL if the prop predates tracking.
+     *
+     * @param {{source: string, source_url: string}} link
+     */
+    const trackedTicketUrl = (link) =>
+        event.click_url
+            ? `${event.click_url}?from=event_detail&s=${encodeURIComponent(link.source)}`
+            : link.source_url;
 
     return (
         <AppLayout>
@@ -287,7 +301,7 @@ export default function Show({ event, relatedEvents = [] }) {
                                     {ticketLinks.map((link) => (
                                         <a
                                             key={link.source_url}
-                                            href={link.source_url}
+                                            href={trackedTicketUrl(link)}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="block"

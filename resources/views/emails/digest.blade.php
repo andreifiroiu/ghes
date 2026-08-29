@@ -19,6 +19,9 @@
         .event-description { font-size: 14px; color: #3f3f46; margin: 0 0 12px; line-height: 1.5; }
         .category-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; background: #e0e7ff; color: #4338ca; }
         .reactions { margin-top: 8px; }
+        .event-title-link { color: #18181b; text-decoration: none; }
+        .details { margin: 8px 0 4px; }
+        .details-link { font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; }
         .reaction-btn { display: inline-block; padding: 6px 14px; border-radius: 6px; font-size: 13px; text-decoration: none; margin-right: 6px; margin-bottom: 4px; }
         .btn-interested { background: #dcfce7; color: #166534; }
         .btn-not-interested { background: #fee2e2; color: #991b1b; }
@@ -49,13 +52,13 @@
         <td class="section-title">Recomandate pentru tine</td>
     </tr>
     @foreach($recommendedEvents as $item)
-        @php $event = $item['event']; $urls = $item['reaction_urls']; @endphp
+        @php $event = $item['event']; $urls = $item['reaction_urls']; $clickUrl = $item['click_url']; @endphp
         <tr>
             <td class="event-card">
                 @if($event->image_url)
                     <img src="{{ $event->image_url }}" alt="" width="100%" style="border-radius:6px;margin-bottom:12px;max-height:180px;object-fit:cover;">
                 @endif
-                <div class="event-title">{{ $event->title }}</div>
+                <div class="event-title"><a href="{{ $clickUrl }}" class="event-title-link">{{ $event->title }}</a></div>
                 <div class="event-meta">
                     <span class="category-badge">{{ ucfirst($event->category->value) }}</span>
                     @if($event->starts_at)
@@ -73,6 +76,7 @@
                 @if($event->description)
                     <div class="event-description">{{ Str::limit($event->description, 150) }}</div>
                 @endif
+                <div class="details"><a href="{{ $clickUrl }}" class="details-link">Vezi detalii &rarr;</a></div>
                 <div class="reactions">
                     <a href="{{ $urls['interested'] }}" class="reaction-btn btn-interested">&#x2764; Mă interesează</a>
                     <a href="{{ $urls['not_interested'] }}" class="reaction-btn btn-not-interested">&#x1f44e; Nu-i pentru mine</a>
@@ -90,11 +94,11 @@
         <td class="section-title discovery-section" style="padding-top:20px;">Descoperă ceva nou</td>
     </tr>
     @foreach($discoveryEvents as $item)
-        @php $event = $item['event']; $urls = $item['reaction_urls']; @endphp
+        @php $event = $item['event']; $urls = $item['reaction_urls']; $clickUrl = $item['click_url']; @endphp
         <tr>
             <td class="event-card discovery-section">
                 <span class="discovery-label">Descoperire</span>
-                <div class="event-title">{{ $event->title }}</div>
+                <div class="event-title"><a href="{{ $clickUrl }}" class="event-title-link">{{ $event->title }}</a></div>
                 <div class="event-meta">
                     <span class="category-badge">{{ ucfirst($event->category->value) }}</span>
                     @if($event->starts_at)
@@ -107,6 +111,7 @@
                 @if($event->description)
                     <div class="event-description">{{ Str::limit($event->description, 120) }}</div>
                 @endif
+                <div class="details"><a href="{{ $clickUrl }}" class="details-link">Vezi detalii &rarr;</a></div>
                 <div class="reactions">
                     <a href="{{ $urls['interested'] }}" class="reaction-btn btn-interested">&#x2764; Mă interesează</a>
                     <a href="{{ $urls['not_interested'] }}" class="reaction-btn btn-not-interested">&#x1f44e; Nu-i pentru mine</a>
@@ -129,5 +134,8 @@
 </table>
 </td></tr>
 </table>
+{{-- Open tracking. Last element in the body so a client that stops rendering
+     early has already shown the whole digest. --}}
+<img src="{{ $openPixelUrl }}" alt="" width="1" height="1" style="display:block;width:1px;height:1px;border:0;">
 </body>
 </html>

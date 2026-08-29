@@ -22,7 +22,7 @@ function Stat({ label, value }) {
  * @param {Object} props.stats
  */
 export default function Dashboard({ stats }) {
-    const { events, users, scraper_runs: runs } = stats;
+    const { events, users, scraper_runs: runs, activity } = stats;
 
     return (
         <AdminLayout title="Dashboard">
@@ -36,6 +36,8 @@ export default function Dashboard({ stats }) {
                 <Stat label="Onboarded" value={users.onboarded} />
                 <Stat label="Scraper runs" value={runs.total} />
                 <Stat label="Failed runs" value={runs.failed} />
+                <Stat label="Clicks (7d)" value={activity.clicks_7d} />
+                <Stat label="Views (7d)" value={activity.views_7d} />
             </div>
         </AdminLayout>
     );
