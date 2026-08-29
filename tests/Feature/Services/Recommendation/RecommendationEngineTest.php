@@ -367,6 +367,10 @@ it('ranks higher-scored events first in recommended list', function () {
     $user = User::factory()->create([
         'interest_profile' => ['music' => 0.95, 'technology' => 0.05],
         'city' => 'Bucharest',
+        // Pinned: the factory's random 0.1–0.9 can hand almost every slot to
+        // discovery, leaving one of the two events out of the recommended list
+        // and the assertion below unreached.
+        'discovery_openness' => 0.125,
     ]);
 
     $musicEvent = Event::factory()->create([
@@ -396,9 +400,9 @@ it('ranks higher-scored events first in recommended list', function () {
     $musicPos = array_search($musicEvent->id, $batch->recommendedEventIds);
     $techPos = array_search($techEvent->id, $batch->recommendedEventIds);
 
-    if ($musicPos !== false && $techPos !== false) {
-        expect($musicPos)->toBeLessThan($techPos);
-    }
+    expect($musicPos)->not->toBeFalse()
+        ->and($techPos)->not->toBeFalse()
+        ->and($musicPos)->toBeLessThan($techPos);
 });
 
 it('includes discovery events in the batch', function () {
@@ -592,4 +596,105 @@ it('combines multiple scoring factors for realistic ranking', function () {
     expect($perfectScore)->toBeGreaterThan($mediocreScore);
     expect($perfectScore)->toBeGreaterThan(0.5);
     expect($mediocreScore)->toBeLessThan(0.4);
+});
+
+// ---------------------------------------------------------------
+// City matching – normalised on the slug, not the raw label
+// ---------------------------------------------------------------
+
+it('recommends events whose city label differs from the user city only by diacritics', function () {
+    // Events carry the scraper's spelling; users.city is free text written by
+    // the onboarding chat. An exact comparison drops every candidate and the
+    // dashboard renders empty even though the city is the same place.
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+        'discovery_openness' => 0.25,
+    ]);
+
+    Event::factory()->count(3)->create([
+        'category' => EventCategory::Music,
+        'city' => 'Timișoara',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user);
+
+    expect($batch->recommendedEventIds)->not->toBeEmpty();
+});
+
+it('does not recommend events from a genuinely different city', function () {
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+        'discovery_openness' => 0.25,
+    ]);
+
+    Event::factory()->count(3)->create([
+        'category' => EventCategory::Music,
+        'city' => 'Cluj-Napoca',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    $batch = $this->engine->recommend($user);
+
+    expect($batch->recommendedEventIds)->toBeEmpty()
+        ->and($batch->discoveryEventIds)->toBeEmpty();
+});
+
+it('scores location as a match when only diacritics differ', function () {
+    $user = User::factory()->create(['city' => 'Timisoara']);
+    $event = Event::factory()->create(['city' => 'TIMIȘOARA']);
+
+    expect($this->engine->locationMatch($user, $event))->toBe(1.0);
+});
+
+it('never puts the same event in both the recommended and discovery lists', function () {
+    // Deterministic: exactly as many unexcluded candidates as slots requested,
+    // so the only way an excluded id appears is a broken exclusion — not an
+    // unlucky random draw, and not the thin-catalogue top-up below.
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+    ]);
+
+    $events = Event::factory()->count(4)->create([
+        'category' => EventCategory::Arts,
+        'city' => 'Timișoara',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    $excluded = $events->take(2)->pluck('id')->all();
+
+    $discovered = (new DiscoveryEngine)->discoverForUser($user, 2, $excluded)
+        ->pluck('id')->all();
+
+    expect(array_intersect($discovered, $excluded))->toBeEmpty()
+        ->and($discovered)->toHaveCount(2);
+});
+
+it('still fills the discovery slot when every alternative was already recommended', function () {
+    // The exclusion must degrade to a repeat rather than to an empty section:
+    // in a thin catalogue the diversity filter takes the off-profile events
+    // into the recommendations, and discovery would otherwise return nothing
+    // for both the dashboard and the digest.
+    $user = User::factory()->create([
+        'city' => 'Timisoara',
+        'interest_profile' => ['music' => 0.9],
+    ]);
+
+    $only = Event::factory()->create([
+        'category' => EventCategory::Arts,
+        'city' => 'Timișoara',
+        'starts_at' => now()->addDays(5),
+        'is_classified' => true,
+    ]);
+
+    $discovered = (new DiscoveryEngine)->discoverForUser($user, 2, [$only->id]);
+
+    expect($discovered)->not->toBeEmpty()
+        ->and($discovered->pluck('id')->all())->toContain($only->id);
 });

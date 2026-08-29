@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\EventCategory;
+use App\Services\Processing\EventTextNormalizer;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -224,6 +225,30 @@ class Event extends Model
     public function mergedDuplicates(): HasMany
     {
         return $this->hasMany(Event::class, 'merged_into_id');
+    }
+
+    /**
+     * Keep `city_slug` derived from `city` on every write.
+     *
+     * Recommendations, discovery and the dashboard counts all filter on
+     * `city_slug`, while the admin edit form writes plain `city`. Without this
+     * an admin correcting a mis-scraped city leaves the slug pointing at the
+     * old one, and the event silently disappears from every personalised list
+     * while still looking correct in the admin table. The nightly
+     * `eventpulse:dedupe-events` backfill only revisits rows whose slug is
+     * NULL, so a stale-but-present slug would never heal.
+     *
+     * Every writer that already sets both (EventPipeline, EventMerger, the
+     * factory, the backfill command) computes the identical value, so this is
+     * a no-op for them.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Event $event): void {
+            if ($event->isDirty('city') || $event->city_slug === null) {
+                $event->city_slug = EventTextNormalizer::citySlug($event->city);
+            }
+        });
     }
 
     /**

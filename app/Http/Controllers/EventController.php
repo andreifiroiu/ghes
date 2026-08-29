@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\Reaction;
+use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use Carbon\Carbon;
@@ -16,6 +17,8 @@ use Inertia\Response;
 
 class EventController extends Controller
 {
+    use ResolvesCity;
+
     public function index(Request $request): Response
     {
         $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
@@ -112,27 +115,6 @@ class EventController extends Controller
     }
 
     /**
-     * The upcoming weekend in the city's timezone, as a UTC range. During a
-     * weekend it means the one in progress, not the next one.
-     *
-     * @return array{0: Carbon, 1: Carbon}
-     */
-    private function weekendRange(): array
-    {
-        $now = Carbon::now($this->cityTimezone());
-
-        $start = $now->isSaturday() || $now->isSunday()
-            ? $now->copy()->startOfDay()
-            : $now->copy()->next(Carbon::SATURDAY)->startOfDay();
-
-        $end = $now->isSunday()
-            ? $start->copy()->endOfDay()
-            : $start->copy()->addDay()->endOfDay();
-
-        return [$start->utc(), $end->utc()];
-    }
-
-    /**
      * Follow a merged duplicate to the event it now lives under.
      *
      * Links in already-sent digests point at ids that may since have been
@@ -156,17 +138,6 @@ class EventController extends Controller
         }
 
         return $event;
-    }
-
-    /**
-     * Resolve the timezone used to interpret a user-selected calendar date,
-     * defaulting to the configured default city's timezone.
-     */
-    private function cityTimezone(): string
-    {
-        $city = (string) config('eventpulse.default_city');
-
-        return (string) config("eventpulse.cities.{$city}.timezone", config('app.timezone'));
     }
 
     public function apiIndex(Request $request): JsonResponse
