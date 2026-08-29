@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\InterestProfile;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 
 class ProfileDecayer
 {
@@ -14,14 +15,16 @@ class ProfileDecayer
      * Multiplies all profile scores by (1 - decay_rate) to gradually
      * reduce stale preferences over time. This ensures the profile
      * reflects recent behavior more than old behavior.
+     *
+     * Returns whether the user had a profile to decay.
      */
-    public function decay(User $user): void
+    public function decay(User $user): bool
     {
         $decayRate = config('eventpulse.profile.decay_rate', 0.05);
         $profile = $user->interest_profile ?? [];
 
-        if (empty($profile)) {
-            return;
+        if ($profile === []) {
+            return false;
         }
 
         $multiplier = 1.0 - $decayRate;
@@ -34,24 +37,32 @@ class ProfileDecayer
         }
 
         $user->update(['interest_profile' => $decayed]);
+
+        return true;
     }
 
     /**
      * Apply decay to all user profiles.
      *
-     * Iterates through all users and decays their profiles.
-     * Returns the number of profiles processed.
+     * Returns the number of profiles that actually had scores to decay.
+     *
+     * Empty profiles are skipped in PHP rather than in the query: on
+     * PostgreSQL the column is `json`, which has no equality operator, so
+     * comparing it against '{}' in SQL fails outright.
      */
     public function decayAll(): int
     {
         $count = 0;
 
-        User::whereNotNull('interest_profile')
-            ->where('interest_profile', '!=', '{}')
-            ->chunkById(100, function ($users) use (&$count) {
+        User::query()
+            ->whereNotNull('interest_profile')
+            ->orderBy('id')
+            ->chunkById(100, function (Collection $users) use (&$count): void {
+                /** @var Collection<int, User> $users */
                 foreach ($users as $user) {
-                    $this->decay($user);
-                    $count++;
+                    if ($this->decay($user)) {
+                        $count++;
+                    }
                 }
             });
 
