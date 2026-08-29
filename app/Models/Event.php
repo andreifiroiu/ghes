@@ -46,6 +46,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $image_url
  * @property array<string, mixed>|null $metadata
  * @property int $popularity_score
+ * @property int $engagement_score
  * @property int $sources_count
  * @property Carbon|null $last_seen_at
  * @property bool $is_classified
@@ -93,6 +94,7 @@ class Event extends Model
         'image_url',
         'metadata',
         'popularity_score',
+        'engagement_score',
         'sources_count',
         'last_seen_at',
         'is_classified',
@@ -120,6 +122,7 @@ class Event extends Model
             'latitude' => 'float',
             'longitude' => 'float',
             'popularity_score' => 'integer',
+            'engagement_score' => 'integer',
             'sources_count' => 'integer',
             'is_free' => 'boolean',
             'is_classified' => 'boolean',
@@ -224,6 +227,32 @@ class Event extends Model
     public function mergedDuplicates(): HasMany
     {
         return $this->hasMany(Event::class, 'merged_into_id');
+    }
+
+    /**
+     * Follow a merged duplicate to the event it now lives under.
+     *
+     * Links in already-sent digests point at ids that may since have been
+     * merged away; they must still resolve to the surviving event rather than
+     * showing — or recording activity against — a stale duplicate. The hop
+     * count is bounded because a merge chain is data, and a cycle in it would
+     * otherwise hang the request rather than surface as a bad row.
+     */
+    public function resolveCanonical(int $maxHops = 5): self
+    {
+        $event = $this;
+
+        for ($hop = 0; $event->merged_into_id !== null && $hop < $maxHops; $hop++) {
+            $canonical = $event->canonicalEvent;
+
+            if ($canonical === null) {
+                break;
+            }
+
+            $event = $canonical;
+        }
+
+        return $event;
     }
 
     /**

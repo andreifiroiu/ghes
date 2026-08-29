@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\Admin\AnalyticsController as AdminAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DuplicateEventController;
 use App\Http\Controllers\Admin\EventController as AdminEventController;
@@ -35,6 +37,25 @@ Route::post('reactions/{user}/{event}/{reaction}', [EmailReactionController::cla
     ->name('reactions.email.confirm')
     ->middleware('signed');
 
+// Outbound click tracking. Public and unauthenticated because digest links and
+// guest browsing both come through here. The destination is always the event's
+// own stored source_url — never a URL from the request — so this cannot be
+// turned into an open redirect.
+// Throttled: this is an unauthenticated GET that writes a row and feeds a
+// ranking signal, so without a limit a loop of curls could push any event's
+// engagement_score to the ceiling for every user at the cost of a few requests.
+Route::get('go/{event}', [ActivityController::class, 'redirect'])
+    ->whereUuid('event')
+    ->middleware('throttle:30,1')
+    ->name('events.go');
+
+// Digest open pixel. Signed so the open timestamp cannot be forged by anyone
+// who gets hold of a forwarded email.
+Route::get('e/o/{notification}.gif', [ActivityController::class, 'open'])
+    ->whereUuid('notification')
+    ->name('notifications.open')
+    ->middleware(['signed', 'throttle:60,1']);
+
 // Public, read-only event browsing. The landing page sends guests here, so they
 // can see real events before signing up; reacting and saving stay authenticated.
 // `{event}` is constrained to a UUID so this cannot shadow `events/saved`,
@@ -42,6 +63,7 @@ Route::post('reactions/{user}/{event}/{reaction}', [EmailReactionController::cla
 Route::get('events', [EventController::class, 'index'])->name('events.index');
 Route::get('events/{event}', [EventController::class, 'show'])
     ->whereUuid('event')
+    ->middleware('throttle:120,1')
     ->name('events.show');
 
 // Auth (guest only)
@@ -98,6 +120,7 @@ Route::middleware('auth')->group(function () {
     // Admin
     Route::prefix('admin')->name('admin.')->middleware('can:access-admin')->group(function () {
         Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
+        Route::get('analytics', [AdminAnalyticsController::class, 'index'])->name('analytics');
 
         // Events
         Route::get('events', [AdminEventController::class, 'index'])->name('events.index');

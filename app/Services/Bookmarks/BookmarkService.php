@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Bookmarks;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Jobs\ProcessBookmarkJob;
 use App\Jobs\ReverseProfileDeltaJob;
 use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\User;
+use App\Services\Activity\ActivityLogger;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,11 +21,18 @@ use Illuminate\Support\Facades\DB;
  */
 class BookmarkService
 {
+    public function __construct(
+        private readonly ActivityLogger $activity,
+    ) {}
+
     /**
      * Bookmark an event. Idempotent — saving twice does not double-count.
      */
-    public function add(User $user, string $eventId): EventBookmark
-    {
+    public function add(
+        User $user,
+        string $eventId,
+        ActivitySurface $surface = ActivitySurface::EventDetail,
+    ): EventBookmark {
         $bookmark = EventBookmark::firstOrCreate([
             'user_id' => $user->id,
             'event_id' => $eventId,
@@ -35,14 +45,29 @@ class BookmarkService
             ProcessBookmarkJob::dispatch($bookmark->id, $user->id);
         }
 
+        // Analytics only — the profile delta is the job's business. Skipped for
+        // an idempotent re-save so the timeline shows one save, not one per
+        // double-click.
+        if ($bookmark->wasRecentlyCreated) {
+            $this->activity->log(
+                ActivityType::BookmarkAdded,
+                $surface,
+                eventId: $eventId,
+                user: $user,
+            );
+        }
+
         return $bookmark;
     }
 
     /**
      * Remove a bookmark and undo only its own share of the profile.
      */
-    public function remove(User $user, string $eventId): void
-    {
+    public function remove(
+        User $user,
+        string $eventId,
+        ActivitySurface $surface = ActivitySurface::EventDetail,
+    ): void {
         // Same row lock as ProcessBookmarkJob takes: reading applied_deltas
         // while that job is mid-flight would see null, delete the row, and skip
         // the reversal, stranding the saved delta in the profile permanently.
@@ -67,6 +92,13 @@ class BookmarkService
         if ($appliedDeltas !== []) {
             ReverseProfileDeltaJob::dispatch($user->id, $eventId, $appliedDeltas);
         }
+
+        $this->activity->log(
+            ActivityType::BookmarkRemoved,
+            $surface,
+            eventId: $eventId,
+            user: $user,
+        );
     }
 
     /**

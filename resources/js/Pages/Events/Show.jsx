@@ -21,6 +21,7 @@ import SaveButton from '@/Components/Events/SaveButton';
  * @param {Array<string>} [props.event.tags]
  * @param {string} [props.event.price]
  * @param {string} [props.event.source_url]
+ * @param {string} [props.event.click_url] Tracked redirect to source_url; prefer this over source_url.
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
  */
@@ -234,7 +235,11 @@ export default function Show({ event }) {
                             {/* Source link */}
                             {event.source_url && (
                                 <a
-                                    href={event.source_url}
+                                    href={
+                                        event.click_url
+                                            ? `${event.click_url}?from=event_detail`
+                                            : event.source_url
+                                    }
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >

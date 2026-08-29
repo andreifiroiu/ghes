@@ -32,11 +32,17 @@ const SOURCE_LABELS = {
  * @param {boolean} [props.event.is_free]
  * @param {string} [props.event.source]
  * @param {string} [props.event.source_url]
+ * @param {string} [props.event.click_url] Tracked redirect to source_url; prefer this over source_url.
+ * @param {string} [props.surface] Where this card is rendered, recorded with the click.
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
  * @param {boolean} [props.showReactions] - Off for guests, who cannot react or save
  */
-export default function EventCard({ event, showReactions = true }) {
+export default function EventCard({
+    event,
+    showReactions = true,
+    surface = 'events_index',
+}) {
     const formattedDate = event.starts_at
         ? new Date(event.starts_at).toLocaleDateString(undefined, {
               weekday: 'short',
@@ -55,7 +61,15 @@ export default function EventCard({ event, showReactions = true }) {
           ? `De la ${event.price_min} RON`
           : null;
 
-    const cardLink = event.source_url || null;
+    // Prefer the tracked redirect so the click is recorded; fall back to the
+    // raw source for any caller still serving pre-tracking props. `surface`
+    // rides along as a query param because only the page knows which rail the
+    // card was rendered in, and comparing rails is the point of logging clicks.
+    const cardLink = event.source_url
+        ? event.click_url
+            ? `${event.click_url}?from=${encodeURIComponent(surface)}`
+            : event.source_url
+        : null;
 
     return (
         <Card className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">

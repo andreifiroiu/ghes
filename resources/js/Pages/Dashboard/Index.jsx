@@ -18,6 +18,7 @@ export default function Index({ recommendations = [], discoveryEvents = [] }) {
                     Recomandate pentru tine
                 </h2>
                 <EventList
+                    surface="dashboard"
                     events={recommendations}
                     emptyMessage="Nicio recomandare momentan. Finalizează onboarding-ul pentru sugestii personalizate."
                 />
@@ -34,6 +35,7 @@ export default function Index({ recommendations = [], discoveryEvents = [] }) {
                     </p>
                 </div>
                 <EventList
+                    surface="dashboard"
                     events={discoveryEvents}
                     emptyMessage="Niciun eveniment de descoperit momentan."
                 />

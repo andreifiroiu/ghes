@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use App\Models\Notification;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Recommendation\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +20,7 @@ class RecommendationController extends Controller
 {
     public function __construct(
         private readonly RecommendationEngine $recommendationEngine,
+        private readonly ActivityLogger $activity,
     ) {}
 
     public function index(Request $request): Response
@@ -29,6 +33,16 @@ class RecommendationController extends Controller
             ->withUserContext($user)->get();
         $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)
             ->withUserContext($user)->get();
+
+        // Both lists in one call: an impression is an impression regardless of
+        // which rail it came from, and the discovery flag already lives in
+        // discovery_logs for anyone who needs to tell them apart.
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ActivitySurface::Dashboard,
+            [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
+            $user,
+        );
 
         return Inertia::render('Dashboard/Index', [
             'recommendations' => EventResource::collection($recommendations)->resolve(),
@@ -44,12 +58,19 @@ class RecommendationController extends Controller
 
         $recommendations = Event::whereIn('id', $batch->recommendedEventIds)
             ->withUserContext($user)->get();
+        $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)
+            ->withUserContext($user)->get();
+
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ActivitySurface::Api,
+            [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
+            $user,
+        );
 
         return response()->json([
             'recommendations' => EventResource::collection($recommendations),
-            'discovery' => EventResource::collection(
-                Event::whereIn('id', $batch->discoveryEventIds)->withUserContext($user)->get(),
-            ),
+            'discovery' => EventResource::collection($discoveryEvents),
             'total_score' => $batch->totalScore,
         ]);
     }
