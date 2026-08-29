@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Contracts\ScraperAdapter;
 use App\DTOs\RawEvent;
+use App\Enums\ScraperRunStatus;
 use App\Jobs\ClassifyEventJob;
 use App\Models\Event;
 use App\Models\EventSource;
@@ -335,7 +336,7 @@ describe('ScrapingPipeline', function (): void {
 
         expect($saved)->toBe(0)
             ->and(Event::count())->toBe(0)
-            ->and(ScraperRun::first()->status)->toBe('failed');
+            ->and(ScraperRun::first()->status)->toBe(ScraperRunStatus::Failed);
     });
 
     it('marks ScraperRun as completed with events_found=0 when the adapter emits nothing', function (): void {
@@ -347,7 +348,7 @@ describe('ScrapingPipeline', function (): void {
         app(ScraperOrchestrator::class)->runSource('timisoara', 'iabilet');
 
         $run = ScraperRun::first();
-        expect($run->status)->toBe('completed')
+        expect($run->status)->toBe(ScraperRunStatus::Completed)
             ->and($run->events_found)->toBe(0);
     });
 
@@ -366,8 +367,8 @@ describe('ScrapingPipeline', function (): void {
         $orchestrator->runSource('timisoara', 'zilesinopti');
 
         expect(Event::count())->toBe(1)
-            ->and(ScraperRun::where('source', 'iabilet')->first()->status)->toBe('completed')
-            ->and(ScraperRun::where('source', 'zilesinopti')->first()->status)->toBe('failed');
+            ->and(ScraperRun::where('source', 'iabilet')->first()->status)->toBe(ScraperRunStatus::Completed)
+            ->and(ScraperRun::where('source', 'zilesinopti')->first()->status)->toBe(ScraperRunStatus::Failed);
     });
 
     it('stores an event with null startsAt without error', function (): void {

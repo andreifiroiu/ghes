@@ -32,3 +32,58 @@ export function formatEventDate(iso) {
 
     return `${day}, ${time}`;
 }
+
+/**
+ * Format a scraper run's timestamp, which always carries a meaningful clock
+ * time — unlike an event start, a run at midnight really did happen at midnight.
+ *
+ * @param {string|null|undefined} iso
+ * @returns {string}
+ */
+export function formatRunTime(iso) {
+    if (!iso) {
+        return '—';
+    }
+
+    const date = new Date(iso);
+
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+
+    return date.toLocaleString(undefined, {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+/**
+ * A run's wall-clock duration, or an em dash while it is still running.
+ *
+ * @param {string|null|undefined} startedAt
+ * @param {string|null|undefined} finishedAt
+ * @returns {string}
+ */
+export function formatDuration(startedAt, finishedAt) {
+    if (!startedAt || !finishedAt) {
+        return '—';
+    }
+
+    const seconds = Math.round((new Date(finishedAt) - new Date(startedAt)) / 1000);
+
+    if (Number.isNaN(seconds) || seconds < 0) {
+        return '—';
+    }
+
+    if (seconds < 60) {
+        return `${seconds}s`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+
+    return minutes < 60
+        ? `${minutes}m ${seconds % 60}s`
+        : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}

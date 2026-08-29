@@ -149,5 +149,9 @@ Route::middleware('auth')->group(function () {
         // Scrapers
         Route::get('scrapers', [ScraperController::class, 'index'])->name('scrapers.index');
         Route::post('scrapers/run', [ScraperController::class, 'store'])->name('scrapers.run');
+
+        // Per-source detail. Two segments, so the literal `scrapers/run` above
+        // cannot be swallowed by it. Both params are config keys, not model IDs.
+        Route::get('scrapers/{city}/{source}', [ScraperController::class, 'show'])->name('scrapers.show');
     });
 });

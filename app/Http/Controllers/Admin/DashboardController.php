@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\ActivityType;
+use App\Enums\ScraperRunStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\ScraperRun;
@@ -34,7 +35,7 @@ class DashboardController extends Controller
                 ],
                 'scraper_runs' => [
                     'total' => ScraperRun::count(),
-                    'failed' => ScraperRun::where('status', 'failed')->count(),
+                    'failed' => ScraperRun::where('status', ScraperRunStatus::Failed)->count(),
                 ],
                 // Headline engagement only — the full report lives under
                 // /admin/analytics, which this is meant to point at.
