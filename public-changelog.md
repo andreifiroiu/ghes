@@ -17,6 +17,14 @@ căutare telefonul mărea pagina de la sine. Acum ai jos o bară cu Acasă, Even
 Salvate și Profil, ca să te muți dintr-un loc în altul fără să derulezi până sus. În
 conversația de la început tastatura nu mai acoperă câmpul în care scrii, iar pe pagina
 unui eveniment vezi întâi ora, locul și prețul, abia apoi descrierea.
+## 2026-08-29 — Rezolvat — Evenimente care lipseau din listă apar din nou (#8)
+
+Unele evenimente nu ajungeau niciodată în Ghes: dacă sursa trimitea o adresă lungă
+sau o imagine cu o adresă web foarte lungă, evenimentul era respins în tăcere și nu
+apărea nici în lista de evenimente, nici în recomandări. Acum sunt preluate corect,
+așa că ar trebui să vezi mai multe evenimente — mai ales de la sursele care trec
+adresa completă a locului. Cele pierdute până acum reapar la următoarea actualizare
+a surselor de evenimente.
 
 ## 2026-08-29 — Rezolvat — Recomandările țin din nou cont mai mult de ce te interesează acum (#7)
 
