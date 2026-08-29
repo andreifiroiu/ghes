@@ -16,6 +16,7 @@ it('forbids non-admins from the admin area', function () {
     $this->actingAs($user)->get('/admin/events')->assertStatus(403);
     $this->actingAs($user)->get('/admin/users')->assertStatus(403);
     $this->actingAs($user)->get('/admin/scrapers')->assertStatus(403);
+    $this->actingAs($user)->get('/admin/scrapers/timisoara/allevents')->assertStatus(403);
 });
 
 it('redirects guests to login', function () {
@@ -30,6 +31,7 @@ it('allows admins into the admin area', function () {
     $this->actingAs($admin)->get('/admin/events')->assertStatus(200);
     $this->actingAs($admin)->get('/admin/users')->assertStatus(200);
     $this->actingAs($admin)->get('/admin/scrapers')->assertStatus(200);
+    $this->actingAs($admin)->get('/admin/scrapers/timisoara/allevents')->assertStatus(200);
 });
 
 it('exposes the isAdmin flag to the frontend for admins', function () {

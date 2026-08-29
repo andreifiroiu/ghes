@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\ScraperRunStatus;
 use App\Models\ScraperRun;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -23,7 +24,7 @@ class ScraperRunFactory extends Factory
     {
         return [
             'source' => fake()->randomElement(['eventbrite', 'meetup', 'generic_html', 'rss_feed']),
-            'status' => fake()->randomElement(['running', 'completed', 'failed']),
+            'status' => fake()->randomElement(ScraperRunStatus::cases()),
             'events_found' => fake()->numberBetween(0, 50),
             'events_created' => fake()->numberBetween(0, 30),
             'events_updated' => fake()->numberBetween(0, 10),
@@ -41,11 +42,10 @@ class ScraperRunFactory extends Factory
     public function failed(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'failed',
+            'status' => ScraperRunStatus::Failed,
             'errors_count' => fake()->numberBetween(1, 10),
-            'error_log' => [
-                ['message' => 'Connection timeout', 'timestamp' => now()->toIso8601String()],
-            ],
+            // A list of plain strings, matching what the orchestrator writes.
+            'error_log' => ['Connection timeout'],
         ]);
     }
 }

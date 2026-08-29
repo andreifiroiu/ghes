@@ -1,21 +1,6 @@
 import { Head } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { Card, CardHeader, CardTitle, CardContent } from '@/Components/ui/Card';
-
-function Stat({ label, value }) {
-    return (
-        <Card>
-            <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500">
-                    {label}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-3xl font-bold text-[#0A1128]">{value}</p>
-            </CardContent>
-        </Card>
-    );
-}
+import Stat from '@/Components/Admin/StatCard';
 
 /**
  * @param {Object} props

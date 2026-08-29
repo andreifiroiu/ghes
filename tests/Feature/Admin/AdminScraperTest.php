@@ -18,7 +18,7 @@ it('renders the scrapers admin page', function () {
     $this->actingAs($this->admin)->get('/admin/scrapers')
         ->assertStatus(200)
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('Admin/Scrapers')
+            ->component('Admin/Scrapers/Index')
             ->has('cities')
             ->has('adapters'));
 });
@@ -78,4 +78,31 @@ it('paginates the scraper runs list at the configured page size', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('runs.data', 2)
             ->where('runs.per_page', 2));
+});
+
+it('lists every configured source with its latest run', function () {
+    config(['eventpulse.cities.timisoara.sources' => [
+        ['adapter' => 'allevents', 'url' => 'https://example.test', 'enabled' => true, 'interval_hours' => 6],
+        ['adapter' => 'onevent', 'url' => 'https://example.test', 'enabled' => false, 'interval_hours' => 6],
+    ]]);
+
+    ScraperRun::factory()->create([
+        'source' => 'allevents',
+        'city' => 'timisoara',
+        'status' => 'completed',
+        'events_created' => 7,
+        'started_at' => now()->subHours(2),
+    ]);
+
+    $this->actingAs($this->admin)->get('/admin/scrapers')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('sources', 2)
+            ->where('sources.0.adapter', 'allevents')
+            ->where('sources.0.enabled', true)
+            ->where('sources.0.last_run.status', 'completed')
+            ->where('sources.0.last_run.events_created', 7)
+            // A source that has never run still gets a row, so a scraper that
+            // was configured but never wired up is visible rather than absent.
+            ->where('sources.1.adapter', 'onevent')
+            ->where('sources.1.last_run', null));
 });

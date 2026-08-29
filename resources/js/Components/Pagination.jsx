@@ -1,16 +1,19 @@
 import { router } from '@inertiajs/react';
 
 /**
- * Numbered pagination for an API-Resource paginated payload.
+ * Numbered pagination for a paginated payload.
  *
- * A resource collection over a paginator exposes `links` as an object
- * ({first, last, prev, next}) and the numbered link array as `meta.links`.
+ * Accepts either shape the app produces. A resource collection exposes `links`
+ * as an object ({first, last, prev, next}) and the numbered link array as
+ * `meta.links`; a raw paginator puts that array at the top level. The
+ * `Array.isArray` guard below is what keeps the two apart — a resource
+ * collection's top-level `links` is an object and is correctly ignored.
  *
  * @param {Object} props
- * @param {{meta?: {links?: Array<{url: string|null, label: string, active: boolean}>}}} props.paginator
+ * @param {{links?: Array<{url: string|null, label: string, active: boolean}>, meta?: {links?: Array<{url: string|null, label: string, active: boolean}>}}} props.paginator
  */
 export default function Pagination({ paginator }) {
-    const links = paginator?.meta?.links;
+    const links = paginator?.meta?.links ?? paginator?.links;
 
     if (!Array.isArray(links) || links.length <= 3) {
         return null;

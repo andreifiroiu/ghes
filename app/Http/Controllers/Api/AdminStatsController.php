@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\ScraperRunStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\ScraperRun;
@@ -29,7 +30,7 @@ class AdminStatsController extends Controller
             ],
             'scraper_runs' => [
                 'total' => ScraperRun::count(),
-                'failed' => ScraperRun::where('status', 'failed')->count(),
+                'failed' => ScraperRun::where('status', ScraperRunStatus::Failed)->count(),
             ],
         ]);
     }

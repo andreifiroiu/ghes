@@ -348,6 +348,12 @@ return [
         'admin_events' => 20,
         'admin_users' => 20,
         'admin_scraper_runs' => 25,
+        'admin_scraper_detail_runs' => 20,
+    ],
+    'admin' => [
+        // Windows the per-scraper stats page offers, and the one it opens on.
+        'scraper_stat_ranges' => [7, 30, 90],
+        'scraper_stat_default_range' => 30,
     ],
     'notifications' => [
         'hour' => (int) env('EVENTPULSE_NOTIFICATION_HOUR', 8),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Contracts\ScraperAdapter;
 use App\DTOs\RawEvent;
+use App\Enums\ScraperRunStatus;
 use App\Jobs\RunScraperJob;
 use App\Models\ScraperRun;
 use App\Services\Scraping\Adapters\IaBiletScraper;
@@ -222,7 +223,7 @@ describe('runSource', function () {
             ->first();
 
         expect($run)->not->toBeNull()
-            ->and($run->status)->toBe('completed')
+            ->and($run->status)->toBe(ScraperRunStatus::Completed)
             ->and($run->events_found)->toBe(1)
             ->and($run->finished_at)->not->toBeNull();
     });
@@ -244,7 +245,7 @@ describe('runSource', function () {
             ->first();
 
         expect($run)->not->toBeNull()
-            ->and($run->status)->toBe('failed')
+            ->and($run->status)->toBe(ScraperRunStatus::Failed)
             ->and($run->errors_count)->toBe(1)
             ->and($run->error_log)->toContain('Scraper network error');
     });
@@ -261,7 +262,7 @@ describe('runSource', function () {
             ->first();
 
         expect($run)->not->toBeNull()
-            ->and($run->status)->toBe('completed');
+            ->and($run->status)->toBe(ScraperRunStatus::Completed);
     });
 });
 
