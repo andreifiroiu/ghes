@@ -8,6 +8,7 @@ use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use Illuminate\Support\Collection;
@@ -20,7 +21,7 @@ class DiscoveryEngine
      * Reserves a slot for platform-wide trending events (high engagement,
      * regardless of profile), then fills the rest from categories the user
      * rarely engages with — skipping categories under serendipity suppression
-     * and events carrying the user's negative tags.
+     * and anything the user has already reacted to or bookmarked.
      *
      * @return Collection<int, Event>
      */
@@ -30,17 +31,20 @@ class DiscoveryEngine
             return collect();
         }
 
-        /** @var list<string> $reactedEventIds */
-        $reactedEventIds = $user->reactions()->pluck('event_id')->all();
-        $negativeTags = $user->negativeTags();
+        /** @var list<string> $engagedEventIds */
+        $engagedEventIds = $user->reactions()->pluck('event_id')
+            ->merge($user->bookmarks()->pluck('event_id'))
+            ->unique()
+            ->values()
+            ->all();
 
-        $trending = $this->trendingEvents($user, $reactedEventIds, $negativeTags, $count);
+        $trending = $this->trendingEvents($user, $engagedEventIds, $count);
 
-        $excludeIds = array_merge($reactedEventIds, $trending->pluck('id')->all());
+        $excludeIds = array_merge($engagedEventIds, $trending->pluck('id')->all());
         $remaining = $count - $trending->count();
 
         $categoryEvents = $remaining > 0
-            ? $this->categoryDiscovery($user, $excludeIds, $negativeTags, $remaining)
+            ? $this->categoryDiscovery($user, $excludeIds, $remaining)
             : collect();
 
         /** @var Collection<int, Event> $events */
@@ -65,11 +69,10 @@ class DiscoveryEngine
      * Platform-wide trending events: those with the most positive reactions
      * within the trending window, surfaced regardless of the user's profile.
      *
-     * @param  list<string>  $reactedEventIds
-     * @param  list<string>  $negativeTags
+     * @param  list<string>  $engagedEventIds
      * @return Collection<int, Event>
      */
-    private function trendingEvents(User $user, array $reactedEventIds, array $negativeTags, int $count): Collection
+    private function trendingEvents(User $user, array $engagedEventIds, int $count): Collection
     {
         $slots = min((int) config('eventpulse.discovery.trending_slots', 1), $count);
 
@@ -79,15 +82,36 @@ class DiscoveryEngine
 
         $minReactions = (int) config('eventpulse.discovery.trending_min_reactions', 3);
         $windowDays = (int) config('eventpulse.discovery.trending_window_days', 14);
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
+        $since = now()->subDays($windowDays);
 
-        $trendingCounts = UserEventReaction::query()
-            ->whereIn('reaction', $positive)
-            ->where('created_at', '>=', now()->subDays($windowDays))
-            ->whereNotIn('event_id', $reactedEventIds)
-            ->pluck('event_id')
-            ->countBy()
-            ->filter(fn (int $reactionCount) => $reactionCount >= $minReactions)
+        // A bookmark counts as a positive signal alongside an "interested"
+        // reaction, so trending has to read both tables — but it measures how
+        // many *people* engaged, so one user who both reacts and saves must
+        // still count once. Deduplicate by (user, event) before counting, or
+        // two enthusiasts clear a threshold documented as needing three.
+        // toBase() is required: mapping an *empty* Eloquent collection returns
+        // an Eloquent collection, whose merge() would then call getKey() on
+        // these plain arrays.
+        $engagements = UserEventReaction::query()
+            ->where('reaction', Reaction::Interested->value)
+            ->where('created_at', '>=', $since)
+            ->whereNotIn('event_id', $engagedEventIds)
+            ->get(['user_id', 'event_id'])
+            ->toBase()
+            ->map(fn ($row): array => ['user_id' => $row->user_id, 'event_id' => $row->event_id])
+            ->merge(
+                EventBookmark::query()
+                    ->where('created_at', '>=', $since)
+                    ->whereNotIn('event_id', $engagedEventIds)
+                    ->get(['user_id', 'event_id'])
+                    ->toBase()
+                    ->map(fn ($row): array => ['user_id' => $row->user_id, 'event_id' => $row->event_id]),
+            );
+
+        $trendingCounts = $engagements
+            ->unique(fn (array $row): string => $row['user_id'].'|'.$row['event_id'])
+            ->countBy('event_id')
+            ->filter(fn (int $engagedUsers) => $engagedUsers >= $minReactions)
             ->sortDesc();
 
         if ($trendingCounts->isEmpty()) {
@@ -102,7 +126,7 @@ class DiscoveryEngine
             ->when($user->city, fn ($query) => $query->where('city', $user->city))
             ->get();
 
-        return $this->rejectNegativeTags($events, $negativeTags)
+        return $events
             ->sortByDesc(fn (Event $event) => $trendingCounts[$event->id] ?? 0)
             ->take($slots)
             ->values();
@@ -112,10 +136,9 @@ class DiscoveryEngine
      * Discovery from low-interest categories, excluding suppressed categories.
      *
      * @param  list<string>  $excludeIds
-     * @param  list<string>  $negativeTags
      * @return Collection<int, Event>
      */
-    private function categoryDiscovery(User $user, array $excludeIds, array $negativeTags, int $count): Collection
+    private function categoryDiscovery(User $user, array $excludeIds, int $count): Collection
     {
         $profile = $user->interest_profile ?? [];
         $minSurprise = (float) config('eventpulse.discovery.min_surprise_score', 0.3);
@@ -138,12 +161,12 @@ class DiscoveryEngine
             $lowScoreCategories,
         ));
 
-        $events = $this->fetchDiscoveryEvents($preferred, $excludeIds, $negativeTags, $count, $user->city);
+        $events = $this->fetchDiscoveryEvents($preferred, $excludeIds, $count, $user->city);
 
         if ($events->count() < $count) {
             $usedIds = array_merge($excludeIds, $events->pluck('id')->all());
             $events = $events->concat(
-                $this->fetchDiscoveryEvents($lowScoreCategories, $usedIds, $negativeTags, $count - $events->count(), $user->city),
+                $this->fetchDiscoveryEvents($lowScoreCategories, $usedIds, $count - $events->count(), $user->city),
             );
         }
 
@@ -152,15 +175,13 @@ class DiscoveryEngine
 
     /**
      * Fetch upcoming, classified discovery events in the given categories,
-     * excluding already-used events and those carrying negative tags, scoped to
-     * the user's city when set.
+     * excluding already-used events, scoped to the user's city when set.
      *
      * @param  list<string>  $categories
      * @param  list<string>  $excludeIds
-     * @param  list<string>  $negativeTags
      * @return Collection<int, Event>
      */
-    private function fetchDiscoveryEvents(array $categories, array $excludeIds, array $negativeTags, int $count, ?string $city = null): Collection
+    private function fetchDiscoveryEvents(array $categories, array $excludeIds, int $count, ?string $city = null): Collection
     {
         if ($categories === [] || $count < 1) {
             return collect();
@@ -174,10 +195,10 @@ class DiscoveryEngine
             ->where('is_classified', true)
             ->when($city, fn ($query) => $query->where('city', $city))
             ->inRandomOrder()
-            ->limit($negativeTags === [] ? $count : $count * 5)
+            ->limit($count)
             ->get();
 
-        return $this->rejectNegativeTags($events, $negativeTags)->take($count)->values();
+        return $events->take($count)->values();
     }
 
     /**
@@ -194,7 +215,6 @@ class DiscoveryEngine
     {
         $profile = $user->interest_profile ?? [];
         $threshold = (float) config('eventpulse.discovery.similar_user_threshold', 0.6);
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
 
         $highCategories = collect(EventCategory::cases())
             ->map(fn (EventCategory $cat) => $cat->value)
@@ -205,28 +225,49 @@ class DiscoveryEngine
             return [];
         }
 
+        $limit = (int) config('eventpulse.discovery.similar_user_limit', 200);
+
         // Kept as subqueries: the events table grows with every scrape, so
         // plucking its ids into PHP would build an unbounded IN list, and the
-        // similar-user limit has to be applied by the database, not after.
+        // per-table limit has to be applied by the database, not after.
+        // Reactions and bookmarks are queried separately and merged, so the
+        // result is bounded by 2 * $limit rather than being unbounded.
         $similarUserIds = UserEventReaction::query()
-            ->whereIn('reaction', $positive)
+            ->where('reaction', Reaction::Interested->value)
             ->where('user_id', '!=', $user->id)
             ->whereIn('event_id', Event::query()
                 ->whereIn('category', $highCategories)
                 ->select('id'))
             ->distinct()
-            ->limit((int) config('eventpulse.discovery.similar_user_limit', 200))
-            ->pluck('user_id');
+            ->limit($limit)
+            ->pluck('user_id')
+            ->merge(
+                EventBookmark::query()
+                    ->where('user_id', '!=', $user->id)
+                    ->whereIn('event_id', Event::query()
+                        ->whereIn('category', $highCategories)
+                        ->select('id'))
+                    ->distinct()
+                    ->limit($limit)
+                    ->pluck('user_id'),
+            )
+            ->unique()
+            ->values();
 
         if ($similarUserIds->isEmpty()) {
             return [];
         }
 
         return Event::query()
-            ->whereIn('id', UserEventReaction::query()
-                ->whereIn('user_id', $similarUserIds)
-                ->whereIn('reaction', $positive)
-                ->select('event_id'))
+            ->where(function ($query) use ($similarUserIds): void {
+                $query->whereIn('id', UserEventReaction::query()
+                    ->whereIn('user_id', $similarUserIds)
+                    ->where('reaction', Reaction::Interested->value)
+                    ->select('event_id'))
+                    ->orWhereIn('id', EventBookmark::query()
+                        ->whereIn('user_id', $similarUserIds)
+                        ->select('event_id'));
+            })
             ->get(['category'])
             ->countBy(fn (Event $event) => (string) $event->getRawOriginal('category'))
             ->sortDesc()
@@ -244,15 +285,14 @@ class DiscoveryEngine
     {
         $threshold = (int) config('eventpulse.discovery.suppression_threshold', 3);
         $days = (int) config('eventpulse.discovery.suppression_days', 30);
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
 
         return DiscoveryLog::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', now()->subDays($days))
             ->get(['category_explored', 'outcome'])
             ->groupBy('category_explored')
-            ->filter(function (Collection $logs) use ($threshold, $positive) {
-                $positives = $logs->whereIn('outcome', $positive)->count();
+            ->filter(function (Collection $logs) use ($threshold) {
+                $positives = $logs->whereIn('outcome', DiscoveryLog::POSITIVE_OUTCOMES)->count();
 
                 return $logs->count() >= $threshold && $positives === 0;
             })
@@ -273,7 +313,6 @@ class DiscoveryEngine
         $threshold = (float) config('eventpulse.discovery.openness_hit_rate_threshold', 0.1);
         $step = (float) config('eventpulse.discovery.openness_step', 0.05);
         $floor = (float) config('eventpulse.discovery.openness_floor', 0.05);
-        $positive = [Reaction::Interested->value, Reaction::Saved->value];
 
         $resolved = DiscoveryLog::query()
             ->where('user_id', $user->id)
@@ -284,7 +323,7 @@ class DiscoveryEngine
             return;
         }
 
-        $hitRate = $resolved->whereIn('outcome', $positive)->count() / $resolved->count();
+        $hitRate = $resolved->whereIn('outcome', DiscoveryLog::POSITIVE_OUTCOMES)->count() / $resolved->count();
 
         if ($hitRate >= $threshold) {
             return;
@@ -307,23 +346,5 @@ class DiscoveryEngine
         $categoryScore = (float) ($profile[$event->category->value] ?? 0.0);
 
         return max(0.0, min(1.0, 1.0 - $categoryScore));
-    }
-
-    /**
-     * Drop events carrying any of the user's negative tags.
-     *
-     * @param  Collection<int, Event>  $events
-     * @param  list<string>  $negativeTags
-     * @return Collection<int, Event>
-     */
-    private function rejectNegativeTags(Collection $events, array $negativeTags): Collection
-    {
-        if ($negativeTags === []) {
-            return $events;
-        }
-
-        return $events->reject(
-            fn (Event $event) => array_intersect($event->tags ?? [], $negativeTags) !== [],
-        )->values();
     }
 }

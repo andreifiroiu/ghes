@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AdminStatsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\FeedbackController;
@@ -20,7 +21,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout'])->name('api.auth.logout');
 
     Route::get('events', [EventController::class, 'apiIndex'])->name('api.events.index');
-    Route::get('events/saved', [EventController::class, 'apiSaved'])->name('api.events.saved');
+    Route::get('events/saved', [BookmarkController::class, 'apiIndex'])->name('api.events.saved');
     Route::get('events/{event}', [EventController::class, 'apiShow'])->name('api.events.show');
 
     Route::get('recommendations', [RecommendationController::class, 'apiIndex'])->name('api.recommendations');
@@ -28,6 +29,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('feedback', [FeedbackController::class, 'store'])->name('api.feedback.store');
     Route::delete('feedback', [FeedbackController::class, 'destroy'])->name('api.feedback.destroy');
+    Route::post('bookmarks', [BookmarkController::class, 'store'])->name('api.bookmarks.store');
+    Route::delete('bookmarks', [BookmarkController::class, 'destroy'])->name('api.bookmarks.destroy');
 
     Route::get('profile', [ProfileController::class, 'show'])->name('api.profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('api.profile.update');

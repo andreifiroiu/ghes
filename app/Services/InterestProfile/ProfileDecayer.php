@@ -28,13 +28,6 @@ class ProfileDecayer
 
         $decayed = [];
         foreach ($profile as $key => $value) {
-            // Negative tags are suppression flags, not interest scores — keep them.
-            if (str_starts_with((string) $key, 'negtag:')) {
-                $decayed[$key] = $value;
-
-                continue;
-            }
-
             $decayed[$key] = is_numeric($value)
                 ? max(0.0, min(1.0, (float) $value * $multiplier))
                 : $value;

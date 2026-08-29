@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use Inertia\Testing\AssertableInertia;
@@ -119,10 +120,9 @@ it('excludes admin-hidden events from the saved list', function () {
     $savedThenHidden = Event::factory()->create(['starts_at' => now()->addDays(2), 'is_hidden' => true]);
 
     foreach ([$saved, $savedThenHidden] as $event) {
-        UserEventReaction::factory()->create([
+        EventBookmark::factory()->create([
             'user_id' => $user->id,
             'event_id' => $event->id,
-            'reaction' => Reaction::Saved,
         ]);
     }
 
@@ -134,23 +134,17 @@ it('excludes admin-hidden events from the saved list', function () {
         );
 });
 
-it('excludes events the user marked not-interested or hidden from the browse list', function () {
+it('excludes events the user marked not-interested from the browse list', function () {
     $user = User::factory()->create();
 
     $visible = Event::factory()->create(['starts_at' => now()->addDays(2)]);
     $notInterested = Event::factory()->create(['starts_at' => now()->addDays(2)]);
-    $hidden = Event::factory()->create(['starts_at' => now()->addDays(2)]);
     $interested = Event::factory()->create(['starts_at' => now()->addDays(2)]);
 
     UserEventReaction::factory()->create([
         'user_id' => $user->id,
         'event_id' => $notInterested->id,
         'reaction' => Reaction::NotInterested,
-    ]);
-    UserEventReaction::factory()->create([
-        'user_id' => $user->id,
-        'event_id' => $hidden->id,
-        'reaction' => Reaction::Hidden,
     ]);
     UserEventReaction::factory()->create([
         'user_id' => $user->id,
@@ -167,6 +161,23 @@ it('excludes events the user marked not-interested or hidden from the browse lis
         );
 });
 
+it('keeps a bookmarked event in the browse list', function () {
+    $user = User::factory()->create();
+
+    $event = Event::factory()->create(['starts_at' => now()->addDays(2)]);
+    EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/events')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 1)
+            ->where('events.data', fn ($events) => collect($events)->first()['is_saved'] === true)
+        );
+});
+
 it('does not exclude another user dismissed events', function () {
     $user = User::factory()->create();
     $other = User::factory()->create();
@@ -175,7 +186,7 @@ it('does not exclude another user dismissed events', function () {
     UserEventReaction::factory()->create([
         'user_id' => $other->id,
         'event_id' => $event->id,
-        'reaction' => Reaction::Hidden,
+        'reaction' => Reaction::NotInterested,
     ]);
 
     $this->actingAs($user)
@@ -186,20 +197,20 @@ it('does not exclude another user dismissed events', function () {
 it('includes the current user reaction on each event for highlight state', function () {
     $user = User::factory()->create();
 
-    $saved = Event::factory()->create(['starts_at' => now()->addDays(2)]);
+    $reacted = Event::factory()->create(['starts_at' => now()->addDays(2)]);
     $plain = Event::factory()->create(['starts_at' => now()->addDays(2)]);
 
     UserEventReaction::factory()->create([
         'user_id' => $user->id,
-        'event_id' => $saved->id,
-        'reaction' => Reaction::Saved,
+        'event_id' => $reacted->id,
+        'reaction' => Reaction::Interested,
     ]);
 
     $this->actingAs($user)
         ->get('/events')
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('events.data', 2)
-            ->where('events.data', fn ($events) => collect($events)->firstWhere('id', $saved->id)['current_reaction'] === 'saved'
+            ->where('events.data', fn ($events) => collect($events)->firstWhere('id', $reacted->id)['current_reaction'] === 'interested'
                 && collect($events)->firstWhere('id', $plain->id)['current_reaction'] === null)
         );
 });

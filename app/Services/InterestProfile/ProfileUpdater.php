@@ -4,86 +4,156 @@ declare(strict_types=1);
 
 namespace App\Services\InterestProfile;
 
-use App\Enums\Reaction;
 use App\Models\Event;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProfileUpdater
 {
     /**
-     * Update a user's interest profile based on their reaction to an event.
+     * Update a user's interest profile based on a signal about an event.
      *
-     * Applies the reaction's category and tag deltas (from config) to the
-     * event's category score and tag scores, clamps everything to [0.0, 1.0],
-     * maintains negative tags (suppression filters), and saves.
+     * Thin wrapper over deltaKeysFor() + apply(), kept for callers that do not
+     * need the reversal ledger (notably the passive "ignored" decay).
      *
-     * When the reaction is to a discovery event, positive deltas are amplified
-     * (exploration reward) and negative deltas are softened (so a single miss
-     * doesn't suppress a newly-explored category).
+     * @return array<string, float> the effective, post-clamp change per profile key
      */
-    public function updateFromFeedback(User $user, Event $event, string $reaction, bool $isDiscovery = false): void
+    public function updateFromFeedback(User $user, Event $event, string $signal, bool $isDiscovery = false): array
+    {
+        return $this->apply($user, $this->deltaKeysFor($event, $signal, $isDiscovery));
+    }
+
+    /**
+     * Map a signal ("interested", "saved", "not_interested", "ignored") onto the
+     * profile keys it touches for this event.
+     *
+     * Returns the event's category key and one "tag:{tag}" key per tag, each
+     * carrying the configured delta scaled for discovery. An unknown signal, or
+     * one configured with a zero delta, contributes nothing.
+     *
+     * @return array<string, float>
+     */
+    public function deltaKeysFor(Event $event, string $signal, bool $isDiscovery = false): array
     {
         /** @var array<string, array{category: float, tag: float}> $deltas */
         $deltas = config('eventpulse.feedback.deltas');
-        $delta = $deltas[$reaction] ?? null;
+        $delta = $deltas[$signal] ?? null;
 
         if ($delta === null) {
-            return;
+            // Not a data condition: it means a signal name and the config map
+            // have drifted apart, and the whole signal would silently stop
+            // affecting profiles with every downstream call still reporting success.
+            Log::error('ProfileUpdater: no configured delta for signal', [
+                'signal' => $signal,
+                'configured' => array_keys($deltas),
+                'event_id' => $event->id,
+            ]);
+
+            return [];
         }
 
         $categoryDelta = $this->scaleForDiscovery((float) $delta['category'], $isDiscovery);
         $tagDelta = $this->scaleForDiscovery((float) $delta['tag'], $isDiscovery);
 
-        $profile = $user->interest_profile ?? [];
+        $keyDeltas = [];
 
-        // Update category score
         if ($categoryDelta !== 0.0) {
-            $categoryKey = $event->category->value;
-            $currentCategoryScore = (float) ($profile[$categoryKey] ?? 0.0);
-            $profile[$categoryKey] = $this->clampScore($currentCategoryScore + $categoryDelta);
+            $keyDeltas[$event->category->value] = $categoryDelta;
         }
 
-        // Update tag scores
         if ($tagDelta !== 0.0) {
             foreach ($event->tags ?? [] as $tag) {
-                $tagKey = "tag:{$tag}";
-                $currentTagScore = (float) ($profile[$tagKey] ?? 0.0);
-                $profile[$tagKey] = $this->clampScore($currentTagScore + $tagDelta);
+                $keyDeltas["tag:{$tag}"] = $tagDelta;
             }
         }
 
-        $profile = $this->applyNegativeTags($profile, $event, $reaction);
-
-        $user->update(['interest_profile' => $profile]);
+        return $keyDeltas;
     }
 
     /**
-     * Maintain the user's negative tags (stored as "negtag:{tag}" keys and used
-     * as hard filters in recommendation). "Hide like this" suppresses the
-     * event's tags; an explicit positive reaction clears any prior suppression.
+     * Add the given per-key deltas to the user's profile, clamped to [0.0, 1.0].
      *
-     * @param  array<string, mixed>  $profile
-     * @return array<string, mixed>
+     * Returns the change that was *actually* applied per key, which is not the
+     * requested delta when a score hits a clamp boundary. Callers persist that
+     * map so revert() can undo exactly what happened.
+     *
+     * @param  array<string, float>  $keyDeltas
+     * @return array<string, float>
      */
-    private function applyNegativeTags(array $profile, Event $event, string $reaction): array
+    public function apply(User $user, array $keyDeltas): array
     {
-        $tags = $event->tags ?? [];
-
-        if ($tags === []) {
-            return $profile;
+        if ($keyDeltas === []) {
+            return [];
         }
 
-        if ($reaction === Reaction::Hidden->value) {
-            foreach ($tags as $tag) {
-                $profile["negtag:{$tag}"] = 1.0;
+        return $this->mutate($user, function (array $profile) use ($keyDeltas): array {
+            $applied = [];
+
+            foreach ($keyDeltas as $key => $delta) {
+                $current = (float) ($profile[$key] ?? 0.0);
+                $next = $this->clampScore($current + $delta);
+
+                if ($next !== $current) {
+                    $applied[$key] = $next - $current;
+                }
+
+                $profile[$key] = $next;
             }
-        } elseif (in_array($reaction, [Reaction::Interested->value, Reaction::Saved->value], true)) {
-            foreach ($tags as $tag) {
-                unset($profile["negtag:{$tag}"]);
-            }
+
+            return [$profile, $applied];
+        });
+    }
+
+    /**
+     * Subtract a previously-applied delta map from the user's profile.
+     *
+     * @param  array<string, float>  $appliedDeltas
+     */
+    public function revert(User $user, array $appliedDeltas): void
+    {
+        if ($appliedDeltas === []) {
+            return;
         }
 
-        return $profile;
+        $this->mutate($user, function (array $profile) use ($appliedDeltas): array {
+            foreach ($appliedDeltas as $key => $delta) {
+                $current = (float) ($profile[$key] ?? 0.0);
+                $profile[$key] = $this->clampScore($current - (float) $delta);
+            }
+
+            return [$profile, []];
+        });
+    }
+
+    /**
+     * Read-modify-write the profile under a row lock.
+     *
+     * interest_profile is a single JSON blob written by queued jobs, so
+     * concurrent reactions from one user would otherwise clobber each other.
+     *
+     * @param  callable(array<string, mixed>): array{0: array<string, mixed>, 1: array<string, float>}  $mutator
+     * @return array<string, float>
+     */
+    private function mutate(User $user, callable $mutator): array
+    {
+        return DB::transaction(function () use ($user, $mutator): array {
+            /** @var User $locked */
+            $locked = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+
+            [$profile, $applied] = $mutator($locked->interest_profile ?? []);
+
+            $locked->update(['interest_profile' => $profile]);
+
+            // Refresh the caller's instance, but sync it clean. Leaving
+            // interest_profile dirty means the next $user->update() on any other
+            // column flushes this snapshot too — outside the lock — silently
+            // reverting whatever a concurrent job wrote in between.
+            $user->setAttribute('interest_profile', $profile);
+            $user->syncOriginalAttribute('interest_profile');
+
+            return $applied;
+        });
     }
 
     /**

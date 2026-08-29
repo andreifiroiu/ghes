@@ -6,6 +6,7 @@ use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\DiscoveryLog;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\Recommendation\DiscoveryEngine;
@@ -43,27 +44,28 @@ it('discovers events from categories with low user scores', function () {
     expect($categories)->each->not->toBe('sports');
 });
 
-it('excludes events carrying the user negative tags', function () {
-    $user = User::factory()->create([
-        'interest_profile' => ['music' => 0.95, 'negtag:crowded' => 1.0],
+it('excludes events the user has already bookmarked', function () {
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.95]]);
+
+    $saved = Event::factory()->create([
+        'category' => EventCategory::Technology,
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
+    ]);
+    Event::factory()->count(3)->create([
+        'category' => EventCategory::Technology,
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
     ]);
 
-    $blocked = Event::factory()->create([
-        'category' => EventCategory::Technology,
-        'tags' => ['crowded'],
-        'starts_at' => now()->addDays(4),
-        'is_classified' => true,
-    ]);
-    $allowed = Event::factory()->create([
-        'category' => EventCategory::Technology,
-        'tags' => ['hands-on'],
-        'starts_at' => now()->addDays(4),
-        'is_classified' => true,
+    EventBookmark::factory()->create([
+        'user_id' => $user->id,
+        'event_id' => $saved->id,
     ]);
 
     $discoveries = $this->engine->discoverForUser($user, 3);
 
-    expect($discoveries->pluck('id'))->not->toContain($blocked->id);
+    expect($discoveries->pluck('id'))->not->toContain($saved->id);
 });
 
 it('respects the requested count', function () {
@@ -299,10 +301,9 @@ it('surfaces categories popular among similar users', function () {
         'event_id' => $musicEvent->id,
         'reaction' => Reaction::Interested,
     ]);
-    UserEventReaction::factory()->create([
+    EventBookmark::factory()->create([
         'user_id' => $similar->id,
         'event_id' => $techEvent->id,
-        'reaction' => Reaction::Saved,
     ]);
 
     expect($this->engine->collaborativelyPopularCategories($user))->toContain('technology');
@@ -376,4 +377,56 @@ it('does not change openness when the hit rate is healthy', function () {
 
     $user->refresh();
     expect((float) $user->discovery_openness)->toEqualWithDelta(0.5, 0.0001);
+});
+
+it('counts one user once in trending even when they both react and save', function () {
+    // trending_min_reactions means distinct engaged people. Before dedup, one
+    // enthusiast contributed 2 and two of them cleared a threshold of 3.
+    config(['eventpulse.discovery.trending_min_reactions' => 3]);
+
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+    $trending = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
+    ]);
+
+    // Two other users, each both reacting and bookmarking = 4 rows, 2 people.
+    User::factory()->count(2)->create()->each(function (User $other) use ($trending) {
+        UserEventReaction::factory()->create([
+            'user_id' => $other->id,
+            'event_id' => $trending->id,
+            'reaction' => Reaction::Interested,
+        ]);
+        EventBookmark::factory()->create([
+            'user_id' => $other->id,
+            'event_id' => $trending->id,
+        ]);
+    });
+
+    $discoveries = $this->engine->discoverForUser($user, 1);
+
+    expect($discoveries->pluck('id'))->not->toContain($trending->id);
+});
+
+it('surfaces a trending event once enough distinct users engage', function () {
+    config(['eventpulse.discovery.trending_min_reactions' => 3]);
+
+    $user = User::factory()->create(['interest_profile' => ['music' => 0.9]]);
+    $trending = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'starts_at' => now()->addDays(4),
+        'is_classified' => true,
+    ]);
+
+    User::factory()->count(3)->create()->each(function (User $other) use ($trending) {
+        EventBookmark::factory()->create([
+            'user_id' => $other->id,
+            'event_id' => $trending->id,
+        ]);
+    });
+
+    $discoveries = $this->engine->discoverForUser($user, 1);
+
+    expect($discoveries->pluck('id'))->toContain($trending->id);
 });

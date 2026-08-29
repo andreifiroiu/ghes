@@ -41,4 +41,18 @@ class UserEventReactionFactory extends Factory
             'is_processed' => true,
         ]);
     }
+
+    public function interested(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'reaction' => Reaction::Interested,
+        ]);
+    }
+
+    public function notInterested(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'reaction' => Reaction::NotInterested,
+        ]);
+    }
 }

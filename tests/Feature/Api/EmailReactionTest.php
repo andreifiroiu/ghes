@@ -10,6 +10,17 @@ use App\Models\UserEventReaction;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 
+/**
+ * Follow a signed email link the way a browser does: GET the confirmation page,
+ * then POST the same signed URL.
+ */
+function confirmEmailReaction(object $test, string $url)
+{
+    $test->get($url)->assertStatus(200);
+
+    return $test->post($url);
+}
+
 it('records a reaction from a signed email URL', function () {
     $user = User::factory()->create();
     $event = Event::factory()->create();
@@ -20,7 +31,7 @@ it('records a reaction from a signed email URL', function () {
         'reaction' => 'interested',
     ]);
 
-    $response = $this->get($url);
+    $response = confirmEmailReaction($this, $url);
 
     $response->assertStatus(200);
     $response->assertSee('Reacție înregistrată');
@@ -33,13 +44,28 @@ it('records a reaction from a signed email URL', function () {
     ]);
 });
 
+it('does not write anything on the GET, so link prefetchers cannot react', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+
+    $url = URL::signedRoute('reactions.email', [
+        'user' => $user->id,
+        'event' => $event->id,
+        'reaction' => 'not_interested',
+    ]);
+
+    $this->get($url)->assertStatus(200);
+
+    $this->assertDatabaseCount('user_event_reactions', 0);
+    $this->assertDatabaseCount('event_bookmarks', 0);
+});
+
 it('rejects unsigned URLs with 403', function () {
     $user = User::factory()->create();
     $event = Event::factory()->create();
 
-    $response = $this->get("/reactions/{$user->id}/{$event->id}/interested");
-
-    $response->assertStatus(403);
+    $this->get("/reactions/{$user->id}/{$event->id}/interested")->assertStatus(403);
+    $this->post("/reactions/{$user->id}/{$event->id}/interested")->assertStatus(403);
 });
 
 it('handles not_interested reaction from email', function () {
@@ -52,7 +78,7 @@ it('handles not_interested reaction from email', function () {
         'reaction' => 'not_interested',
     ]);
 
-    $this->get($url);
+    confirmEmailReaction($this, $url);
 
     $this->assertDatabaseHas('user_event_reactions', [
         'user_id' => $user->id,
@@ -61,7 +87,7 @@ it('handles not_interested reaction from email', function () {
     ]);
 });
 
-it('handles saved reaction from email', function () {
+it('a saved link creates a bookmark, not a reaction', function () {
     $user = User::factory()->create();
     $event = Event::factory()->create();
 
@@ -71,12 +97,33 @@ it('handles saved reaction from email', function () {
         'reaction' => 'saved',
     ]);
 
-    $this->get($url);
+    confirmEmailReaction($this, $url);
+
+    $this->assertDatabaseHas('event_bookmarks', [
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+    ]);
+    $this->assertDatabaseCount('user_event_reactions', 0);
+});
+
+it('maps a legacy hidden link onto not_interested', function () {
+    // Signed links live 30 days, so links sent before the negative reactions
+    // were collapsed are still in inboxes and must not 404.
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+
+    $url = URL::signedRoute('reactions.email', [
+        'user' => $user->id,
+        'event' => $event->id,
+        'reaction' => 'hidden',
+    ]);
+
+    confirmEmailReaction($this, $url)->assertStatus(200);
 
     $this->assertDatabaseHas('user_event_reactions', [
         'user_id' => $user->id,
         'event_id' => $event->id,
-        'reaction' => 'saved',
+        'reaction' => 'not_interested',
     ]);
 });
 
@@ -90,38 +137,55 @@ it('returns 404 for invalid reaction types', function () {
         'reaction' => 'invalid_type',
     ]);
 
-    $response = $this->get($url);
-
-    $response->assertStatus(404);
+    $this->get($url)->assertStatus(404);
+    $this->post($url)->assertStatus(404);
 });
 
-it('updates an existing reaction when clicked again', function () {
+it('confirms in Romanian rather than the raw enum value', function () {
     $user = User::factory()->create();
     $event = Event::factory()->create();
 
-    // First reaction
+    $url = URL::signedRoute('reactions.email', [
+        'user' => $user->id,
+        'event' => $event->id,
+        'reaction' => 'not_interested',
+    ]);
+
+    $response = confirmEmailReaction($this, $url);
+
+    $response->assertSee('Nu-i pentru mine');
+    $response->assertDontSee('not interested');
+});
+
+it('a saved link leaves an existing reaction alone', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create();
+
     UserEventReaction::create([
         'user_id' => $user->id,
         'event_id' => $event->id,
         'reaction' => Reaction::Interested,
     ]);
 
-    // Click "saved" from email
     $url = URL::signedRoute('reactions.email', [
         'user' => $user->id,
         'event' => $event->id,
         'reaction' => 'saved',
     ]);
 
-    $this->get($url);
+    confirmEmailReaction($this, $url);
 
     expect(
         UserEventReaction::where('user_id', $user->id)
             ->where('event_id', $event->id)
-            ->latest()
             ->first()
             ->reaction
-    )->toBe(Reaction::Saved);
+    )->toBe(Reaction::Interested);
+
+    $this->assertDatabaseHas('event_bookmarks', [
+        'user_id' => $user->id,
+        'event_id' => $event->id,
+    ]);
 });
 
 it('dispatches ProcessFeedbackJob on reaction', function () {
@@ -136,7 +200,7 @@ it('dispatches ProcessFeedbackJob on reaction', function () {
         'reaction' => 'interested',
     ]);
 
-    $this->get($url);
+    confirmEmailReaction($this, $url);
 
     Queue::assertPushed(ProcessFeedbackJob::class);
 });

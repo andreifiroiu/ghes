@@ -22,7 +22,8 @@
         .reaction-btn { display: inline-block; padding: 6px 14px; border-radius: 6px; font-size: 13px; text-decoration: none; margin-right: 6px; margin-bottom: 4px; }
         .btn-interested { background: #dcfce7; color: #166534; }
         .btn-not-interested { background: #fee2e2; color: #991b1b; }
-        .btn-saved { background: #dbeafe; color: #1e40af; }
+        .btn-saved { background: #fef3c7; color: #92400e; }
+        .reaction-divider { color: #d4d4d8; margin: 0 4px; font-size: 13px; }
         .discovery-section { background: #fefce8; }
         .discovery-label { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; background: #fef08a; color: #854d0e; margin-bottom: 8px; }
         .footer { padding: 24px; text-align: center; font-size: 12px; color: #a1a1aa; }
@@ -75,6 +76,7 @@
                 <div class="reactions">
                     <a href="{{ $urls['interested'] }}" class="reaction-btn btn-interested">&#x2764; Mă interesează</a>
                     <a href="{{ $urls['not_interested'] }}" class="reaction-btn btn-not-interested">&#x1f44e; Nu-i pentru mine</a>
+                    <span class="reaction-divider">&middot;</span>
                     <a href="{{ $urls['saved'] }}" class="reaction-btn btn-saved">&#x1f516; Salvează</a>
                 </div>
             </td>
@@ -108,6 +110,7 @@
                 <div class="reactions">
                     <a href="{{ $urls['interested'] }}" class="reaction-btn btn-interested">&#x2764; Mă interesează</a>
                     <a href="{{ $urls['not_interested'] }}" class="reaction-btn btn-not-interested">&#x1f44e; Nu-i pentru mine</a>
+                    <span class="reaction-divider">&middot;</span>
                     <a href="{{ $urls['saved'] }}" class="reaction-btn btn-saved">&#x1f516; Salvează</a>
                 </div>
             </td>

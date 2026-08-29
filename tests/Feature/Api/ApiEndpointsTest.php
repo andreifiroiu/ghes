@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Enums\Reaction;
 use App\Models\Event;
+use App\Models\EventBookmark;
 use App\Models\Notification;
 use App\Models\User;
-use App\Models\UserEventReaction;
 use Laravel\Sanctum\Sanctum;
 
 it('requires authentication', function () {
@@ -26,10 +25,9 @@ it('returns profile stats with reactions and discovery hit-rate', function () {
     $user = User::factory()->create();
 
     Event::factory()->count(2)->create()->each(
-        fn (Event $event) => UserEventReaction::factory()->create([
+        fn (Event $event) => EventBookmark::factory()->create([
             'user_id' => $user->id,
             'event_id' => $event->id,
-            'reaction' => Reaction::Saved,
         ])
     );
 

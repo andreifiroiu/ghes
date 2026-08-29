@@ -25,10 +25,10 @@ class RecommendationController extends Controller
 
         $batch = $this->recommendationEngine->recommend($user);
 
-        $withReaction = ['reactions' => fn ($query) => $query->where('user_id', $user->id)];
-
-        $recommendations = Event::whereIn('id', $batch->recommendedEventIds)->with($withReaction)->get();
-        $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)->with($withReaction)->get();
+        $recommendations = Event::whereIn('id', $batch->recommendedEventIds)
+            ->withUserContext($user)->get();
+        $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)
+            ->withUserContext($user)->get();
 
         return Inertia::render('Dashboard/Index', [
             'recommendations' => EventResource::collection($recommendations)->resolve(),
@@ -42,12 +42,13 @@ class RecommendationController extends Controller
 
         $batch = $this->recommendationEngine->recommend($user);
 
-        $recommendations = Event::whereIn('id', $batch->recommendedEventIds)->get();
+        $recommendations = Event::whereIn('id', $batch->recommendedEventIds)
+            ->withUserContext($user)->get();
 
         return response()->json([
             'recommendations' => EventResource::collection($recommendations),
             'discovery' => EventResource::collection(
-                Event::whereIn('id', $batch->discoveryEventIds)->get(),
+                Event::whereIn('id', $batch->discoveryEventIds)->withUserContext($user)->get(),
             ),
             'total_score' => $batch->totalScore,
         ]);
@@ -65,7 +66,9 @@ class RecommendationController extends Controller
             ->limit(50)
             ->get();
 
-        $history = $notifications->map(function (Notification $notification) {
+        $user = $request->user();
+
+        $history = $notifications->map(function (Notification $notification) use ($user) {
             $eventIds = array_merge(
                 $notification->event_ids ?? [],
                 $notification->discovery_event_ids ?? [],
@@ -75,7 +78,9 @@ class RecommendationController extends Controller
                 'notification_id' => $notification->id,
                 'sent_at' => $notification->sent_at,
                 'discovery_event_ids' => $notification->discovery_event_ids,
-                'events' => EventResource::collection(Event::whereIn('id', $eventIds)->get()),
+                'events' => EventResource::collection(
+                    Event::whereIn('id', $eventIds)->withUserContext($user)->get(),
+                ),
             ];
         });
 

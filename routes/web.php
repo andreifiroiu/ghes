@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EmailReactionController;
 use App\Http\Controllers\EventController;
@@ -23,9 +24,14 @@ use Illuminate\Support\Facades\Route;
 // Public landing page — guests see the landing, authenticated users are redirected to dashboard
 Route::get('/', [LandingController::class, 'index'])->name('home');
 
-// Signed email reaction URL — no auth required, signature validates identity
-Route::get('reactions/{user}/{event}/{reaction}', [EmailReactionController::class, 'store'])
+// Signed email reaction URL — no auth required, signature validates identity.
+// GET only renders a confirmation page; the POST on the same URI does the write,
+// so mail scanners and link prefetchers cannot register reactions nobody clicked.
+Route::get('reactions/{user}/{event}/{reaction}', [EmailReactionController::class, 'show'])
     ->name('reactions.email')
+    ->middleware('signed');
+Route::post('reactions/{user}/{event}/{reaction}', [EmailReactionController::class, 'store'])
+    ->name('reactions.email.confirm')
     ->middleware('signed');
 
 // Auth (guest only)
@@ -54,12 +60,14 @@ Route::middleware('auth')->group(function () {
 
     // Events
     Route::get('events', [EventController::class, 'index'])->name('events.index');
-    Route::get('events/saved', [EventController::class, 'saved'])->name('events.saved');
+    Route::get('events/saved', [BookmarkController::class, 'index'])->name('events.saved');
     Route::get('events/{event}', [EventController::class, 'show'])->name('events.show');
 
     // Feedback (JSON response)
     Route::post('feedback', [FeedbackController::class, 'store'])->name('feedback.store');
     Route::delete('feedback', [FeedbackController::class, 'destroy'])->name('feedback.destroy');
+    Route::post('bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
+    Route::delete('bookmarks', [BookmarkController::class, 'destroy'])->name('bookmarks.destroy');
 
     // Profile
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
