@@ -7,6 +7,7 @@ import ReactionButtons from '@/Components/Events/ReactionButtons';
 import SaveButton from '@/Components/Events/SaveButton';
 import ShareButton from '@/Components/Events/ShareButton';
 import EventList from '@/Components/Events/EventList';
+import EventSources from '@/Components/Events/EventSources';
 import { formatPrice } from '@/lib/price';
 import { sourceLabel } from '@/lib/sources';
 
@@ -58,10 +59,11 @@ export default function Show({ event, relatedEvents = [] }) {
     const priceLabel = formatPrice(event);
     const isGeocoded = event.latitude != null && event.longitude != null;
 
-    // Every provider that listed this event. Merged duplicates contribute one
-    // entry each, so a popular event offers a choice of ticket vendors. Falls
-    // back to the single scraped URL when the sources table has nothing.
-    const ticketLinks =
+    // Every provider that listed this event — both who to credit and where to
+    // buy. Merged duplicates contribute one entry each, so a popular event
+    // offers a choice of ticket vendors. Falls back to the single scraped URL
+    // for events that predate the provenance table.
+    const sourceLinks =
         event.sources?.length > 0
             ? event.sources
             : event.source_url
@@ -186,6 +188,12 @@ export default function Show({ event, relatedEvents = [] }) {
                             ))}
                         </div>
                     )}
+
+                    {/* Credits — who reported this event to us */}
+                    <EventSources
+                        sources={sourceLinks}
+                        hrefFor={trackedTicketUrl}
+                    />
                 </div>
 
                 {/* Sidebar — hoisted above the description on mobile */}
@@ -290,15 +298,18 @@ export default function Show({ event, relatedEvents = [] }) {
                                 </div>
                             )}
 
-                            {/* Ticket links — one per provider that listed this event */}
-                            {ticketLinks.length > 0 && (
+                            {/* Ticket links — one per provider that listed this
+                                event, each named so a single-source event
+                                credits its provider instead of hiding it
+                                behind a generic label. */}
+                            {sourceLinks.length > 0 && (
                                 <div className="pt-2 space-y-2">
-                                    {ticketLinks.length > 1 && (
+                                    {sourceLinks.length > 1 && (
                                         <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
                                             Disponibil pe
                                         </p>
                                     )}
-                                    {ticketLinks.map((link) => (
+                                    {sourceLinks.map((link) => (
                                         <a
                                             key={link.source_url}
                                             href={trackedTicketUrl(link)}
@@ -310,8 +321,8 @@ export default function Show({ event, relatedEvents = [] }) {
                                                 variant="outline"
                                                 className="w-full"
                                             >
-                                                {ticketLinks.length > 1
-                                                    ? sourceLabel(link.source)
+                                                {sourceLabel(link.source)
+                                                    ? `Vezi pe ${sourceLabel(link.source)}`
                                                     : 'Vezi sursa originală'}
                                             </Button>
                                         </a>
