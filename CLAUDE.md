@@ -260,6 +260,7 @@ MAIL_FROM_NAME="EventPulse"
 
 EVENTPULSE_DEFAULT_CITY=timisoara
 EVENTPULSE_NOTIFICATION_HOUR=8
+EVENTPULSE_DEDUP_ENABLED=true
 
 EVENTBRITE_API_KEY=
 SERPAPI_API_KEY=
@@ -282,6 +283,11 @@ php artisan eventpulse:scrape --city=timisoara --source=iabilet  # single source
 
 # Process pending raw events
 php artisan eventpulse:process-events
+
+# Backfill identity keys and merge existing duplicates
+php artisan eventpulse:dedupe-events --dry-run          # preview inside a rolled-back transaction
+php artisan eventpulse:dedupe-events --backfill-only    # write identity keys only, merge nothing
+php artisan eventpulse:dedupe-events --fuzzy            # also merge on the scored fallback
 
 # Send notifications
 php artisan eventpulse:send-notifications        # to all due users

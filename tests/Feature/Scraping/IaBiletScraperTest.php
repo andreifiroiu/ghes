@@ -341,7 +341,7 @@ describe('date parsing', function () use ($defaultSourceConfig, $defaultCityConf
         ]);
 
         $events = iaScrapeToCollection(new TestIaBiletScraper, $defaultSourceConfig, $defaultCityConfig);
-        $startsAt = Carbon::parse($events->first()->startsAt);
+        $startsAt = Carbon::parse($events->first()->startsAt)->setTimezone('Europe/Bucharest');
 
         expect($startsAt->day)->toBe(18)
             ->and($startsAt->month)->toBe(4)
@@ -362,8 +362,8 @@ describe('date parsing', function () use ($defaultSourceConfig, $defaultCityConf
 
         $events = iaScrapeToCollection(new TestIaBiletScraper, $defaultSourceConfig, $defaultCityConfig);
         $event = $events->first();
-        $startsAt = Carbon::parse($event->startsAt);
-        $endsAt = Carbon::parse($event->endsAt);
+        $startsAt = Carbon::parse($event->startsAt)->setTimezone('Europe/Bucharest');
+        $endsAt = Carbon::parse($event->endsAt)->setTimezone('Europe/Bucharest');
 
         expect($startsAt->day)->toBe(17)
             ->and($startsAt->month)->toBe(4)
@@ -385,8 +385,8 @@ describe('date parsing', function () use ($defaultSourceConfig, $defaultCityConf
 
         $events = iaScrapeToCollection(new TestIaBiletScraper, $defaultSourceConfig, $defaultCityConfig);
         $event = $events->first();
-        $startsAt = Carbon::parse($event->startsAt);
-        $endsAt = Carbon::parse($event->endsAt);
+        $startsAt = Carbon::parse($event->startsAt)->setTimezone('Europe/Bucharest');
+        $endsAt = Carbon::parse($event->endsAt)->setTimezone('Europe/Bucharest');
 
         expect($startsAt->day)->toBe(29)
             ->and($startsAt->month)->toBe(1)

@@ -31,6 +31,7 @@ class IaBiletScraper extends AbstractHtmlScraper
     {
         $baseUrl = $this->getUrl($sourceConfig);
         $city = $cityConfig['label'];
+        $this->cityTimezone = $cityConfig['timezone'];
         $maxPages = (int) config('eventpulse.scrapers.max_pages', 10);
         $emitted = 0;
 
@@ -198,8 +199,8 @@ class IaBiletScraper extends AbstractHtmlScraper
             venue: $venue,
             address: null,
             city: $city,
-            startsAt: $startsAt?->toDateTimeString(),
-            endsAt: $endsAt?->toDateTimeString(),
+            startsAt: $this->toUtcString($startsAt),
+            endsAt: $this->toUtcString($endsAt),
             priceMin: $priceMin,
             priceMax: null,
             currency: $priceMin !== null ? 'RON' : null,

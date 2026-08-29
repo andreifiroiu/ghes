@@ -96,6 +96,7 @@ class DiscoveryEngine
 
         $events = Event::upcoming()
             ->visible()
+            ->canonical()
             ->where('is_classified', true)
             ->whereIn('id', $trendingCounts->keys()->all())
             ->when($user->city, fn ($query) => $query->where('city', $user->city))
@@ -167,6 +168,7 @@ class DiscoveryEngine
 
         $events = Event::upcoming()
             ->visible()
+            ->canonical()
             ->whereIn('category', $categories)
             ->whereNotIn('id', $excludeIds)
             ->where('is_classified', true)

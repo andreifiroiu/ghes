@@ -6,6 +6,7 @@ namespace App\Services\Scraping\Adapters;
 
 use App\Contracts\ScraperAdapter;
 use App\DTOs\RawEvent;
+use App\Services\Processing\EventTextNormalizer;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -199,24 +200,49 @@ abstract class AbstractHtmlScraper implements ScraperAdapter
     }
 
     /**
-     * Lowercase, strip Romanian diacritics, and trim a string.
+     * The timezone of the city currently being scraped.
+     *
+     * Adapters that parse wall-clock times set this at the start of scrape()
+     * so those times can be converted to UTC correctly.
+     */
+    protected ?string $cityTimezone = null;
+
+    /**
+     * Convert a parsed local wall-clock time to the UTC string the pipeline
+     * stores.
+     *
+     * Several adapters used to serialise a naive local Carbon directly, which
+     * recorded Romanian local time as if it were UTC — a 2-3 hour error that
+     * pushed late-evening events onto the wrong calendar day.
+     */
+    protected function toUtcString(?Carbon $localWallClock): ?string
+    {
+        if ($localWallClock === null) {
+            return null;
+        }
+
+        $timezone = $this->cityTimezone ?? (string) config('app.timezone', 'UTC');
+
+        return Carbon::create(
+            $localWallClock->year,
+            $localWallClock->month,
+            $localWallClock->day,
+            $localWallClock->hour,
+            $localWallClock->minute,
+            0,
+            $timezone,
+        )?->utc()->toDateTimeString();
+    }
+
+    /**
+     * Lowercase, strip Romanian diacritics, collapse whitespace, and trim.
+     *
+     * Delegates to the shared normaliser so scrapers and the deduplication
+     * pipeline can never drift apart on what "the same text" means.
      */
     protected function normalizeText(string $text): string
     {
-        $diacritics = [
-            // Comma-below forms (official Unicode)
-            'ș' => 's', 'Ș' => 's',
-            'ț' => 't', 'Ț' => 't',
-            // Cedilla forms (common legacy encoding)
-            'ş' => 's', 'Ş' => 's',
-            'ţ' => 't', 'Ţ' => 't',
-            // Other Romanian vowels
-            'ă' => 'a', 'Ă' => 'a',
-            'â' => 'a', 'Â' => 'a',
-            'î' => 'i', 'Î' => 'i',
-        ];
-
-        return trim(mb_strtolower(strtr($text, $diacritics)));
+        return EventTextNormalizer::normalizeText($text);
     }
 
     /**

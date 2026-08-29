@@ -13,6 +13,12 @@ Schedule::command('eventpulse:process-events')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// Heals duplicates that slipped past the write-time matcher, e.g. when two
+// workers created a canonical row for the same event at the same instant.
+Schedule::command('eventpulse:dedupe-events --fuzzy')
+    ->dailyAt('05:00')
+    ->withoutOverlapping();
+
 Schedule::command('eventpulse:send-notifications')
     ->dailyAt(sprintf('%02d:00', config('eventpulse.notifications.hour', 8)))
     ->withoutOverlapping();

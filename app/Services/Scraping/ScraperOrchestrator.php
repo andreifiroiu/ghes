@@ -75,18 +75,31 @@ class ScraperOrchestrator
             'run_id' => $run->id,
         ]);
 
-        $saved = 0;
+        $found = 0;
+        $created = 0;
+        $updated = 0;
+        $skipped = 0;
 
         try {
             $adapter->scrape(
                 $sourceConfig,
                 $cityConfig,
-                function (RawEvent $event) use ($pipeline, &$saved, $adapterKey): void {
+                function (RawEvent $event) use ($pipeline, $cityKey, $adapterKey, &$found, &$created, &$updated, &$skipped): void {
+                    $found++;
+
                     try {
-                        if ($pipeline->process($event) !== null) {
-                            $saved++;
+                        $processed = $pipeline->process($event, $cityKey);
+
+                        if ($processed === null) {
+                            $skipped++;
+                        } elseif ($processed->wasRecentlyCreated) {
+                            $created++;
+                        } else {
+                            $updated++;
                         }
                     } catch (Throwable $e) {
+                        $skipped++;
+
                         Log::error("runSource: failed to process event for {$adapterKey}", [
                             'title' => $event->title,
                             'error' => $e->getMessage(),
@@ -97,14 +110,20 @@ class ScraperOrchestrator
 
             $run->update([
                 'status' => 'completed',
-                'events_found' => $saved,
+                'events_found' => $found,
+                'events_created' => $created,
+                'events_updated' => $updated,
+                'events_skipped' => $skipped,
                 'finished_at' => now(),
             ]);
 
             Log::info("runSource: completed {$adapterKey}@{$cityKey}", [
                 'adapter' => $adapterKey,
                 'city' => $cityKey,
-                'events_saved' => $saved,
+                'events_found' => $found,
+                'events_created' => $created,
+                'events_updated' => $updated,
+                'events_skipped' => $skipped,
             ]);
         } catch (Throwable $e) {
             Log::error("Scraper failed for {$adapterKey}@{$cityKey}", [
@@ -121,7 +140,7 @@ class ScraperOrchestrator
             $this->alertIfConsecutiveFailuresExceedThreshold($adapterKey, $cityKey);
         }
 
-        return $saved;
+        return $created + $updated;
     }
 
     /**

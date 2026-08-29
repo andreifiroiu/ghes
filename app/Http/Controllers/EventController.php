@@ -30,6 +30,8 @@ class EventController extends Controller
 
     public function show(Request $request, Event $event): Response
     {
+        $event = $this->resolveCanonical($event);
+
         abort_if($event->is_hidden, 404);
 
         $event->load(['reactions' => fn ($query) => $query->where('user_id', $request->user()->id)]);
@@ -51,6 +53,7 @@ class EventController extends Controller
 
         $query = Event::upcoming()
             ->visible()
+            ->canonical()
             ->with(['reactions' => fn ($q) => $q->where('user_id', $user->id)])
             ->orderBy('starts_at', 'asc');
 
@@ -92,6 +95,32 @@ class EventController extends Controller
     }
 
     /**
+     * Follow a merged duplicate to the event it now lives under.
+     *
+     * Links in already-sent digests point at ids that may since have been
+     * merged away; they must still resolve to the surviving event rather than
+     * showing a stale duplicate. Moderation is applied to the survivor, not to
+     * the id that was clicked.
+     */
+    private function resolveCanonical(Event $event): Event
+    {
+        $seen = 0;
+
+        while ($event->merged_into_id !== null && $seen < 5) {
+            $canonical = $event->canonicalEvent;
+
+            if ($canonical === null) {
+                break;
+            }
+
+            $event = $canonical;
+            $seen++;
+        }
+
+        return $event;
+    }
+
+    /**
      * Resolve the timezone used to interpret a user-selected calendar date,
      * defaulting to the configured default city's timezone.
      */
@@ -127,6 +156,7 @@ class EventController extends Controller
 
         return Event::whereIn('id', $savedEventIds)
             ->visible()
+            ->canonical()
             ->with(['reactions' => fn ($query) => $query->where('user_id', $user->id)])
             ->orderBy('starts_at')
             ->get();
@@ -141,6 +171,8 @@ class EventController extends Controller
 
     public function apiShow(Request $request, Event $event): JsonResponse
     {
+        $event = $this->resolveCanonical($event);
+
         abort_if($event->is_hidden, 404);
 
         $event->load(['reactions' => fn ($query) => $query->where('user_id', $request->user()->id)]);

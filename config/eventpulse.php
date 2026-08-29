@@ -121,6 +121,67 @@ return [
             'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
         ],
     ],
+    'dedup' => [
+        'enabled' => (bool) env('EVENTPULSE_DEDUP_ENABLED', true),
+
+        // How far either side of an event's local date to look for candidates.
+        // One day absorbs sources that publish an after-midnight event under
+        // the previous day's listing.
+        'match_window_days' => 1,
+
+        // Minimum combined score for two events to be considered the same.
+        'min_score' => 0.75,
+
+        // The title component must clear this on its own, so venue and date
+        // agreement can never merge two different acts at the same venue.
+        'min_title_similarity' => 0.60,
+
+        // Titles reducing to fewer significant tokens than this ("Concert",
+        // "Petrecere") are too generic to merge on the blocking key alone and
+        // must go through the scored path instead.
+        'min_title_tokens_for_key_match' => 2,
+
+        'weights' => [
+            'title' => 0.60,
+            'venue' => 0.25,
+            'time' => 0.15,
+        ],
+
+        // Upper bound on how many same-city, same-window events are scored.
+        'max_candidates' => 200,
+
+        'title_noise_words' => [
+            'live', 'official', 'oficial', 'event', 'events', 'eveniment', 'evenimente',
+            'bilete', 'tickets', 'la', 'in', 'the', 'cu', 'si', 'de',
+        ],
+
+        'title_separators' => [' @ ', ' // ', ' | '],
+
+        // Which source wins when two of them disagree on a field. Official
+        // venue sites outrank ticketing, which outranks aggregators.
+        'source_priority' => [
+            'opera_timisoara' => 100,
+            'teatru_national_tm' => 100,
+            'entertix' => 80,
+            'iabilet' => 80,
+            'eventbrite' => 80,
+            'zilesinopti' => 60,
+            'timisoreni' => 60,
+            'onevent' => 60,
+            'radio_timisoara' => 50,
+            'allevents' => 40,
+            'meetup' => 40,
+            'visit_timisoara' => 40,
+            'facebook_events' => 30,
+            'google_events' => 20,
+            'generic_html' => 10,
+        ],
+        'default_source_priority' => 10,
+
+        'lock_seconds' => 10,
+        'lock_wait_seconds' => 5,
+    ],
+
     'scraping' => [
         'interval_hours' => (int) env('EVENTPULSE_SCRAPE_INTERVAL_HOURS', 4),
         'max_consecutive_failures' => 3,

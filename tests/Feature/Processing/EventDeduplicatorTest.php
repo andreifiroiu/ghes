@@ -6,9 +6,12 @@ use App\DTOs\RawEvent;
 use App\Enums\EventCategory;
 use App\Models\Event;
 use App\Services\Processing\EventDeduplicator;
+use App\Services\Processing\EventTextNormalizer;
+
+const TEST_TIMEZONE = 'Europe/Bucharest';
 
 // ---------------------------------------------------------------------------
-// Fixture helper — inserts a minimal Event row directly (bypasses EventPipeline)
+// Fixture helpers — insert a minimal Event row directly (bypasses EventPipeline)
 // ---------------------------------------------------------------------------
 
 /**
@@ -16,15 +19,26 @@ use App\Services\Processing\EventDeduplicator;
  */
 function dedupEvent(array $overrides = []): Event
 {
+    $title = $overrides['title'] ?? 'Concert Phoenix';
+    $city = $overrides['city'] ?? 'Timișoara';
+    $startsAt = array_key_exists('starts_at', $overrides)
+        ? $overrides['starts_at']
+        : '2026-05-10 19:00:00';
+
+    $localDate = EventTextNormalizer::localDate($startsAt, TEST_TIMEZONE);
+
     return Event::withoutSyncingToSearch(fn () => Event::create([
-        'title' => $overrides['title'] ?? 'Concert Phoenix',
+        'title' => $title,
         'source' => $overrides['source'] ?? 'iabilet',
         'source_url' => $overrides['source_url'] ?? 'https://iabilet.ro/concert-phoenix/',
-        'fingerprint' => $overrides['fingerprint'] ?? 'fp-'.uniqid(),
         'category' => EventCategory::Other,
         'tags' => [],
-        'city' => $overrides['city'] ?? 'Timișoara',
-        'starts_at' => $overrides['starts_at'] ?? '2026-05-10 19:00:00',
+        'venue' => $overrides['venue'] ?? null,
+        'city' => $city,
+        'city_slug' => EventTextNormalizer::citySlug($city),
+        'starts_at' => $startsAt,
+        'local_date' => $localDate,
+        'match_key' => EventTextNormalizer::matchKey($title, $city, $localDate),
         'currency' => 'RON',
         'is_free' => false,
         'is_classified' => false,
@@ -40,203 +54,213 @@ function dedupRawEvent(array $overrides = []): RawEvent
 {
     return new RawEvent(
         title: $overrides['title'] ?? 'Concert Phoenix',
-        description: null,
-        sourceUrl: $overrides['sourceUrl'] ?? 'https://iabilet.ro/concert-phoenix/',
-        sourceId: null,
-        source: $overrides['source'] ?? 'iabilet',
-        venue: null,
+        description: $overrides['description'] ?? null,
+        sourceUrl: $overrides['source_url'] ?? 'https://zilesinopti.ro/evenimente/concert-phoenix/',
+        sourceId: $overrides['source_id'] ?? null,
+        source: $overrides['source'] ?? 'zilesinopti',
+        venue: $overrides['venue'] ?? null,
         address: null,
-        city: $overrides['city'] ?? 'Timișoara',
-        // Use array_key_exists so callers can explicitly pass null without ?? swallowing it
-        startsAt: array_key_exists('startsAt', $overrides) ? $overrides['startsAt'] : '2026-05-10 19:00:00',
+        city: array_key_exists('city', $overrides) ? $overrides['city'] : 'Timișoara',
+        startsAt: array_key_exists('starts_at', $overrides) ? $overrides['starts_at'] : '2026-05-10 19:00:00',
         endsAt: null,
         priceMin: null,
         priceMax: null,
-        currency: null,
-        isFree: null,
+        currency: 'RON',
+        isFree: false,
         imageUrl: null,
         metadata: [],
     );
 }
 
+beforeEach(function () {
+    $this->deduplicator = new EventDeduplicator;
+});
+
 // ---------------------------------------------------------------------------
-// Tests
+// matchKey — the blocking key
 // ---------------------------------------------------------------------------
 
-describe('EventDeduplicator', function (): void {
+describe('matchKey', function () {
+    it('is identical for the same concert reported by four adapters that disagree on the time', function () {
+        // One 20:00 (Europe/Bucharest) concert on 2026-05-10, as each adapter
+        // actually stores it today:
+        //   iabilet      — date only, local midnight
+        //   zilesinopti  — Romanian wall clock written as if it were UTC
+        //   allevents    — a correct epoch (17:00 UTC == 20:00 local, EEST)
+        //   entertix     — date only forced to local midnight, then ->utc()
+        $keys = collect([
+            ['source' => 'iabilet', 'starts_at' => '2026-05-10 00:00:00'],
+            ['source' => 'zilesinopti', 'starts_at' => '2026-05-10 20:00:00'],
+            ['source' => 'allevents', 'starts_at' => '2026-05-10 17:00:00'],
+            ['source' => 'entertix', 'starts_at' => '2026-05-09 21:00:00'],
+        ])->map(fn (array $o) => $this->deduplicator->matchKey(
+            dedupRawEvent($o + ['title' => 'Concert Phoenix']),
+            TEST_TIMEZONE,
+        ));
 
-    // -----------------------------------------------------------------------
-    // generateFingerprint()
-    // -----------------------------------------------------------------------
-
-    it('returns a 64-character SHA-256 hex string', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-        $fingerprint = $deduplicator->generateFingerprint(dedupRawEvent());
-
-        expect($fingerprint)->toBeString()->toHaveLength(64);
+        expect($keys->unique())->toHaveCount(1);
     });
 
-    it('returns the same hash for identical inputs', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-        $event = dedupRawEvent();
+    it('ignores provider-specific title decoration', function () {
+        $plain = $this->deduplicator->matchKey(dedupRawEvent(['title' => 'Concert Phoenix']), TEST_TIMEZONE);
+        $suffixed = $this->deduplicator->matchKey(dedupRawEvent(['title' => 'Concert Phoenix - Live in Timisoara']), TEST_TIMEZONE);
+        $prefixed = $this->deduplicator->matchKey(dedupRawEvent(['title' => 'Timisoara: Concert Phoenix']), TEST_TIMEZONE);
 
-        expect($deduplicator->generateFingerprint($event))
-            ->toBe($deduplicator->generateFingerprint($event));
+        expect($suffixed)->toBe($plain)
+            ->and($prefixed)->toBe($plain);
     });
 
-    it('strips punctuation and special characters before hashing', function (): void {
-        // generateFingerprint uses preg_replace('/[^\p{L}\p{N}\s]/u', '') which removes punctuation
-        // but keeps Unicode letters (including diacritics). Two titles that differ only in
-        // punctuation produce the same fingerprint; diacritics vs plain letters do not.
-        $deduplicator = app(EventDeduplicator::class);
+    it('treats diacritic and plain spellings of a city as the same', function () {
+        $withDiacritics = $this->deduplicator->matchKey(dedupRawEvent(['city' => 'Timișoara']), TEST_TIMEZONE);
+        $without = $this->deduplicator->matchKey(dedupRawEvent(['city' => 'Timisoara']), TEST_TIMEZONE);
 
-        $withPunct = dedupRawEvent(['title' => 'Concert Phoenix!']);
-        $withoutPunct = dedupRawEvent(['title' => 'Concert Phoenix']);
-
-        expect($deduplicator->generateFingerprint($withPunct))
-            ->toBe($deduplicator->generateFingerprint($withoutPunct));
+        expect($withDiacritics)->toBe($without);
     });
 
-    it('produces a valid consistent fingerprint when startsAt is null', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-        $event = dedupRawEvent(['startsAt' => null]);
+    it('separates different cities', function () {
+        $timisoara = $this->deduplicator->matchKey(dedupRawEvent(['city' => 'Timișoara']), TEST_TIMEZONE);
+        $cluj = $this->deduplicator->matchKey(dedupRawEvent(['city' => 'Cluj-Napoca']), TEST_TIMEZONE);
 
-        $fp1 = $deduplicator->generateFingerprint($event);
-        $fp2 = $deduplicator->generateFingerprint($event);
-
-        expect($fp1)->toBeString()->toHaveLength(64)->toBe($fp2);
+        expect($timisoara)->not->toBe($cluj);
     });
 
-    // -----------------------------------------------------------------------
-    // isDuplicate()
-    // -----------------------------------------------------------------------
+    it('separates different days', function () {
+        $first = $this->deduplicator->matchKey(dedupRawEvent(['starts_at' => '2026-05-10 19:00:00']), TEST_TIMEZONE);
+        $second = $this->deduplicator->matchKey(dedupRawEvent(['starts_at' => '2026-05-11 19:00:00']), TEST_TIMEZONE);
 
-    it('returns false when no event with that fingerprint is in the DB', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-
-        expect($deduplicator->isDuplicate('nonexistent-fingerprint-abc123'))->toBeFalse();
+        expect($first)->not->toBe($second);
     });
 
-    it('returns true after an event with the matching fingerprint is stored', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-        $fp = 'known-fingerprint-xyz';
+    it('separates different events on the same day', function () {
+        $phoenix = $this->deduplicator->matchKey(dedupRawEvent(['title' => 'Concert Phoenix']), TEST_TIMEZONE);
+        $subcarpati = $this->deduplicator->matchKey(dedupRawEvent(['title' => 'Concert Subcarpati']), TEST_TIMEZONE);
 
-        dedupEvent(['fingerprint' => $fp]);
+        expect($phoenix)->not->toBe($subcarpati);
+    });
+});
 
-        expect($deduplicator->isDuplicate($fp))->toBeTrue();
+// ---------------------------------------------------------------------------
+// occurrenceKey
+// ---------------------------------------------------------------------------
+
+describe('occurrenceKey', function () {
+    it('is the local calendar date', function () {
+        $key = $this->deduplicator->occurrenceKey(
+            dedupRawEvent(['starts_at' => '2026-05-10 17:00:00']),
+            TEST_TIMEZONE,
+        );
+
+        expect($key)->toBe('2026-05-10');
     });
 
-    it('returns false for a fingerprint that belongs to a different event', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
+    it('falls back to a sentinel for undated events', function () {
+        $key = $this->deduplicator->occurrenceKey(dedupRawEvent(['starts_at' => null]), TEST_TIMEZONE);
 
-        dedupEvent(['fingerprint' => 'fp-event-a']);
+        expect($key)->toBe('undated');
+    });
+});
 
-        expect($deduplicator->isDuplicate('fp-event-b'))->toBeFalse();
+// ---------------------------------------------------------------------------
+// findByMatchKey
+// ---------------------------------------------------------------------------
+
+describe('findByMatchKey', function () {
+    it('finds an event stored by another provider', function () {
+        $stored = dedupEvent(['title' => 'Concert Phoenix', 'starts_at' => '2026-05-10 00:00:00']);
+
+        $raw = dedupRawEvent(['title' => 'Concert Phoenix - Live in Timisoara', 'starts_at' => '2026-05-10 20:00:00']);
+        $key = $this->deduplicator->matchKey($raw, TEST_TIMEZONE);
+
+        expect($this->deduplicator->findByMatchKey($key, $raw->title)?->id)->toBe($stored->id);
     });
 
-    // -----------------------------------------------------------------------
-    // findFuzzyDuplicates()
-    // -----------------------------------------------------------------------
+    it('ignores events that were merged away', function () {
+        $canonical = dedupEvent(['title' => 'Concert Phoenix']);
+        $duplicate = dedupEvent(['title' => 'Concert Phoenix', 'source_url' => 'https://other.ro/x/']);
+        $duplicate->forceFill(['merged_into_id' => $canonical->id])->save();
 
-    it('returns null when the raw event has no startsAt', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-        dedupEvent();
+        $raw = dedupRawEvent(['title' => 'Concert Phoenix']);
+        $found = $this->deduplicator->findByMatchKey($this->deduplicator->matchKey($raw, TEST_TIMEZONE), $raw->title);
 
-        expect($deduplicator->findFuzzyDuplicates(dedupRawEvent(['startsAt' => null])))->toBeNull();
+        expect($found?->id)->toBe($canonical->id);
     });
 
-    it('returns null when no events in the DB are within the ±2-hour window', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
+    it('refuses to match on a title too generic to identify an event', function () {
+        dedupEvent(['title' => 'Concert']);
 
-        // Stored at 19:00, incoming at 22:01 — 3 h 1 m ahead, beyond addHours(2)
-        dedupEvent(['starts_at' => '2026-05-10 19:00:00']);
+        $raw = dedupRawEvent(['title' => 'Concert']);
 
-        $incoming = dedupRawEvent(['startsAt' => '2026-05-10 22:01:00']);
-
-        expect($deduplicator->findFuzzyDuplicates($incoming))->toBeNull();
+        expect($this->deduplicator->findByMatchKey($this->deduplicator->matchKey($raw, TEST_TIMEZONE), $raw->title))
+            ->toBeNull();
     });
+});
 
-    it('returns the matching event when title similarity is ≥80% and time is within ±2 hours', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
+// ---------------------------------------------------------------------------
+// findFuzzyDuplicate
+// ---------------------------------------------------------------------------
 
+describe('findFuzzyDuplicate', function () {
+    it('matches a date-only listing against a timed one for the same day', function () {
         $stored = dedupEvent([
-            'title' => 'Concert Phoenix la Sala Capitol',
-            'starts_at' => '2026-05-10 19:00:00',
+            'title' => 'Trupa Phoenix in concert',
+            'starts_at' => '2026-05-10 00:00:00',
+            'venue' => 'Casa Tineretului',
         ]);
 
-        // '@' vs 'la' — same core title, high similarity
-        $incoming = dedupRawEvent([
-            'title' => 'Concert Phoenix @ Sala Capitol',
-            'startsAt' => '2026-05-10 19:00:00',
-        ]);
-
-        expect($deduplicator->findFuzzyDuplicates($incoming))->not->toBeNull()
-            ->and($deduplicator->findFuzzyDuplicates($incoming)?->id)->toBe($stored->id);
-    });
-
-    it('returns null for dissimilar titles at the same time', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-
-        dedupEvent([
-            'title' => 'Stand-up Comedy cu Costel',
+        $raw = dedupRawEvent([
+            'title' => 'Trupa Phoenix in concert la Timisoara',
             'starts_at' => '2026-05-10 20:00:00',
+            'venue' => 'Casa Tineretului, Timisoara',
         ]);
 
-        $incoming = dedupRawEvent([
-            'title' => 'Opera Aida',
-            'startsAt' => '2026-05-10 20:00:00',
-        ]);
-
-        expect($deduplicator->findFuzzyDuplicates($incoming))->toBeNull();
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE)?->id)->toBe($stored->id);
     });
 
-    it('returns null for events outside the time window even with identical titles', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
+    it('matches across a three-hour timezone disagreement', function () {
+        $stored = dedupEvent(['title' => 'Recital Maria Tanase', 'starts_at' => '2026-05-10 17:00:00']);
 
+        $raw = dedupRawEvent(['title' => 'Recital Maria Tanase', 'starts_at' => '2026-05-10 20:00:00']);
+
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE)?->id)->toBe($stored->id);
+    });
+
+    it('does not merge two different acts at the same venue on the same night', function () {
         dedupEvent([
-            'title' => 'Concert Phoenix',
-            'starts_at' => '2026-05-10 16:59:00', // 2h 1m before 19:00
-        ]);
-
-        $incoming = dedupRawEvent(['startsAt' => '2026-05-10 19:00:00']);
-
-        expect($deduplicator->findFuzzyDuplicates($incoming))->toBeNull();
-    });
-
-    it('does not match events from a different city (cross-city isolation)', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-
-        dedupEvent([
-            'title' => 'Concert Phoenix',
+            'title' => 'Concert Subcarpati',
             'starts_at' => '2026-05-10 19:00:00',
-            'city' => 'Cluj-Napoca',
+            'venue' => 'Casa Tineretului',
         ]);
 
-        $incoming = dedupRawEvent([
-            'title' => 'Concert Phoenix',
-            'startsAt' => '2026-05-10 19:00:00',
-            'city' => 'Timișoara',
-        ]);
-
-        expect($deduplicator->findFuzzyDuplicates($incoming))->toBeNull();
-    });
-
-    it('matches when stored title has diacritics and incoming does not', function (): void {
-        $deduplicator = app(EventDeduplicator::class);
-
-        $stored = dedupEvent([
-            'title' => 'Concert la Timișoara',
+        $raw = dedupRawEvent([
+            'title' => 'Concert Byron',
             'starts_at' => '2026-05-10 19:00:00',
+            'venue' => 'Casa Tineretului',
         ]);
 
-        $incoming = dedupRawEvent([
-            'title' => 'Concert la Timisoara',
-            'startsAt' => '2026-05-10 19:00:00',
-        ]);
-
-        // similar_text() is byte-based; ș (2 UTF-8 bytes) vs s (1 byte) gives ≥90% similarity
-        expect($deduplicator->findFuzzyDuplicates($incoming))->not->toBeNull()
-            ->and($deduplicator->findFuzzyDuplicates($incoming)?->id)->toBe($stored->id);
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE))->toBeNull();
     });
 
+    it('does not match across cities', function () {
+        dedupEvent(['title' => 'Concert Phoenix', 'city' => 'Timișoara']);
+
+        $raw = dedupRawEvent(['title' => 'Concert Phoenix', 'city' => 'Cluj-Napoca']);
+
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE))->toBeNull();
+    });
+
+    it('matches undated events only against other undated events', function () {
+        dedupEvent(['title' => 'Expozitie permanenta Brukenthal', 'starts_at' => '2026-05-10 19:00:00']);
+
+        $raw = dedupRawEvent(['title' => 'Expozitie permanenta Brukenthal', 'starts_at' => null]);
+
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE))->toBeNull();
+
+        $undated = dedupEvent([
+            'title' => 'Expozitie permanenta Brukenthal',
+            'starts_at' => null,
+            'source_url' => 'https://iabilet.ro/expozitie/',
+        ]);
+
+        expect($this->deduplicator->findFuzzyDuplicate($raw, TEST_TIMEZONE)?->id)->toBe($undated->id);
+    });
 });

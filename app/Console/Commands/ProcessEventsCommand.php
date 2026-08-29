@@ -4,33 +4,42 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Jobs\ClassifyEventJob;
 use App\Models\Event;
-use App\Services\Processing\EventPipeline;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 
 class ProcessEventsCommand extends Command
 {
     protected $signature = 'eventpulse:process-events';
 
-    protected $description = 'Process raw events through the classification and enrichment pipeline';
+    protected $description = 'Queue classification for events that have not been classified yet';
 
-    public function handle(EventPipeline $pipeline): int
+    public function handle(): int
     {
-        $this->info('Fetching unprocessed events...');
+        $this->info('Fetching unclassified events...');
 
-        $unprocessed = Event::where('is_classified', false)->get();
+        $queued = 0;
 
-        if ($unprocessed->isEmpty()) {
-            $this->info('No unprocessed events found.');
+        Event::query()
+            ->canonical()
+            ->where('is_classified', false)
+            ->orderBy('id')
+            ->chunkById(100, function (Collection $events) use (&$queued): void {
+                /** @var Collection<int, Event> $events */
+                foreach ($events as $event) {
+                    ClassifyEventJob::dispatch($event->id);
+                    $queued++;
+                }
+            });
+
+        if ($queued === 0) {
+            $this->info('No unclassified events found.');
 
             return self::SUCCESS;
         }
 
-        $this->info("Processing {$unprocessed->count()} unprocessed events...");
-
-        $processed = $pipeline->processBatch($unprocessed);
-
-        $this->info("Successfully processed {$processed->count()} events.");
+        $this->info("Queued {$queued} events for classification.");
 
         return self::SUCCESS;
     }

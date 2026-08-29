@@ -36,6 +36,12 @@ class EventResource extends JsonResource
             'popularity_score' => $this->popularity_score,
             'source' => $this->source,
             'source_url' => $this->source_url,
+            'sources_count' => $this->sources_count,
+            'sources' => $this->whenLoaded('sources', fn () => $this->sources
+                ->map(fn ($source): array => [
+                    'source' => $source->source,
+                    'source_url' => $source->source_url,
+                ])->values()),
             'current_reaction' => $this->whenLoaded(
                 'reactions',
                 fn () => $this->reactions->first()?->reaction?->value,
