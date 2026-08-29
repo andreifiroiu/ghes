@@ -28,15 +28,16 @@ class ProfileUpdater
      * Map a signal ("interested", "saved", "not_interested", "ignored") onto the
      * profile keys it touches for this event.
      *
-     * Returns the event's category key and one "tag:{tag}" key per tag, each
-     * carrying the configured delta scaled for discovery. An unknown signal, or
-     * one configured with a zero delta, contributes nothing.
+     * Returns the event's category key, one "tag:{tag}" key per tag and one
+     * "source:{source}" key per provider that reported it, each carrying the
+     * configured delta scaled for discovery. An unknown signal, or one
+     * configured with a zero delta, contributes nothing.
      *
      * @return array<string, float>
      */
     public function deltaKeysFor(Event $event, string $signal, bool $isDiscovery = false): array
     {
-        /** @var array<string, array{category: float, tag: float}> $deltas */
+        /** @var array<string, array{category: float, tag: float, source?: float}> $deltas */
         $deltas = config('eventpulse.feedback.deltas');
         $delta = $deltas[$signal] ?? null;
 
@@ -55,6 +56,7 @@ class ProfileUpdater
 
         $categoryDelta = $this->scaleForDiscovery((float) $delta['category'], $isDiscovery);
         $tagDelta = $this->scaleForDiscovery((float) $delta['tag'], $isDiscovery);
+        $sourceDelta = $this->scaleForDiscovery((float) ($delta['source'] ?? 0.0), $isDiscovery);
 
         $keyDeltas = [];
 
@@ -65,6 +67,12 @@ class ProfileUpdater
         if ($tagDelta !== 0.0) {
             foreach ($event->tags ?? [] as $tag) {
                 $keyDeltas["tag:{$tag}"] = $tagDelta;
+            }
+        }
+
+        if ($sourceDelta !== 0.0) {
+            foreach ($event->sourceKeys() as $source) {
+                $keyDeltas["source:{$source}"] = $sourceDelta;
             }
         }
 

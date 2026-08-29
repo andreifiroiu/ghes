@@ -179,6 +179,34 @@ class Event extends Model
     }
 
     /**
+     * Every distinct provider that reported this event.
+     *
+     * Falls back to the canonical `source` column when the event has no
+     * event_sources rows — events that predate the provenance table, and
+     * fixtures built without them.
+     *
+     * Reads the relation when it is already loaded, so callers that score many
+     * events at once can eager-load `sources` and avoid an N+1.
+     *
+     * @return list<string>
+     */
+    public function sourceKeys(): array
+    {
+        $reported = ($this->relationLoaded('sources') ? $this->sources : $this->sources()->get())
+            ->map(fn (EventSource $source): string => $source->source)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($reported !== []) {
+            return $reported;
+        }
+
+        return $this->source !== '' ? [$this->source] : [];
+    }
+
+    /**
      * The canonical event this one was merged into, if any.
      *
      * @return BelongsTo<Event, $this>

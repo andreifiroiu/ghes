@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\EventCategory;
 use App\Models\Event;
+use App\Models\EventSource;
 use App\Models\User;
 use App\Services\InterestProfile\ProfileUpdater;
 
@@ -175,4 +176,76 @@ it('applies a small negative category decay for ignored events', function () {
 
     $user->refresh();
     expect($user->interest_profile['music'])->toEqualWithDelta(0.48, 0.0001);
+});
+
+it('raises the source score for a positive reaction', function () {
+    $user = User::factory()->create(['interest_profile' => []]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    $this->updater->updateFromFeedback($user, $event, 'interested');
+
+    expect($user->fresh()->interest_profile['source:iabilet'])->toEqualWithDelta(0.05, 0.0001);
+});
+
+it('lowers the source score for a negative reaction', function () {
+    $user = User::factory()->create(['interest_profile' => ['source:allevents' => 0.4]]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Sports,
+        'source' => 'allevents',
+        'tags' => [],
+    ]);
+
+    $this->updater->updateFromFeedback($user, $event, 'not_interested');
+
+    expect($user->fresh()->interest_profile['source:allevents'])->toEqualWithDelta(0.35, 0.0001);
+});
+
+it('credits every provider that reported a deduplicated event', function () {
+    $user = User::factory()->create(['interest_profile' => []]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    EventSource::factory()->forSource('iabilet')->create(['event_id' => $event->id]);
+    EventSource::factory()->forSource('zilesinopti')->create(['event_id' => $event->id]);
+
+    $this->updater->updateFromFeedback($user, $event, 'saved');
+
+    $profile = $user->fresh()->interest_profile;
+    expect($profile['source:iabilet'])->toEqualWithDelta(0.07, 0.0001);
+    expect($profile['source:zilesinopti'])->toEqualWithDelta(0.07, 0.0001);
+});
+
+it('amplifies the source delta for discovery events', function () {
+    $user = User::factory()->create(['interest_profile' => []]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'meetup',
+        'tags' => [],
+    ]);
+
+    $this->updater->updateFromFeedback($user, $event, 'interested', isDiscovery: true);
+
+    // 0.05 * discovery.reward_multiplier (1.5)
+    expect($user->fresh()->interest_profile['source:meetup'])->toEqualWithDelta(0.075, 0.0001);
+});
+
+it('reverts the source delta along with the rest of the ledger', function () {
+    $user = User::factory()->create(['interest_profile' => ['source:iabilet' => 0.3]]);
+    $event = Event::factory()->create([
+        'category' => EventCategory::Music,
+        'source' => 'iabilet',
+        'tags' => [],
+    ]);
+
+    $applied = $this->updater->updateFromFeedback($user, $event, 'interested');
+    $this->updater->revert($user, $applied);
+
+    expect($user->fresh()->interest_profile['source:iabilet'])->toEqualWithDelta(0.3, 0.0001);
 });

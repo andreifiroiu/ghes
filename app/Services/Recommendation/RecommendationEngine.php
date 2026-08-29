@@ -22,18 +22,19 @@ class RecommendationEngine
     /**
      * Score a single event for a user using a weighted multi-factor formula.
      *
-     * Factors: category match, tag overlap, location proximity, time proximity,
-     * price fit, freshness since scrape, and popularity signal.
+     * Factors: category match, tag overlap, source affinity, location proximity,
+     * time proximity, price fit, freshness since scrape, and popularity signal.
      *
      * @return float Score between 0.0 and 1.0
      */
     public function scoreEvent(User $user, Event $event): float
     {
-        /** @var array{category: float, tags: float, location: float, time: float, price: float, freshness: float, popularity: float} $weights */
+        /** @var array{category: float, tags: float, location: float, time: float, price: float, freshness: float, popularity: float, source?: float} $weights */
         $weights = $this->experimentAssigner->weightsFor($user);
 
         $categoryScore = $this->categoryMatch($user, $event);
         $tagScore = $this->tagMatch($user, $event);
+        $sourceScore = $this->sourceMatch($user, $event);
         $locationScore = $this->locationMatch($user, $event);
         $timeScore = $this->timeMatch($event);
         $priceScore = $this->priceMatch($event);
@@ -42,6 +43,7 @@ class RecommendationEngine
 
         $score = ($weights['category'] * $categoryScore)
             + ($weights['tags'] * $tagScore)
+            + (($weights['source'] ?? 0.0) * $sourceScore)
             + ($weights['location'] * $locationScore)
             + ($weights['time'] * $timeScore)
             + ($weights['price'] * $priceScore)
@@ -79,6 +81,9 @@ class RecommendationEngine
             // from one request to the next.
             ->orderBy('starts_at')
             ->limit(200)
+            // sourceMatch() reads every provider that reported the event; without
+            // this each of the 200 candidates costs its own query.
+            ->with('sources')
             ->get();
 
         // Score every candidate
@@ -143,6 +148,21 @@ class RecommendationEngine
         return $this->profileScorer->calculateTagScore(
             $user->interest_profile ?? [],
             $event->tags ?? [],
+        );
+    }
+
+    /**
+     * Average profile score across the providers that reported the event.
+     *
+     * Learned from the reaction buttons: sources the user keeps saying yes to
+     * pull their listings up, sources they keep dismissing push them down.
+     * 0.0 when no source has a score yet.
+     */
+    public function sourceMatch(User $user, Event $event): float
+    {
+        return $this->profileScorer->calculateSourceScore(
+            $user->interest_profile ?? [],
+            $event->sourceKeys(),
         );
     }
 

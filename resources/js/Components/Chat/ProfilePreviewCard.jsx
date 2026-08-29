@@ -24,7 +24,7 @@ const CATEGORY_COLORS = {
  */
 export default function ProfilePreviewCard({ profile }) {
     const categories = Object.entries(profile)
-        .filter(([key]) => !key.startsWith('tag:'))
+        .filter(([key]) => !key.startsWith('tag:') && !key.startsWith('source:'))
         .filter(([, val]) => typeof val === 'number')
         .sort(([, a], [, b]) => b - a);
 

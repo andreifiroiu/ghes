@@ -7,6 +7,7 @@ use App\Enums\EventCategory;
 use App\Enums\Reaction;
 use App\Models\Event;
 use App\Models\EventBookmark;
+use App\Models\EventSource;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\InterestProfile\ProfileScorer;
@@ -134,6 +135,62 @@ it('tag match returns 0 when event has no tags', function () {
     $event = Event::factory()->create(['tags' => []]);
 
     expect($this->engine->tagMatch($user, $event))->toBe(0.0);
+});
+
+// -- sourceMatch -----------------------------------------------------
+
+it('source match returns the profile score for the event source', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['source:iabilet' => 0.8, 'source:allevents' => 0.2],
+    ]);
+    $event = Event::factory()->create(['source' => 'iabilet']);
+
+    expect($this->engine->sourceMatch($user, $event))->toEqualWithDelta(0.8, 0.0001);
+});
+
+it('source match averages every provider that reported the event', function () {
+    $user = User::factory()->create([
+        'interest_profile' => ['source:iabilet' => 0.8, 'source:allevents' => 0.2],
+    ]);
+    $event = Event::factory()->create(['source' => 'iabilet']);
+
+    EventSource::factory()->forSource('iabilet')->create(['event_id' => $event->id]);
+    EventSource::factory()->forSource('allevents')->create(['event_id' => $event->id]);
+
+    expect($this->engine->sourceMatch($user, $event))->toEqualWithDelta(0.5, 0.0001);
+});
+
+it('source match returns 0 for a source the user has no history with', function () {
+    $user = User::factory()->create(['interest_profile' => ['source:iabilet' => 0.8]]);
+    $event = Event::factory()->create(['source' => 'meetup']);
+
+    expect($this->engine->sourceMatch($user, $event))->toBe(0.0);
+});
+
+it('ranks an event from a liked source above an identical one from a disliked source', function () {
+    $user = User::factory()->create([
+        'interest_profile' => [
+            'music' => 0.5,
+            'source:iabilet' => 0.9,
+            'source:allevents' => 0.0,
+        ],
+        'city' => 'Timisoara',
+    ]);
+
+    $attributes = [
+        'category' => EventCategory::Music,
+        'city' => 'Timisoara',
+        'tags' => ['jazz'],
+        'starts_at' => now()->addDays(3),
+        'is_free' => true,
+        'popularity_score' => 10,
+    ];
+
+    $liked = Event::factory()->create([...$attributes, 'source' => 'iabilet']);
+    $disliked = Event::factory()->create([...$attributes, 'source' => 'allevents']);
+
+    expect($this->engine->scoreEvent($user, $liked))
+        ->toBeGreaterThan($this->engine->scoreEvent($user, $disliked));
 });
 
 // -- locationMatch ---------------------------------------------------
