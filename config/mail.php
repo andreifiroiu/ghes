@@ -49,6 +49,11 @@ return [
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
+        'mailgun' => [
+            'transport' => 'mailgun',
+            // Credentials and region live in config/services.php under 'mailgun'.
+        ],
+
         'ses' => [
             'transport' => 'ses',
         ],

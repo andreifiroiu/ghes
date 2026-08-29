@@ -52,7 +52,6 @@ eventpulse/
 │   │   ├── ProcessRawEventJob.php
 │   │   ├── ClassifyEventJob.php
 │   │   ├── GeocodeEventJob.php
-│   │   ├── ComposeNotificationJob.php
 │   │   ├── SendNotificationJob.php
 │   │   ├── ProcessFeedbackJob.php
 │   │   ├── DecayProfileScoresJob.php

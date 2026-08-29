@@ -402,8 +402,7 @@ App\Services\
 | `ProcessRawEventJob`       | processing| On raw event ingestion                |
 | `ClassifyEventJob`         | ai       | On new event (rate-limited)            |
 | `GeocodeEventJob`          | enrichment| After classification                  |
-| `ComposeNotificationJob`   | notifications| Daily at 8:00 AM / Weekly on Monday |
-| `SendNotificationJob`      | notifications| After composition                    |
+| `SendNotificationJob`      | notifications| Queued per digest by eventpulse:send-notifications, daily at 8:00 AM |
 | `ProcessFeedbackJob`       | default  | On user reaction                       |
 | `DecayProfileScoresJob`    | default  | Daily at 3:00 AM                       |
 | `CleanupExpiredEventsJob`  | default  | Daily at 4:00 AM                       |
