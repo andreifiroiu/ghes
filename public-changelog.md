@@ -2,6 +2,14 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Rezolvat — E-mailurile cu recomandări chiar ajung la tine (#10)
+
+Dacă alesesei să primești recomandările pe e-mail, ele nu plecau deloc — aplicația
+nu avea de unde să le trimită, așa că mesajul se pierdea în tăcere. Acum digestul
+tău pleacă la ora pe care ai ales-o în setările de notificări, iar dacă trimiterea
+dă greș pe moment se reîncearcă singură, în loc să pierzi recomandările pe ziua
+aceea.
+
 ## 2026-08-29 — Nou — Vezi ce se întâmplă în oraș înainte să îți faci cont (#9)
 
 Pagina de start arată acum evenimentele care urmează în Timișoara, nu doar o descriere
