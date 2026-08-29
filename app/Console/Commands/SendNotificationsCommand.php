@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\LogsConsoleOutput;
 use App\Models\User;
 use App\Services\Notification\NotificationComposer;
 use App\Services\Notification\NotificationDispatcher;
@@ -11,6 +12,8 @@ use Illuminate\Console\Command;
 
 class SendNotificationsCommand extends Command
 {
+    use LogsConsoleOutput;
+
     protected $signature = 'eventpulse:send-notifications {--user= : Send to a specific user UUID}';
 
     protected $description = 'Compose and send event notification digests to users';

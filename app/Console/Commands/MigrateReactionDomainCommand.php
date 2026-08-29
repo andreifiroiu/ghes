@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\LogsConsoleOutput;
 use App\Enums\Reaction;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,8 @@ use Illuminate\Support\Str;
  */
 class MigrateReactionDomainCommand extends Command
 {
+    use LogsConsoleOutput;
+
     protected $signature = 'eventpulse:migrate-reaction-domain';
 
     protected $description = 'Split saved reactions into bookmarks, collapse hidden into not_interested, and strip negative tags';
