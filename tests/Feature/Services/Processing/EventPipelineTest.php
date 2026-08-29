@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventSource;
 use App\Services\Processing\EventPipeline;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
     $this->pipeline = app(EventPipeline::class);
@@ -268,3 +269,40 @@ it('attaches a new source to the canonical event when the match was merged away'
     expect($result->id)->toBe($canonical->id)
         ->and($result->merged_into_id)->toBeNull();
 });
+
+// ---------------------------------------------------------------------------
+// Over-long provider values
+// ---------------------------------------------------------------------------
+
+it('stores an over-long image URL and address without truncating', function () {
+    // allevents serves images through a CDN that embeds a base64 payload in the
+    // path, so the URL comfortably outgrows the old varchar(255).
+    $imageUrl = 'https://cdn-ip.allevents.in/s/rs:fill:500:250/g:sm/sh:100/'.str_repeat('aHR0cHM6', 40).'.avif';
+    $address = str_repeat('Str. Episcop Augustin Pacha, nr. 1, ap. 27, Timisoara, Romania. ', 6);
+
+    $event = $this->pipeline->process(providerEvent('allevents', [
+        'image_url' => $imageUrl,
+        'address' => $address,
+    ]), 'timisoara');
+
+    expect($event->fresh()->image_url)->toBe($imageUrl)
+        ->and($event->fresh()->address)->toBe($address);
+});
+
+it('keeps provider-supplied text columns unbounded', function (string $table, string $column) {
+    $definition = collect(Schema::getColumns($table))->firstWhere('name', $column);
+
+    expect($definition['type_name'])->toBe('text');
+})->with([
+    ['events', 'title'],
+    ['events', 'source_url'],
+    ['events', 'source_id'],
+    ['events', 'venue'],
+    ['events', 'address'],
+    ['events', 'neighborhood'],
+    ['events', 'image_url'],
+    ['event_sources', 'source_url'],
+    ['event_sources', 'url_key'],
+    ['event_sources', 'source_id'],
+    ['event_sources', 'title'],
+]);
