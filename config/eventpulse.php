@@ -113,10 +113,12 @@ return [
         // the bookmark signal (event_bookmarks) — it stacks with a reaction
         // rather than replacing it, and is still the strongest positive signal
         // (an explicit bookmark > a thumbs-up). "ignored" is a passive outcome
-        // applied to un-reacted events in an ageing notification. "clicked" is
-        // the implicit signal: following an event's link out to its source is
-        // real intent, but the user never said anything, so it moves the
-        // profile by a third of what a thumbs-up does.
+        // applied to un-reacted events in an ageing notification. "clicked" and
+        // "calendar" are the implicit signals: following an event's link out to
+        // its source, and putting it in your calendar. Both are real intent,
+        // but the user never said anything, so both stay below an explicit
+        // reaction — and a calendar entry, which commits a slot in someone's
+        // week, sits above a click.
         // The `source` delta moves one "source:{provider}" key per provider that
         // reported the event. It is the weakest of the three on purpose: which
         // site listed an event says far less about the user than what the event
@@ -128,6 +130,7 @@ return [
             'not_interested' => ['category' => -0.15, 'tag' => -0.20, 'source' => -0.05],
             'ignored' => ['category' => -0.02, 'tag' => 0.0, 'source' => -0.01],
             'clicked' => ['category' => 0.05, 'tag' => 0.05, 'source' => 0.02],
+            'calendar' => ['category' => 0.10, 'tag' => 0.12, 'source' => 0.03],
         ],
         // A notification must be at least this old before its un-reacted events
         // are treated as "ignored" and passively decayed.

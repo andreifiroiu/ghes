@@ -65,7 +65,10 @@ Route::get('events/{event}', [EventController::class, 'show'])
     ->whereUuid('event')
     ->middleware('throttle:120,1')
     ->name('events.show');
+// Throttled like the other public tracking routes: it is an unauthenticated
+// GET that now writes a row and feeds a ranking signal.
 Route::get('events/{event}/calendar.ics', [EventController::class, 'calendar'])
+    ->middleware('throttle:30,1')
     ->whereUuid('event')
     ->name('events.calendar');
 

@@ -38,14 +38,15 @@ cele de reacție. Acum fiecare eveniment din e-mail are un link „Vezi detalii"
 te duce la pagina lui din Ghes, cu harta, descrierea completă și toate site-urile
 de unde poți lua bilete.
 
-## 2026-08-29 — Îmbunătățit — Recomandările învață și din evenimentele pe care le deschizi (#16)
+## 2026-08-29 — Îmbunătățit — Recomandările învață și din ce faci, nu doar din ce spui (#16)
 
 Până acum, Ghes se lua doar după reacțiile tale explicite — „mă interesează",
 „salvat", „nu-i pentru mine". Acum reține și când deschizi un eveniment ca să-i vezi
-detaliile: e un semn mai slab decât o reacție, dar tot îți spune ceva despre gusturi,
-așa că profilul tău se reglează și din el. În plus, evenimentele pe care lumea chiar
-le deschide urcă în recomandări, nu doar cele care păreau populare la sursă.
-
+detaliile, când mergi mai departe către site-ul de bilete și când îl adaugi în
+calendar. Sunt semne mai slabe decât o reacție spusă pe față, așa că mișcă profilul
+mai puțin — dar un eveniment pe care ți-l treci în calendar spune destul de mult, și
+cântărește pe măsură. În plus, evenimentele cu care lumea chiar interacționează urcă
+în recomandări, nu doar cele care păreau populare la sursă.
 ## 2026-08-29 — Nou — Fiecare eveniment are acum pagina lui în Ghes (#15)
 
 Când dai clic pe un eveniment ajungi la pagina lui din Ghes, nu direct pe site-ul de

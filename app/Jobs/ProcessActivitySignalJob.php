@@ -16,11 +16,12 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Turn a recorded outbound click into an implicit profile signal.
+ * Turn a recorded implicit action — an outbound click, a calendar download —
+ * into a profile signal.
  *
- * Dispatched only for a click made in an authenticated session — see
- * ActivityController::redirect. Every other click still lands in the activity
- * log for analytics; it just never reaches this job.
+ * Dispatched only for an action taken in an authenticated session by something
+ * that is not a bot. Everything else still lands in the activity log for
+ * analytics; it just never reaches this job.
  */
 class ProcessActivitySignalJob implements ShouldQueue
 {
@@ -49,7 +50,7 @@ class ProcessActivitySignalJob implements ShouldQueue
             return;
         }
 
-        $processor->processClick($log);
+        $processor->processImplicitSignal($log);
     }
 
     public function failed(Throwable $e): void
