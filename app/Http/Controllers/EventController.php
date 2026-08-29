@@ -9,6 +9,7 @@ use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
+use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Services\Activity\ActivityLogger;
@@ -80,6 +81,23 @@ class EventController extends Controller
         // a calendar would silently book a two-hour slot starting whenever the
         // button was pressed, which reads as a real commitment.
         abort_if($event->starts_at === null, 404);
+
+        // The strongest statement of intent the product can observe: a
+        // bookmark is one reversible tap, this commits a slot in someone's
+        // week. Logged after the guards, so a 404 is not recorded as interest.
+        $log = $this->activity->log(
+            ActivityType::CalendarDownload,
+            ActivitySurface::fromRequest($request->query('from'), ActivitySurface::EventDetail),
+            eventId: $event->id,
+            user: $request->user(),
+            notificationId: $this->notificationIdFrom($request),
+        );
+
+        // Same rule as the outbound redirect: a signed-out fetch of a public
+        // .ics URL is not evidence that a particular person planned anything.
+        if ($log !== null && $request->user() !== null && ! $log->is_bot) {
+            ProcessActivitySignalJob::dispatch($log->id, $request->user()->id);
+        }
 
         return response($this->icsGenerator->generate($event), 200, [
             'Content-Type' => 'text/calendar; charset=utf-8',
