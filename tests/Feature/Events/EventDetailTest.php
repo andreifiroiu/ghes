@@ -85,6 +85,26 @@ it('lists every provider that reported the event, for guests too', function () {
         );
 });
 
+it('still credits a source for an event with no provenance rows', function () {
+    // Events scraped before event_sources existed carry their provider on the
+    // events row alone. The detail page credits that scalar pair, so the
+    // attribution card has something to name rather than crediting nobody.
+    $event = Event::factory()->create([
+        'starts_at' => now()->addDays(3),
+        'source' => 'iabilet',
+        'source_url' => 'https://m.iabilet.ro/legacy',
+    ]);
+
+    expect($event->sources()->count())->toBe(0);
+
+    $this->get("/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('event.sources', 0)
+            ->where('event.source', 'iabilet')
+            ->where('event.source_url', 'https://m.iabilet.ro/legacy')
+        );
+});
+
 it('deduplicates providers that contributed the same URL twice', function () {
     $event = Event::factory()->create(['starts_at' => now()->addDays(3)]);
 

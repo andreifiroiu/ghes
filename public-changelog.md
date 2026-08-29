@@ -2,6 +2,14 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Îmbunătățit — Vezi de unde vine fiecare eveniment (#20)
+
+Pagina unui eveniment are acum o secțiune „Surse", care arată toate site-urile de
+unde am adunat informațiile despre el, fiecare cu link către anunțul original.
+Butonul din dreapta îți spune și el pe ce site ajungi — „Vezi pe iaBilet", în loc
+de un simplu „Vezi sursa originală". Așa știi de la cine vine informația și poți
+merge direct la cei care o publică. Se vede și dacă nu ești conectat.
+
 ## 2026-08-29 — Rezolvat — Pagina de start nu mai rămâne goală (#17)
 
 Dacă orașul din profilul tău era scris fără diacritice — „Timisoara" în loc de

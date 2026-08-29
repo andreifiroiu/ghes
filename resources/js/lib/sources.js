@@ -14,6 +14,8 @@ export const SOURCE_LABELS = {
     entertix: 'Entertix',
     meetup: 'Meetup',
     google_events: 'Google Events',
+    facebook_events: 'Facebook Events',
+    generic_html: 'Sursă web',
     timisoreni: 'Timisoreni',
     opera_timisoara: 'Opera Timișoara',
     teatru_national_tm: 'Teatrul Național TM',
