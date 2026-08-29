@@ -2,6 +2,26 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-08-29 — Rezolvat — Pagina de start nu mai rămâne goală (#17)
+
+Dacă orașul din profilul tău era scris fără diacritice — „Timisoara" în loc de
+„Timișoara" — pagina de start nu-ți arăta niciun eveniment, deși în Ghes existau
+destule și le vedeai fără probleme în lista de evenimente. Acum orașul se
+potrivește indiferent de diacritice sau de scrierea cu majuscule, așa că
+recomandările și descoperirile îți apar cum trebuie. Dacă îți schimbi orașul din
+profil, lista se actualizează imediat.
+
+## 2026-08-29 — Îmbunătățit — Pagina de start îți arată mai mult (#17)
+
+Pagina de start are acum o secțiune „În weekend" cu ce se întâmplă sâmbătă și
+duminică, un rând cu câte evenimente viitoare sunt în orașul tău, câte ai salvat
+și cât de complet e profilul tău de interese, plus scurtături către categorii.
+Când nu avem ce să-ți arătăm îți spunem și de ce — n-ai terminat conversația de
+la început, nu ți-ai ales orașul, sau chiar nu e nimic programat — în loc să
+lăsăm pagina goală. În plus, recomandările apar în ordinea în care ți se
+potrivesc, iar un eveniment la care ai zis „nu-i pentru mine" nu mai rămâne
+agățat în secțiunea de weekend.
+
 ## 2026-08-29 — Îmbunătățit — Reacțiile tale reglează acum și sursele de evenimente (#13)
 
 Până acum, când apăsai „mă interesează" sau „nu-i pentru mine", Ghes reținea ce fel de
