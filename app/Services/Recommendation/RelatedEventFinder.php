@@ -71,6 +71,24 @@ class RelatedEventFinder
             ->visible()
             ->canonical()
             ->whereKeyNot($event->getKey())
+            // Ghes is local discovery: an event in another city is not a
+            // suggestion, it is a wrong answer. Only one city is configured
+            // today, so nothing crosses yet — but the scoring alone treated
+            // city as a +1 nudge, which a strong category and tag match would
+            // out-vote the moment a second city landed.
+            //
+            // A null slug is "we could not place it", not "somewhere else", and
+            // the sources are city-scoped anyway, so those stay in rather than
+            // silently shrinking the strip for every event whose city failed to
+            // parse. `score()` still ranks a confirmed match above them.
+            ->when(
+                $event->city_slug !== null,
+                fn (Builder $query) => $query->where(
+                    fn (Builder $scoped) => $scoped
+                        ->where('city_slug', $event->city_slug)
+                        ->orWhereNull('city_slug'),
+                ),
+            )
             ->where(function (Builder $query) use ($event, $tags): void {
                 $query->where('category', $event->category);
 
@@ -136,7 +154,10 @@ class RelatedEventFinder
             $score += $points['venue'];
         }
 
-        if ($event->city !== null && $candidate->city === $event->city) {
+        // Compared on the normalised slug, not the raw name: two scrapers spell
+        // the same city "Timișoara" and "Timisoara", and a raw comparison
+        // scores those zero.
+        if ($event->city_slug !== null && $candidate->city_slug === $event->city_slug) {
             $score += $points['city'];
         }
 
