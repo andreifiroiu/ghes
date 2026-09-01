@@ -2,6 +2,24 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-01 — Rezolvat — Profilul tău îți arată din nou categoriile de interes (#23)
+
+Pe pagina de profil, la „Categorii de interes", scria „Niciun interes înregistrat
+încă" oricât de multe ne-ai fi spus despre tine — inclusiv după ce terminaseși
+conversația de la început. Profilul era acolo și îți modela recomandările, doar că
+pagina nu îl citea cum trebuie. Acum îți vezi categoriile cu cât de mult te
+interesează fiecare, etichetele tale și sursele de la care îți vin cele mai multe
+evenimente care îți plac.
+
+## 2026-09-01 — Nou — Vezi ce am înțeles despre tine și ce ai făcut până acum (#23)
+
+Profilul are două secțiuni noi. „Ce ne-ai spus despre tine" păstrează, în cuvinte,
+rezumatul a ceea ce am înțeles din conversație — același pe care îl vezi la final,
+acum salvat, ca să te poți întoarce la el oricând. „Activitatea ta" adună câte
+evenimente te-au interesat, câte ai salvat, categoriile la care spui „da" cel mai des
+și ultimele tale reacții. Dacă rezumatul nu îți mai seamănă, îl poți rescrie stând
+puțin de vorbă cu Ghes.
+
 ## 2026-09-01 — Rezolvat — Reacțiile din e-mail te duc la eveniment (#22)
 
 Când apăsai „Mă interesează", „Nu-i pentru mine" sau „Salvează" într-un e-mail cu
