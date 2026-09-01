@@ -86,6 +86,12 @@ export default function ProfileChat({ messages: initialMessages = [] }) {
 
             if (data.success) {
                 setProfile(data.profile);
+                // The server may have kept the current city after refusing an
+                // uncovered one; saying so beats reporting a clean success for
+                // a move that was reverted.
+                if (data.cityNotice) {
+                    setError(data.cityNotice);
+                }
                 setTimeout(() => {
                     router.visit(data.redirectTo || '/profile');
                 }, 2000);
