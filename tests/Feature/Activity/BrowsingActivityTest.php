@@ -144,3 +144,51 @@ it('records the applied filters alongside a discarded one', function () {
     expect(UserActivityLog::ofType(ActivityType::Search)->sole()->context['filters'])
         ->toEqualCanonicalizing(['category' => 'music']);
 });
+
+it('logs nothing for a live-search request', function () {
+    Event::factory()->count(3)->create(['starts_at' => now()->addWeek()]);
+
+    $this->withHeaders(['X-Ghes-Live-Search' => '1'])
+        ->get('/events?search=jazz')
+        ->assertOk();
+
+    // The browse search fires as the user types, so most of these requests are
+    // a prefix of a word still being written. Recording them would fill the
+    // search report with "j"/"ja"/"jaz" and feed the profile scorer an
+    // impression for every event that flickered past on the way.
+    expect(UserActivityLog::ofType(ActivityType::Search)->count())->toBe(0)
+        ->and(UserActivityLog::ofType(ActivityType::EventImpression)->count())->toBe(0);
+});
+
+it('logs a settled search once the user commits to it', function () {
+    Event::factory()->create(['title' => 'Concert de jazz', 'starts_at' => now()->addWeek()]);
+
+    $this->get('/events?search=jazz')->assertOk();
+
+    expect(UserActivityLog::ofType(ActivityType::Search)->sole()->context['filters'])
+        ->toEqualCanonicalizing(['search' => 'jazz'])
+        ->and(UserActivityLog::ofType(ActivityType::EventImpression)->count())->toBe(1);
+});
+
+it('still logs when paginating after a live search', function () {
+    Event::factory()->count(25)->create([
+        'title' => 'Concert de jazz',
+        'starts_at' => now()->addWeek(),
+    ]);
+
+    // The suppression flag travels as a header precisely so it cannot end up
+    // on the paginator links: `paginate()->withQueryString()` copies the query
+    // string onto every one of them, so a `?live=1` would have silenced the
+    // logging for each pagination click that followed a live search.
+    $this->withHeaders(['X-Ghes-Live-Search' => '1'])->get('/events?search=jazz')->assertOk();
+
+    // withHeaders() persists for the rest of the test, so the pagination click
+    // below would otherwise inherit the very header it is meant to arrive
+    // without — and the assertion would pass for the wrong reason.
+    $this->flushHeaders();
+
+    $this->get('/events?search=jazz&page=2')->assertOk();
+
+    expect(UserActivityLog::ofType(ActivityType::Search)->count())->toBe(1)
+        ->and(UserActivityLog::ofType(ActivityType::EventImpression)->count())->toBeGreaterThan(0);
+});

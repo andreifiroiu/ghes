@@ -16,6 +16,7 @@ use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EmailReactionController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\EventSuggestionController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\NotificationSettingsController;
@@ -61,6 +62,14 @@ Route::get('e/o/{notification}.gif', [ActivityController::class, 'open'])
 // `{event}` is constrained to a UUID so this cannot shadow `events/saved`,
 // which is declared later inside the auth group.
 Route::get('events', [EventController::class, 'index'])->name('events.index');
+// Autocomplete for the browse search box. Public like the page that calls it,
+// and declared before `events/{event}` so the literal segment is unambiguous
+// even though that route's UUID constraint already keeps them apart. The limit
+// is generous because a typist legitimately fires one request per settled
+// prefix, but it still bounds what a scraper can pull per minute.
+Route::get('events/suggestions', EventSuggestionController::class)
+    ->middleware('throttle:240,1')
+    ->name('events.suggestions');
 Route::get('events/{event}', [EventController::class, 'show'])
     ->whereUuid('event')
     ->middleware('throttle:120,1')

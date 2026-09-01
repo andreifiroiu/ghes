@@ -359,6 +359,45 @@ return [
     'serpapi_api_key' => env('SERPAPI_API_KEY'),
     'apify_api_token' => env('APIFY_API_TOKEN'),
     'apify_daily_budget_usd' => (float) env('APIFY_DAILY_BUDGET_USD', 5.00),
+    'search' => [
+        // Ids a single search resolves before the Eloquent filters run. Well
+        // above one page: the browse query narrows this set further (upcoming,
+        // visible, category, date), so a limit near the page size would leave
+        // later pages empty. Doubles as the explicit `take()` that stops
+        // Meilisearch falling back to its default 20-hit cap.
+        'max_candidates' => (int) env('EVENTPULSE_SEARCH_MAX_CANDIDATES', 300),
+
+        // Shortest term the suggestion dropdown will query for. One or two
+        // letters match most of the catalogue and rank nothing usefully.
+        'min_suggestion_length' => 2,
+
+        // Rows per suggestion group (events, venues, tags).
+        'suggestions_per_group' => 5,
+
+        // Rows scanned when collecting tag suggestions. Tags live in a JSONB
+        // array, so they are matched in PHP over a bounded window of the
+        // soonest events rather than in SQL.
+        'tag_scan_limit' => 500,
+
+        // Meilisearch HTTP budget. The connect timeout is deliberately short —
+        // the browse search runs as the user types, so an unreachable index
+        // must fail to the database fallback immediately rather than hold a
+        // worker. The request timeout is not, because the same client serves
+        // `scout:import` batches and settings syncs, which a two-second ceiling
+        // would break.
+        'connect_timeout' => 1.0,
+        'timeout' => 15.0,
+
+        // How long the index stays marked unreachable after a failed call,
+        // before another request is allowed to try it again.
+        'degraded_ttl_seconds' => 60,
+
+        // How long a suggestion response stays cached. Short enough that a
+        // newly scraped event shows up quickly, long enough to absorb the
+        // repeated prefixes a typist produces.
+        'suggestion_cache_seconds' => 60,
+    ],
+
     'pagination' => [
         // Rows per page for each paginated listing.
         'events' => 18,
