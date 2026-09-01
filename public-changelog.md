@@ -2,6 +2,16 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-01 — Rezolvat — Reacțiile din e-mail te duc la eveniment (#22)
+
+Când apăsai „Mă interesează", „Nu-i pentru mine" sau „Salvează" într-un e-mail cu
+recomandări, ajungeai pe o pagină care doar îți confirma reacția, iar singurul drum
+mai departe te trimitea la o pagină care îți cerea să te conectezi — o fundătură,
+tocmai când tu ne spuseseși ce te interesează. Acum ajungi direct pe pagina
+evenimentului la care ai reacționat, cu o confirmare în capul paginii care îți spune
+ce am notat. Poți citi despre eveniment, vedea unde are loc și lua bilete pe loc,
+fără să fie nevoie să te conectezi.
+
 ## 2026-09-01 — Îmbunătățit — Butonul de la finalul conversației e acum la îndemână (#21)
 
 La finalul conversației de la început, butonul „Confirmă și continuă" stătea sus, în

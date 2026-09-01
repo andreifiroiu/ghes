@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/Components/ui/Button';
 
 /**
+ * Query parameters that describe how *this* reader arrived, rather than which
+ * event the page is about. They must never travel with a shared link: `reacted`
+ * would tell the recipient we noted a reaction they never made, and `from`/`n`
+ * would bill their visit to somebody else's digest.
+ */
+const ARRIVAL_PARAMS = ['reacted', 'from', 'n'];
+
+/**
  * Share the current event.
  *
  * Uses the native share sheet where the browser offers one (mobile, and Safari
@@ -11,7 +19,7 @@ import { Button } from '@/Components/ui/Button';
  *
  * @param {Object} props
  * @param {string} props.title - Event title, used as the share sheet's subject
- * @param {string} [props.url] - Defaults to the current page
+ * @param {string} [props.url] - Defaults to the current page, minus arrival params
  */
 export default function ShareButton({ title, url }) {
     // null = idle, 'copied' = link is on the clipboard, 'failed' = we could not
@@ -26,6 +34,17 @@ export default function ShareButton({ title, url }) {
     // to another event before it elapses.
     useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
+    /**
+     * The address bar, minus whatever brought this particular reader here.
+     */
+    const currentUrlWithoutArrivalParams = () => {
+        const current = new URL(window.location.href);
+
+        ARRIVAL_PARAMS.forEach((param) => current.searchParams.delete(param));
+
+        return current.toString();
+    };
+
     const flash = (next) => {
         setStatus(next);
         clearTimeout(timeoutRef.current);
@@ -33,7 +52,7 @@ export default function ShareButton({ title, url }) {
     };
 
     const handleShare = async () => {
-        const shareUrl = url || window.location.href;
+        const shareUrl = url || currentUrlWithoutArrivalParams();
 
         if (navigator.share) {
             try {

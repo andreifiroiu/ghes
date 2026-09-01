@@ -9,6 +9,11 @@ use App\Models\User;
 use App\Models\UserEventReaction;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
+use Inertia\Testing\AssertableInertia;
+
+beforeEach(function () {
+    $this->withoutVite();
+});
 
 /**
  * Follow a signed email link the way a browser does: GET the confirmation page,
@@ -33,9 +38,12 @@ it('records a reaction from a signed email URL', function () {
 
     $response = confirmEmailReaction($this, $url);
 
-    $response->assertStatus(200);
-    $response->assertSee('Reacție înregistrată');
-    $response->assertSee($event->title);
+    // The reader is handed the event itself, not a dead-end card.
+    $response->assertRedirect();
+    expect($response->headers->get('Location'))
+        ->toContain("/events/{$event->id}")
+        ->toContain('reacted=interested')
+        ->toContain('from=digest');
 
     $this->assertDatabaseHas('user_event_reactions', [
         'user_id' => $user->id,
@@ -118,7 +126,7 @@ it('maps a legacy hidden link onto not_interested', function () {
         'reaction' => 'hidden',
     ]);
 
-    confirmEmailReaction($this, $url)->assertStatus(200);
+    confirmEmailReaction($this, $url)->assertRedirect();
 
     $this->assertDatabaseHas('user_event_reactions', [
         'user_id' => $user->id,
@@ -141,7 +149,7 @@ it('returns 404 for invalid reaction types', function () {
     $this->post($url)->assertStatus(404);
 });
 
-it('confirms in Romanian rather than the raw enum value', function () {
+it('names the action in Romanian rather than the raw enum value', function () {
     $user = User::factory()->create();
     $event = Event::factory()->create();
 
@@ -151,10 +159,70 @@ it('confirms in Romanian rather than the raw enum value', function () {
         'reaction' => 'not_interested',
     ]);
 
-    $response = confirmEmailReaction($this, $url);
+    // The interstitial is the only page in this flow now, so it is where the
+    // label has to read as Romanian.
+    $response = $this->get($url);
 
     $response->assertSee('Nu-i pentru mine');
     $response->assertDontSee('not interested');
+});
+
+it('confirms the reaction on the event page the reader lands on', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['starts_at' => now()->addDay()]);
+
+    $url = URL::signedRoute('reactions.email', [
+        'user' => $user->id,
+        'event' => $event->id,
+        'reaction' => 'interested',
+    ]);
+
+    // Deliberately not acting as $user: a mail webview usually has no session,
+    // which is why the confirmation travels in the URL rather than the flash.
+    $landing = confirmEmailReaction($this, $url)->headers->get('Location');
+
+    $this->get($landing)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Events/Show')
+            ->where('event.id', $event->id)
+            ->where('reactionNotice', 'Am notat — te interesează. Îți vom recomanda evenimente similare.'));
+});
+
+it('confirms a saved link with its own wording', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['starts_at' => now()->addDay()]);
+
+    $url = URL::signedRoute('reactions.email', [
+        'user' => $user->id,
+        'event' => $event->id,
+        'reaction' => 'saved',
+    ]);
+
+    $landing = confirmEmailReaction($this, $url)->headers->get('Location');
+
+    $this->get($landing)
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('reactionNotice', 'Evenimentul a fost salvat în lista ta.'));
+});
+
+it('shows no notice on an ordinary event page visit', function () {
+    $event = Event::factory()->create(['starts_at' => now()->addDay()]);
+
+    $this->get("/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('reactionNotice', null));
+});
+
+it('ignores a reacted parameter it does not recognise', function () {
+    // `?reacted=` is public and anyone can shape it, including as an array —
+    // neither form may 500 the page or invent a confirmation.
+    $event = Event::factory()->create(['starts_at' => now()->addDay()]);
+
+    foreach (['reacted=nonsense', 'reacted[]=interested'] as $query) {
+        $this->get("/events/{$event->id}?{$query}")
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('reactionNotice', null));
+    }
 });
 
 it('a saved link leaves an existing reaction alone', function () {

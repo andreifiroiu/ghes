@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
+use App\Enums\DigestAction;
 use App\Enums\Reaction;
 use App\Models\Event;
 use App\Models\Notification;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Services\Activity\ActivityLogger;
 use App\Services\Bookmarks\BookmarkService;
 use App\Services\Feedback\ReactionRecorder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
@@ -35,33 +37,34 @@ class EmailReactionController extends Controller
      */
     public function show(Request $request, User $user, Event $event, string $reaction): Response
     {
-        $label = $this->labelFor($reaction);
-
         return response()->view('emails.reaction-confirm', [
             'event' => $event,
-            'label' => $label,
+            'label' => $this->actionFor($reaction)->label(),
             'action' => $request->fullUrl(),
         ]);
     }
 
     /**
-     * Record the action behind a signed email link.
+     * Record the action behind a signed email link, then hand the reader the
+     * event itself.
      *
-     * The path segment is matched before Reaction::tryFrom because it carries
-     * more than the two Reaction cases: `saved` is the bookmark signal, and
-     * `hidden` is a retired reaction that still appears in links sent before
-     * 2026-08-29 (signed URLs live 30 days, so keep this mapping until at least
-     * 2026-09-28).
+     * The redirect replaces a dead-end confirmation card whose only exit was
+     * the dashboard — a page behind auth, which this reader usually is not:
+     * identity here comes from the URL signature precisely because mail
+     * webviews drop the session cookie. `?reacted=` carries the confirmation
+     * instead of a session flash for the same reason: no cookie, no flash.
      */
-    public function store(Request $request, User $user, Event $event, string $reaction): Response
+    public function store(Request $request, User $user, Event $event, string $reaction): RedirectResponse
     {
-        $label = $this->labelFor($reaction);
+        $action = $this->actionFor($reaction);
 
-        match ($reaction) {
-            'saved' => $this->bookmarks->add($user, $event->id, ActivitySurface::Digest),
-            'hidden' => $this->reactions->record($user, $event->id, Reaction::NotInterested, ActivitySurface::Digest),
-            default => $this->reactions->record($user, $event->id, Reaction::from($reaction), ActivitySurface::Digest),
+        match ($action) {
+            DigestAction::Saved => $this->bookmarks->add($user, $event->id, ActivitySurface::Digest),
+            DigestAction::NotInterested, DigestAction::Hidden => $this->reactions->record($user, $event->id, Reaction::NotInterested, ActivitySurface::Digest),
+            DigestAction::Interested => $this->reactions->record($user, $event->id, Reaction::Interested, ActivitySurface::Digest),
         };
+
+        $notificationId = $this->notificationIdFrom($request);
 
         // Logged on the POST, never on the GET above: a scanner that prefetches
         // the link would otherwise be recorded as a reader who clicked it.
@@ -70,14 +73,20 @@ class EmailReactionController extends Controller
             ActivitySurface::Digest,
             eventId: $event->id,
             user: $user,
-            notificationId: $this->notificationIdFrom($request),
+            notificationId: $notificationId,
             context: ['action' => $reaction],
         );
 
-        return response()->view('emails.reaction-confirmed', [
-            'event' => $event,
-            'label' => $label,
-        ]);
+        // `from` and `n` are what the event page needs to attribute the view it
+        // always logs to this digest, exactly as its "Vezi detalii" link does.
+        // The resolved id is passed rather than the raw `?n=`, so a junk value
+        // is dropped here instead of travelling on.
+        return redirect()->route('events.show', array_filter([
+            'event' => $event->id,
+            'from' => ActivitySurface::Digest->value,
+            'n' => $notificationId,
+            'reacted' => $action->value,
+        ]));
     }
 
     /**
@@ -101,24 +110,16 @@ class EmailReactionController extends Controller
     }
 
     /**
-     * Romanian label for a link's action, 404ing on anything unrecognised.
+     * The action a link's path segment names, 404ing on anything unrecognised.
      */
-    private function labelFor(string $reaction): string
+    private function actionFor(string $reaction): DigestAction
     {
-        if ($reaction === 'saved') {
-            return 'Salvat';
-        }
+        $action = DigestAction::tryFrom($reaction);
 
-        if ($reaction === 'hidden') {
-            return Reaction::NotInterested->label();
-        }
-
-        $enum = Reaction::tryFrom($reaction);
-
-        if ($enum === null) {
+        if ($action === null) {
             abort(404, 'Invalid reaction type.');
         }
 
-        return $enum->label();
+        return $action;
     }
 }
