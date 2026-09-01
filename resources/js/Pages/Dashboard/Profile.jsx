@@ -91,9 +91,9 @@ export default function Profile({ user, cityOptions = [], interests, activity })
         <AppLayout title="Profilul meu">
             <Head title="Profil" />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Account */}
-                <div className="lg:col-span-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Account and preferences */}
+                <div className="space-y-6">
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-lg">Cont</CardTitle>
@@ -196,114 +196,6 @@ export default function Profile({ user, cityOptions = [], interests, activity })
                             </CardFooter>
                         </form>
                     </Card>
-                </div>
-
-                {/* Interest profile */}
-                <div className="lg:col-span-2 space-y-6">
-                    <ChatSummaryCard
-                        summary={user?.profile_summary}
-                        updatedAt={user?.profile_summary_updated_at}
-                    />
-
-                    {/* Category scores */}
-                    <Card>
-                        <CardHeader className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <CardTitle className="text-lg">
-                                Categorii de interes
-                            </CardTitle>
-                            <Link
-                                href="/profile/chat"
-                                className="inline-flex min-h-11 items-center text-sm font-medium text-[#FF5733] hover:underline sm:min-h-0"
-                            >
-                                Actualizează prin chat
-                            </Link>
-                        </CardHeader>
-                        <CardContent>
-                            {categories.length === 0 ? (
-                                <p className="text-sm text-gray-400">
-                                    Niciun interes înregistrat încă. Finalizează onboarding-ul sau reacționează la evenimente pentru a-ți construi profilul.
-                                </p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {categories.map(({ key, score }) => (
-                                        <div key={key}>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <CategoryBadge category={key} />
-                                                <span className="text-sm text-gray-500">
-                                                    {Math.round(score * 100)}%
-                                                </span>
-                                            </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-2.5">
-                                                <div
-                                                    className={cn(
-                                                        'h-2.5 rounded-full bg-indigo-500 transition-all duration-500'
-                                                    )}
-                                                    style={{
-                                                        width: `${Math.round(score * 100)}%`,
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Interest tags */}
-                    {tags.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg">
-                                    Etichete de interes
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex flex-wrap gap-2">
-                                    {tags.map(({ key }) => (
-                                        <span
-                                            key={key}
-                                            className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700"
-                                        >
-                                            {key}
-                                        </span>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Source affinity — scored on every reaction, invisible
-                        until now. */}
-                    {sources.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg">
-                                    Surse preferate
-                                </CardTitle>
-                                <CardDescription>
-                                    De unde vin evenimentele la care reacționezi pozitiv.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex flex-wrap gap-2">
-                                    {sources.map(({ key, score }) => (
-                                        <span
-                                            key={key}
-                                            className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700"
-                                        >
-                                            {sourceLabel(key)}
-                                            <span className="text-xs text-gray-500">
-                                                {Math.round(score * 100)}%
-                                            </span>
-                                        </span>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    <ActivitySummaryCard activity={activity} />
 
                     {/* Preferences */}
                     <Card>
@@ -418,6 +310,114 @@ export default function Profile({ user, cityOptions = [], interests, activity })
                             </CardFooter>
                         </form>
                     </Card>
+                </div>
+
+                {/* Interest profile */}
+                <div className="space-y-6">
+                    <ChatSummaryCard
+                        summary={user?.profile_summary}
+                        updatedAt={user?.profile_summary_updated_at}
+                    />
+
+                    {/* Category scores */}
+                    <Card>
+                        <CardHeader className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <CardTitle className="text-lg">
+                                Categorii de interes
+                            </CardTitle>
+                            <Link
+                                href="/profile/chat"
+                                className="inline-flex min-h-11 items-center text-sm font-medium text-[#FF5733] hover:underline sm:min-h-0"
+                            >
+                                Actualizează prin chat
+                            </Link>
+                        </CardHeader>
+                        <CardContent>
+                            {categories.length === 0 ? (
+                                <p className="text-sm text-gray-400">
+                                    Niciun interes înregistrat încă. Finalizează onboarding-ul sau reacționează la evenimente pentru a-ți construi profilul.
+                                </p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {categories.map(({ key, score }) => (
+                                        <div key={key}>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <CategoryBadge category={key} />
+                                                <span className="text-sm text-gray-500">
+                                                    {Math.round(score * 100)}%
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 rounded-full h-2.5">
+                                                <div
+                                                    className={cn(
+                                                        'h-2.5 rounded-full bg-indigo-500 transition-all duration-500'
+                                                    )}
+                                                    style={{
+                                                        width: `${Math.round(score * 100)}%`,
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Interest tags */}
+                    {tags.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">
+                                    Etichete de interes
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex flex-wrap gap-2">
+                                    {tags.map(({ key }) => (
+                                        <span
+                                            key={key}
+                                            className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700"
+                                        >
+                                            {key}
+                                        </span>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Source affinity — scored on every reaction, invisible
+                        until now. */}
+                    {sources.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">
+                                    Surse preferate
+                                </CardTitle>
+                                <CardDescription>
+                                    De unde vin evenimentele la care reacționezi pozitiv.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex flex-wrap gap-2">
+                                    {sources.map(({ key, score }) => (
+                                        <span
+                                            key={key}
+                                            className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700"
+                                        >
+                                            {sourceLabel(key)}
+                                            <span className="text-xs text-gray-500">
+                                                {Math.round(score * 100)}%
+                                            </span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    <ActivitySummaryCard activity={activity} />
                 </div>
             </div>
         </AppLayout>
