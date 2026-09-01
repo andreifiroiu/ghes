@@ -2,6 +2,20 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-01 — Nou — Caută evenimente pe măsură ce scrii, cu sugestii (#24)
+
+În lista de evenimente, rezultatele se actualizează pe măsură ce tastezi — nu mai
+trebuie să apeși „Caută". Pe măsură ce scrii îți apar și sugestii: evenimente care
+se potrivesc, categorii, etichete și locații, plus ultimele tale căutări. Alegi un
+eveniment și mergi direct la el, sau alegi o etichetă ori o locație și lista se
+filtrează după ea, cu o bulină pe care o poți șterge când vrei să revii.
+
+## 2026-09-01 — Rezolvat — Filtrul de weekend nu se mai pierde când alegi o categorie (#24)
+
+Dacă intrai pe evenimentele de weekend și apoi apăsai pe o categorie sau alegeai o
+dată, filtrul de weekend dispărea fără să spună nimic și îți apăreau din nou toate
+evenimentele. Acum filtrele rămân puse împreună, oricare dintre ele l-ai schimba.
+
 ## 2026-09-01 — Rezolvat — Profilul tău îți arată din nou categoriile de interes (#23)
 
 Pe pagina de profil, la „Categorii de interes", scria „Niciun interes înregistrat

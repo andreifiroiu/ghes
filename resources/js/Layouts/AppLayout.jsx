@@ -3,6 +3,7 @@ import { Link, usePage, router } from '@inertiajs/react';
 import { Bookmark, CalendarDays, House, User } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import { cn } from '@/lib/utils';
+import { clearRecentSearches } from '@/lib/recentSearches';
 
 /** Primary destinations. On phones these become the bottom tab bar. */
 const navLinks = [
@@ -42,6 +43,10 @@ export default function AppLayout({ children, title }) {
           : navLinks;
 
     const handleLogout = () => {
+        // Recent searches live in localStorage, which outlives the session. On
+        // a shared browser one person's search terms would otherwise be sitting
+        // in the box for whoever signs in next.
+        clearRecentSearches();
         router.post('/logout');
     };
 

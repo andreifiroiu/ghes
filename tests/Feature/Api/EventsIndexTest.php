@@ -232,3 +232,83 @@ it('exposes the current user reaction on the event detail page', function () {
             ->where('event.current_reaction', 'interested')
         );
 });
+
+it('filters events by a search term', function () {
+    // The first assertion in the suite to exercise `?search=` with results.
+    // It was previously untestable: SCOUT_DRIVER=null made Event::search()
+    // return nothing, so `whereIn('id', [])` matched no rows and any such test
+    // would have been green against an empty page. EventSearcher's database
+    // fallback is what gives this something real to assert on.
+    $match = Event::factory()->create([
+        'title' => 'Concert de jazz la Capitol',
+        'starts_at' => now()->addDays(2),
+    ]);
+    Event::factory()->create([
+        'title' => 'Meci de fotbal',
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    $this->get('/events?search=jazz')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Events/Index')
+            ->has('events.data', 1)
+            ->where('events.data.0.id', $match->id)
+            ->where('filters.search', 'jazz')
+        );
+});
+
+it('returns more than a single page of search results', function () {
+    // Guards the `take()` fix in EventSearcher. Scout's Meilisearch engine
+    // drops a null limit through array_filter() and the engine then applies its
+    // own 20-hit default, so a search could never fill a second page.
+    Event::factory()->count(25)->create([
+        'title' => 'Concert de jazz',
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    $this->get('/events?search=jazz')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('events.meta.total', 25)
+        );
+});
+
+it('filters events by an exact tag', function () {
+    // The autocomplete offers tags, so picking one has to narrow the list. It
+    // cannot go through `search`: the database fallback matches title, venue
+    // and description only, so a tag that appears in none of them would have
+    // suggested itself and then returned nothing.
+    $match = Event::factory()->create([
+        'title' => 'Seară deschisă',
+        'tags' => ['live-music', 'jazz'],
+        'starts_at' => now()->addDays(2),
+    ]);
+    Event::factory()->create([
+        'title' => 'Altceva',
+        'tags' => ['tech'],
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    $this->get('/events?tag=live-music')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 1)
+            ->where('events.data.0.id', $match->id)
+            ->where('filters.tag', 'live-music')
+        );
+});
+
+it('filters events by an exact venue', function () {
+    $match = Event::factory()->create([
+        'venue' => 'Teatrul Merlin',
+        'starts_at' => now()->addDays(2),
+    ]);
+    Event::factory()->create([
+        'venue' => 'Sala Capitol',
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    $this->get('/events?venue='.urlencode('Teatrul Merlin'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('events.data', 1)
+            ->where('events.data.0.id', $match->id)
+        );
+});

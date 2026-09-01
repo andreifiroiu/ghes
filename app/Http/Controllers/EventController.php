@@ -14,6 +14,7 @@ use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Services\Activity\ActivityLogger;
+use App\Services\Events\EventSearcher;
 use App\Services\Events\IcsGenerator;
 use App\Services\Recommendation\RelatedEventFinder;
 use Carbon\Carbon;
@@ -34,7 +35,7 @@ class EventController extends Controller
      *
      * @var list<string>
      */
-    private const FILTER_KEYS = ['search', 'category', 'city', 'date', 'range'];
+    private const FILTER_KEYS = ['search', 'category', 'city', 'date', 'range', 'tag', 'venue'];
 
     /**
      * Filters the last browseQuery() call actually applied, keyed as above.
@@ -47,6 +48,7 @@ class EventController extends Controller
         private readonly RelatedEventFinder $relatedEventFinder,
         private readonly IcsGenerator $icsGenerator,
         private readonly ActivityLogger $activity,
+        private readonly EventSearcher $searcher,
     ) {}
 
     public function index(Request $request): Response
@@ -210,7 +212,16 @@ class EventController extends Controller
         $user = $request->user();
         $filters = $this->appliedFilters;
 
-        if ($filters !== []) {
+        // The browse search reloads as the user types, so a slow typist's
+        // half-written word arrives here as a search in its own right and would
+        // fill the "what are people looking for" report with "j", "ja", "jaz".
+        //
+        // Only the *search row* is suppressed. Impressions are still recorded,
+        // because those events really were rendered — and because
+        // ActivityReporter divides EventClick by EventImpression while nothing
+        // suppresses the click. Dropping the denominator but not the numerator
+        // would push the reported click-through rate above 1.0.
+        if ($filters !== [] && $this->isCommittedBrowse($request)) {
             $this->activity->log(
                 ActivityType::Search,
                 $surface,
@@ -220,6 +231,33 @@ class EventController extends Controller
         }
 
         $this->activity->logMany(ActivityType::EventImpression, $surface, $eventIds, $user);
+    }
+
+    /**
+     * Whether this browse represents a search term the user settled on, and so
+     * is worth recording as one.
+     *
+     * Opt-out rather than opt-in on purpose: a plain link, a bookmarked URL, a
+     * crawler and the API all arrive unmarked and must keep logging as they
+     * always have. Only the live-search path, which knows it may be firing
+     * mid-word, marks itself to suppress the search row.
+     *
+     * Known gap: because the debounce fires once typing pauses, a live request
+     * often *is* the settled query, so `top_searches` now under-counts real
+     * searches — it sees only those where the user additionally pressed Enter
+     * or the button. Capturing the settled state properly needs a signal the
+     * server does not have today.
+     *
+     * A header rather than a query parameter, because `paginate()` is followed
+     * by `withQueryString()`: a `?live=1` would be copied onto
+     * `events.links.next`, and every pagination click after a live search
+     * would then silently record nothing. It would also sit in the address bar
+     * of any URL a visitor copied out of the page, muting logging for whoever
+     * opened it next.
+     */
+    private function isCommittedBrowse(Request $request): bool
+    {
+        return $request->header('X-Ghes-Live-Search') !== '1';
     }
 
     /**
@@ -247,14 +285,31 @@ class EventController extends Controller
 
         if ($request->filled('search')) {
             $term = $request->string('search')->toString();
-            $searchIds = Event::search($term)->keys();
-            $query->whereIn('id', $searchIds);
+            $query->whereIn('id', $this->searcher->ids($term));
             $this->appliedFilters['search'] = $term;
         }
 
         if ($request->filled('category')) {
             $this->appliedFilters['category'] = $request->string('category')->toString();
             $query->where('category', $this->appliedFilters['category']);
+        }
+
+        // Tag and venue are exact facets, not free text. The autocomplete
+        // offers both, and routing them through `search` would have sent them
+        // to a lexical match that does not look at `tags` at all — so picking
+        // the tag it had just suggested returned nothing whenever the search
+        // index was unavailable.
+        if ($request->filled('tag')) {
+            $this->appliedFilters['tag'] = $request->string('tag')->toString();
+            // Compiles to the JSONB containment operator on Postgres, served by
+            // the existing events_tags_gin index, and to an EXISTS over
+            // json_each() on the sqlite test connection.
+            $query->whereJsonContains('tags', $this->appliedFilters['tag']);
+        }
+
+        if ($request->filled('venue')) {
+            $this->appliedFilters['venue'] = $request->string('venue')->toString();
+            $query->where('venue', $this->appliedFilters['venue']);
         }
 
         if ($request->filled('city')) {
