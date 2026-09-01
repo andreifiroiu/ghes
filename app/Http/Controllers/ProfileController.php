@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Resources\UserResource;
+use App\Services\City\CityCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,6 +18,7 @@ class ProfileController extends Controller
     {
         return Inertia::render('Dashboard/Profile', [
             'user' => new UserResource($request->user()),
+            'cityOptions' => CityCatalog::labels(),
         ]);
     }
 

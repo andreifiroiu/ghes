@@ -6,11 +6,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ChatRequest;
 use App\Http\Resources\ChatMessageResource;
+use App\Models\User;
 use App\Services\Chat\OnboardingAgent;
 use App\Services\Chat\ProfileGenerator;
 use App\Services\Chat\ProfileUpdateAgent;
+use App\Services\City\CityCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -113,18 +116,30 @@ class ChatController extends Controller
         $merged = $this->profileGenerator->mergeProfiles($existingProfile, $profile);
 
         // Extract non-score metadata
-        $city = $merged['city'] ?? $user->city;
+        $city = $this->resolveCity($user, $merged['city'] ?? null);
+        $cityNotice = $this->cityNotice($merged['city'] ?? null);
         unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times']);
+
+        // Emptiness is only knowable once the metadata is stripped: a reply
+        // carrying nothing but a city passes the check above, then leaves an
+        // empty score map behind a modal the user cannot dismiss.
+        if ($merged === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nu s-a putut genera profilul. Te rugăm să continui conversația.',
+            ], 422);
+        }
 
         $user->update([
             'interest_profile' => $merged,
-            'city' => is_string($city) ? $city : $user->city,
+            'city' => $city,
             'onboarding_completed' => true,
         ]);
 
         return response()->json([
             'success' => true,
             'profile' => $merged,
+            'cityNotice' => $cityNotice,
             'redirectTo' => route('dashboard'),
         ]);
     }
@@ -217,18 +232,73 @@ class ChatController extends Controller
         $existingProfile = $user->interest_profile ?? [];
         $merged = $this->profileGenerator->mergeProfiles($existingProfile, $changes);
 
-        $city = $merged['city'] ?? $user->city;
+        $city = $this->resolveCity($user, $merged['city'] ?? null);
+        $cityNotice = $this->cityNotice($merged['city'] ?? null);
         unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times']);
 
         $user->update([
             'interest_profile' => $merged,
-            'city' => is_string($city) ? $city : $user->city,
+            'city' => $city,
         ]);
 
         return response()->json([
             'success' => true,
             'profile' => $merged,
+            'cityNotice' => $cityNotice,
             'redirectTo' => route('profile.show'),
         ]);
+    }
+
+    /**
+     * Settle the city to store after a profile generation.
+     *
+     * The LLM is asked for a city but the conversation is never steered to it,
+     * so the answer is usually null and occasionally a city Ghes does not
+     * cover. Writing that unchecked would silently empty the user's feed, so
+     * anything outside the configured catalogue is discarded in favour of what
+     * the user already has, then the covered city.
+     */
+    private function resolveCity(User $user, mixed $llmCity): string
+    {
+        $requested = is_string($llmCity) ? $llmCity : null;
+        $resolved = CityCatalog::resolveLabel($requested);
+
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        $kept = $user->city ?? CityCatalog::defaultLabel();
+
+        // Only worth a line when the user actually named somewhere. A null
+        // city is the ordinary case — the onboarding script never asks.
+        if (filled($requested)) {
+            Log::info('Discarded an uncovered city from the profile chat.', [
+                'user_id' => $user->id,
+                'requested' => $requested,
+                'kept' => $kept,
+            ]);
+        }
+
+        return $kept;
+    }
+
+    /**
+     * The message to show when the chat named a city Ghes does not cover.
+     *
+     * Without it the profile-update chat answers "applied" to a move the
+     * server just reverted, which is the one thing that page must not do.
+     */
+    private function cityNotice(mixed $llmCity): ?string
+    {
+        $requested = is_string($llmCity) ? $llmCity : null;
+
+        if (blank($requested) || CityCatalog::resolveLabel($requested) !== null) {
+            return null;
+        }
+
+        return sprintf(
+            'Deocamdată acoperim doar %s, așa că am păstrat orașul tău actual.',
+            implode(', ', CityCatalog::labels())
+        );
     }
 }

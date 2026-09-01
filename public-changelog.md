@@ -2,6 +2,24 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-01 — Îmbunătățit — Butonul de la finalul conversației e acum la îndemână (#21)
+
+La finalul conversației de la început, butonul „Confirmă și continuă" stătea sus, în
+capul paginii, unde era ușor să nu-l vezi — și mulți rămâneau blocați fără să știe ce
+mai au de făcut. Acum apare chiar deasupra căsuței în care scrii, acolo unde te uiți
+oricum. După ce confirmi, profilul tău de interese ți se arată într-o fereastră pe care
+o închizi tu când ai terminat de citit, în loc să-ți fugă de sub ochi după două secunde.
+Dacă ceva nu merge, îți spunem de ce, în loc să pară că butonul n-a făcut nimic.
+
+## 2026-09-01 — Rezolvat — Îți poți alege orașul din profil (#21)
+
+Pagina de start te anunța că nu ți-ai setat orașul și te trimitea în profil ca să-l
+alegi — numai că în profil nu exista niciun câmp pentru oraș, așa că nu aveai ce să
+faci. Acum ai un selector „Oraș" în profil, la „Cont", iar conturile noi pornesc direct
+cu Timișoara, așa că avertismentul nu-ți mai apare degeaba. Dacă în conversație
+pomenești un oraș pe care încă nu-l acoperim, îți spunem asta pe loc, în loc să-ți
+păstrăm tăcut orașul vechi.
+
 ## 2026-08-29 — Îmbunătățit — Vezi de unde vine fiecare eveniment (#20)
 
 Pagina unui eveniment are acum o secțiune „Surse", care arată toate site-urile de

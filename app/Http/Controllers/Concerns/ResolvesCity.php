@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Services\City\CityCatalog;
 use Carbon\Carbon;
 
 /**
@@ -17,9 +18,7 @@ trait ResolvesCity
      */
     protected function cityLabel(): string
     {
-        $city = (string) config('eventpulse.default_city');
-
-        return (string) config("eventpulse.cities.{$city}.label", $city);
+        return CityCatalog::defaultLabel();
     }
 
     /**

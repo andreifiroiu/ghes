@@ -7,9 +7,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\City\CityCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -24,16 +26,27 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'city' => ['nullable', 'string', 'max:255'],
+            // Same catalogue the profile endpoint enforces — the two used to
+            // disagree, so a client could register a city that PUT /api/profile
+            // would then reject forever.
+            'city' => ['sometimes', 'nullable', 'string', Rule::in(CityCatalog::labels())],
         ]);
 
-        $user = User::create([
+        $attributes = [
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-            'city' => $validated['city'] ?? null,
             'onboarding_completed' => false,
-        ]);
+        ];
+
+        // Absent means "no opinion" and the model fills the covered city;
+        // an explicit null means "no city" and is honoured, which is the
+        // contract User::booted() documents.
+        if ($request->exists('city')) {
+            $attributes['city'] = $validated['city'] ?? null;
+        }
+
+        $user = User::create($attributes);
 
         return response()->json([
             'token' => $user->createToken('api')->plainTextToken,

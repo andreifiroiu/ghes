@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationFrequency;
+use App\Services\City\CityCatalog;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -21,6 +22,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property ?string $experiment_variant
  * @property ?NotificationChannel $notification_channel
  * @property ?NotificationFrequency $notification_frequency
+ * @property ?string $city
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $created_at
  */
@@ -28,6 +30,27 @@ class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
+
+    /**
+     * Give every new account the covered city.
+     *
+     * The three signup paths (web register, Google OAuth, API register) each
+     * built their own attribute array and none of them set a city, so accounts
+     * arrived on the dashboard unable to filter nearby events. Hooking the
+     * model covers all three, plus factories and seeders.
+     *
+     * Only a genuinely absent attribute is filled: passing `city => null`
+     * says "no city" on purpose, and the recommendation and dashboard code
+     * below has deliberate handling for that.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $user): void {
+            if (! array_key_exists('city', $user->getAttributes())) {
+                $user->city = CityCatalog::defaultLabel();
+            }
+        });
+    }
 
     /**
      * The attributes that are mass assignable.

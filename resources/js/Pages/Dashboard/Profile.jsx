@@ -32,8 +32,10 @@ const frequencyOptions = [
  * @param {string} [props.user.notification_channel]
  * @param {string} [props.user.notification_frequency]
  * @param {string|null} [props.user.email_verified_at]
+ * @param {string|null} [props.user.city]
+ * @param {Array<string>} [props.cityOptions] - the cities Ghes currently covers
  */
-export default function Profile({ user }) {
+export default function Profile({ user, cityOptions = [] }) {
     const profile = user?.interest_profile || {};
     const categories = profile.categories || {};
     const discoveryOpenness = user?.discovery_openness ?? 0.5;
@@ -50,7 +52,10 @@ export default function Profile({ user }) {
     } = useForm({
         name: user?.name || '',
         email: user?.email || '',
+        city: user?.city || '',
     });
+
+    const cityIsCovered = cityOptions.includes(accountData.city);
 
     const handleAccountSubmit = (e) => {
         e.preventDefault();
@@ -132,6 +137,47 @@ export default function Profile({ user }) {
                                             </div>
                                         )}
                                     </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="city">Oraș</Label>
+                                    <Select
+                                        id="city"
+                                        value={accountData.city}
+                                        onChange={(e) => setAccountData('city', e.target.value)}
+                                    >
+                                        {/* A city we no longer (or never did)
+                                            cover still has to show as itself —
+                                            a native select silently falls back
+                                            to the first option otherwise, and
+                                            the field would misreport the
+                                            account's actual city. */}
+                                        {!cityIsCovered &&
+                                            (accountData.city ? (
+                                                <option value={accountData.city}>
+                                                    {accountData.city} (neacoperit)
+                                                </option>
+                                            ) : (
+                                                /* Disabled so an account that
+                                                   has no city cannot re-pick
+                                                   "no city" once it has chosen
+                                                   one — the value is not
+                                                   something the form can set. */
+                                                <option value="" disabled>
+                                                    Alege orașul
+                                                </option>
+                                            ))}
+                                        {cityOptions.map((city) => (
+                                            <option key={city} value={city}>
+                                                {city}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                    {accountErrors.city && (
+                                        <p className="text-sm text-red-600">{accountErrors.city}</p>
+                                    )}
+                                    <p className="text-xs text-gray-500">
+                                        Deocamdată acoperim un singur oraș. Vin și altele.
+                                    </p>
                                 </div>
                             </CardContent>
                             <CardFooter className="flex items-center gap-4">

@@ -3,6 +3,14 @@ import { Head, router } from '@inertiajs/react';
 import ChatWindow from '@/Components/Chat/ChatWindow';
 import ProfilePreviewCard from '@/Components/Chat/ProfilePreviewCard';
 import { Button } from '@/Components/ui/Button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/Components/ui/Dialog';
 import { Input } from '@/Components/ui/Input';
 
 /**
@@ -23,6 +31,8 @@ export default function Chat({
     const [isComplete, setIsComplete] = useState(onboardingComplete);
     const [isConfirming, setIsConfirming] = useState(false);
     const [profile, setProfile] = useState(null);
+    const [redirectTo, setRedirectTo] = useState('/dashboard');
+    const [confirmError, setConfirmError] = useState(null);
 
     const csrfToken = document
         .querySelector('meta[name="csrf-token"]')
@@ -83,6 +93,7 @@ export default function Chat({
 
     const handleConfirmProfile = useCallback(async () => {
         setIsConfirming(true);
+        setConfirmError(null);
         try {
             const res = await fetch('/onboarding/confirm-profile', {
                 method: 'POST',
@@ -93,16 +104,26 @@ export default function Chat({
                 },
             });
 
-            const data = await res.json();
+            const data = await res.json().catch(() => null);
 
-            if (data.success) {
+            if (res.ok && data?.success) {
                 setProfile(data.profile);
-                setTimeout(() => {
-                    router.visit(data.redirectTo || '/');
-                }, 2000);
+                setRedirectTo(data.redirectTo || '/dashboard');
+                return;
             }
+
+            // A 401/419 means the chat outlived its session; anything else
+            // carries a server-side reason worth repeating verbatim.
+            setConfirmError(
+                res.status === 401 || res.status === 419
+                    ? 'Sesiunea a expirat. Reîncarcă pagina și încearcă din nou.'
+                    : data?.message ||
+                          'Nu am putut genera profilul. Încearcă din nou.',
+            );
         } catch {
-            // ignore
+            setConfirmError(
+                'Nu am putut lua legătura cu serverul. Verifică conexiunea și încearcă din nou.',
+            );
         } finally {
             setIsConfirming(false);
         }
@@ -123,17 +144,6 @@ export default function Chat({
                                 Spune-ne ce te interesează
                             </p>
                         </div>
-                        {isComplete && !profile && (
-                            <Button
-                                onClick={handleConfirmProfile}
-                                disabled={isConfirming}
-                                className="bg-green-600 hover:bg-green-700"
-                            >
-                                {isConfirming
-                                    ? 'Se generează profilul...'
-                                    : 'Confirmă și continuă'}
-                            </Button>
-                        )}
                     </div>
                 </div>
 
@@ -141,13 +151,39 @@ export default function Chat({
                 <div className="flex-1 min-h-0 max-w-2xl mx-auto w-full flex flex-col">
                     <ChatWindow messages={messages} isTyping={isTyping} />
 
-                    {/* Profile preview after confirmation */}
-                    {profile && (
-                        <div className="px-4 pb-4">
-                            <ProfilePreviewCard profile={profile} />
-                            <p className="text-center text-sm text-gray-500 mt-2">
-                                Redirecționare către tabloul de bord...
-                            </p>
+                    {/* Confirm call to action, sat right above the input so
+                        it lands where the user is already looking. */}
+                    {isComplete && !profile && (
+                        <div
+                            className={
+                                confirmError
+                                    ? 'border-t border-red-200 bg-red-50 px-4 py-3'
+                                    : 'border-t border-green-200 bg-green-50 px-4 py-3'
+                            }
+                        >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <p
+                                    role={confirmError ? 'alert' : undefined}
+                                    className={
+                                        confirmError
+                                            ? 'text-sm text-red-700'
+                                            : 'text-sm text-green-800'
+                                    }
+                                >
+                                    {confirmError || 'Gata — am înțeles ce-ți place.'}
+                                </p>
+                                <Button
+                                    onClick={handleConfirmProfile}
+                                    disabled={isConfirming}
+                                    className="w-full bg-green-600 hover:bg-green-700 sm:w-auto"
+                                >
+                                    {isConfirming
+                                        ? 'Se generează profilul...'
+                                        : confirmError
+                                          ? 'Încearcă din nou'
+                                          : 'Confirmă și continuă'}
+                                </Button>
+                            </div>
                         </div>
                     )}
 
@@ -162,7 +198,7 @@ export default function Chat({
                                 onChange={(e) => setInput(e.target.value)}
                                 placeholder={
                                     isComplete
-                                        ? 'Adaugă detalii sau apasă Confirmă mai sus...'
+                                        ? 'Adaugă detalii sau apasă Confirmă mai jos...'
                                         : 'Scrie mesajul tău...'
                                 }
                                 disabled={isSending || !!profile}
@@ -193,6 +229,34 @@ export default function Chat({
                     </div>
                 </div>
             </div>
+
+            {/* The generated profile, acknowledged explicitly. The only way on
+                is the button — dismissing it would strand the user on a chat
+                that has nothing left to do. */}
+            <Dialog open={!!profile}>
+                <DialogContent
+                    showCloseButton={false}
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
+                    <DialogHeader>
+                        <DialogTitle>Profilul tău e gata</DialogTitle>
+                        <DialogDescription>
+                            Pe baza asta îți alegem evenimentele. Îl poți
+                            ajusta oricând din profil.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {profile && <ProfilePreviewCard profile={profile} />}
+                    <DialogFooter>
+                        <Button
+                            onClick={() => router.visit(redirectTo)}
+                            className="w-full bg-green-600 hover:bg-green-700 sm:w-auto"
+                        >
+                            Continuă spre tabloul de bord
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }
