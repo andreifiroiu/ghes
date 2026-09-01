@@ -330,3 +330,131 @@ it('sends no city notice when the model named nothing', function () {
         ->assertOk()
         ->assertJsonPath('cityNotice', null);
 });
+
+it('stores the summary the model returns, out of the score blob', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode([
+                'music' => 0.9,
+                'summary' => 'Îți plac concertele de jazz și teatrul independent.',
+            ])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create(['onboarding_completed' => false, 'interest_profile' => []]);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'Îmi place jazzul', 'context' => 'onboarding',
+    ]);
+
+    $this->actingAs($user)->postJson('/onboarding/confirm-profile')->assertOk();
+
+    $user->refresh();
+
+    expect($user->profile_summary)->toBe('Îți plac concertele de jazz și teatrul independent.');
+    expect($user->profile_summary_updated_at)->not->toBeNull();
+    // Every scorer iterates interest_profile numerically; a free-text value in
+    // there would have to be special-cased in three services.
+    expect($user->interest_profile)->not->toHaveKey('summary');
+});
+
+it('falls back to the recap the user confirmed when the model omits a summary', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode(['music' => 0.9])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create(['onboarding_completed' => false, 'interest_profile' => []]);
+    $user->chatMessages()->createMany([
+        ['role' => 'user', 'content' => 'Îmi place jazzul', 'context' => 'onboarding'],
+        ['role' => 'assistant', 'content' => "Deci: jazz și concerte mici.\n[PROFILE_READY]", 'context' => 'onboarding'],
+    ]);
+
+    $this->actingAs($user)->postJson('/onboarding/confirm-profile')->assertOk();
+
+    expect($user->refresh()->profile_summary)->toBe('Deci: jazz și concerte mici.');
+});
+
+it('keeps the existing summary when a profile chat produces none', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode(['film' => 0.6])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    // A profile-update chat has no [PROFILE_READY] marker, so there is nothing
+    // to fall back to — a refinement must not wipe what onboarding wrote.
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9],
+        'profile_summary' => 'Îți plac concertele de jazz.',
+    ]);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'îmi plac și filmele', 'context' => 'profile_update',
+    ]);
+
+    $this->actingAs($user)->postJson('/profile/chat/apply')->assertOk();
+
+    expect($user->refresh()->profile_summary)->toBe('Îți plac concertele de jazz.');
+});
+
+it('leaves the summary timestamp alone when the recap has not changed', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode([
+                'music' => 0.9,
+                'summary' => 'Îți plac concertele de jazz.',
+            ])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    // "Actualizat <date>" is shown on the profile page; a date that moves while
+    // the prose does not is worse than no date.
+    $stamped = now()->subMonth();
+    $user = User::factory()->create([
+        'onboarding_completed' => false,
+        'interest_profile' => [],
+        'profile_summary' => 'Îți plac concertele de jazz.',
+        'profile_summary_updated_at' => $stamped,
+    ]);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'jazz', 'context' => 'onboarding',
+    ]);
+
+    $this->actingAs($user)->postJson('/onboarding/confirm-profile')->assertOk();
+
+    expect($user->refresh()->profile_summary_updated_at->timestamp)->toBe($stamped->timestamp);
+});
+
+it('replaces the summary when a profile chat produces a new one', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode([
+                'film' => 0.6,
+                'summary' => 'Îți plac concertele de jazz și, de curând, filmul de autor.',
+            ])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create([
+        'interest_profile' => ['music' => 0.9],
+        'profile_summary' => 'Îți plac concertele de jazz.',
+        'profile_summary_updated_at' => now()->subMonth(),
+    ]);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'îmi plac și filmele', 'context' => 'profile_update',
+    ]);
+
+    $this->actingAs($user)->postJson('/profile/chat/apply')->assertOk();
+
+    $user->refresh();
+
+    expect($user->profile_summary)
+        ->toBe('Îți plac concertele de jazz și, de curând, filmul de autor.');
+    expect($user->profile_summary_updated_at->isToday())->toBeTrue();
+    expect($user->interest_profile)->not->toHaveKey('summary');
+});

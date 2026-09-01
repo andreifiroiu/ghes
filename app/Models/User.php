@@ -19,6 +19,8 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property array<string, mixed> $interest_profile
+ * @property ?string $profile_summary
+ * @property Carbon|null $profile_summary_updated_at
  * @property ?string $experiment_variant
  * @property ?NotificationChannel $notification_channel
  * @property ?NotificationFrequency $notification_frequency
@@ -62,6 +64,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'interest_profile',
+        'profile_summary',
+        'profile_summary_updated_at',
         'discovery_openness',
         'experiment_variant',
         'notification_channel',
@@ -92,6 +96,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'interest_profile' => 'array',
+            'profile_summary_updated_at' => 'datetime',
             'discovery_openness' => 'float',
             'onboarding_completed' => 'boolean',
             'notification_channel' => NotificationChannel::class,

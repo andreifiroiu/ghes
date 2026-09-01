@@ -451,6 +451,7 @@ The JSON must have these keys:
 - "city": the user's preferred city as a string, or null.
 - "price_sensitive": true/false based on whether they prefer free or cheap events.
 - "preferred_times": an array of strings like ["evening", "weekend"].
+- "summary": 2-3 sentences, written in Romanian, addressed to the user as "tu", recapping what they told you about their tastes — the kinds of events they are drawn to, what they avoid, and any practical constraints. Plain prose, no bullet points, no markdown.
 
 Return ONLY valid JSON, no markdown, no explanation.
 PROMPT,

@@ -24,6 +24,8 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'email_verified_at' => $this->email_verified_at,
             'interest_profile' => $this->interest_profile,
+            'profile_summary' => $this->profile_summary,
+            'profile_summary_updated_at' => $this->profile_summary_updated_at,
             'discovery_openness' => $this->discovery_openness,
             'notification_channel' => $this->notification_channel?->value,
             'notification_frequency' => $this->notification_frequency?->value,
