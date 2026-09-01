@@ -77,7 +77,7 @@ it('carries the notification id inside the signed reaction urls', function () {
 
     // Extra params are covered by the signature, so attribution cannot be
     // forged by editing the link.
-    $this->post($url)->assertOk();
+    $this->post($url)->assertRedirect();
     $this->post(str_replace($this->notification->id, (string) fake()->uuid(), $url))->assertForbidden();
 });
 
@@ -89,7 +89,7 @@ it('records an email click when a reaction is confirmed', function () {
         'n' => $this->notification->id,
     ]);
 
-    $this->post($url)->assertOk();
+    $this->post($url)->assertRedirect();
 
     $log = UserActivityLog::ofType(ActivityType::EmailClick)->sole();
 
@@ -120,7 +120,7 @@ it('labels an email reaction with the digest surface', function () {
         'reaction' => 'saved',
     ]);
 
-    $this->post($url)->assertOk();
+    $this->post($url)->assertRedirect();
 
     expect(UserActivityLog::ofType(ActivityType::BookmarkAdded)->sole()->surface)
         ->toBe(ActivitySurface::Digest);
@@ -136,7 +136,7 @@ it('still records the click when the notification id is missing or stale', funct
 
     // notification_id is a foreign key; trusting a stale id would fail the
     // insert and cost us the whole row.
-    $this->post($url)->assertOk();
+    $this->post($url)->assertRedirect();
 
     expect(UserActivityLog::ofType(ActivityType::EmailClick)->sole()->notification_id)->toBeNull();
 });
@@ -149,7 +149,7 @@ it('survives a junk notification id on the reaction confirm', function () {
         'n' => 'not-a-uuid',
     ]);
 
-    $this->post($url)->assertOk();
+    $this->post($url)->assertRedirect();
 
     expect(UserActivityLog::ofType(ActivityType::EmailClick)->sole()->notification_id)->toBeNull();
 });

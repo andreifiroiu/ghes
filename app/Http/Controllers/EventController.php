@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
+use App\Enums\DigestAction;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
@@ -62,7 +63,16 @@ class EventController extends Controller
 
     public function show(Request $request, Event $event): Response
     {
-        return Inertia::render('Events/Show', $this->detailProps($request, $event, ActivitySurface::EventDetail));
+        return Inertia::render('Events/Show', [
+            ...$this->detailProps($request, $event, ActivitySurface::EventDetail),
+            // Set only when a digest reaction redirected here, and read from
+            // the query string rather than a session flash: the reader is
+            // arriving from a mail webview, where the session cookie may never
+            // have survived the POST that recorded the reaction. Added here and
+            // not in detailProps() because apiShow() shares that method and has
+            // no banner to render.
+            'reactionNotice' => DigestAction::noticeFrom($request->query('reacted')),
+        ]);
     }
 
     /**

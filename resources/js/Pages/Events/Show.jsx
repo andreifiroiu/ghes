@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import { Alert } from '@/Components/ui/Alert';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
@@ -39,10 +41,12 @@ import { sourceLabel } from '@/lib/sources';
  * @param {string|null} [props.event.current_reaction]
  * @param {boolean} [props.event.is_saved]
  * @param {Array<Object>} [props.relatedEvents]
+ * @param {string|null} [props.reactionNotice] Confirmation for a reaction just recorded from the digest email.
  */
-export default function Show({ event, relatedEvents = [] }) {
+export default function Show({ event, relatedEvents = [], reactionNotice = null }) {
     const { auth } = usePage().props;
     const isGuest = !auth?.user;
+    const [noticeDismissed, setNoticeDismissed] = useState(false);
 
     const formatDateTime = (dateStr) => {
         if (!dateStr) return null;
@@ -117,6 +121,31 @@ export default function Show({ event, relatedEvents = [] }) {
                     Înapoi la evenimente
                 </Link>
             </div>
+
+            {/* Confirms a reaction clicked in the digest email, which lands
+                here rather than on a dead-end card. Guests see it too — the
+                signed link recorded their reaction without a session — so it
+                also explains why the buttons below offer a sign-up instead. */}
+            {reactionNotice && !noticeDismissed && (
+                <Alert
+                    icon="✅"
+                    className="mb-6"
+                    onDismiss={() => setNoticeDismissed(true)}
+                >
+                    <p>{reactionNotice}</p>
+                    {isGuest && (
+                        <p className="mt-1 text-green-700">
+                            <Link
+                                href="/login"
+                                className="font-medium underline hover:no-underline"
+                            >
+                                Conectează-te
+                            </Link>{' '}
+                            ca să vezi toate reacțiile tale.
+                        </p>
+                    )}
+                </Alert>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:items-start">
                 {/* Main content */}
