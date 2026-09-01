@@ -6,6 +6,9 @@ import { Input } from '@/Components/ui/Input';
 import { Label } from '@/Components/ui/Label';
 import { Select } from '@/Components/ui/Select';
 import CategoryBadge from '@/Components/Events/CategoryBadge';
+import ChatSummaryCard from '@/Components/Profile/ChatSummaryCard';
+import ActivitySummaryCard from '@/Components/Profile/ActivitySummaryCard';
+import { sourceLabel } from '@/lib/sources';
 import { cn } from '@/lib/utils';
 
 const channelOptions = [
@@ -25,21 +28,28 @@ const frequencyOptions = [
  * @param {Object} props.user
  * @param {string} props.user.name
  * @param {string} props.user.email
- * @param {Object} [props.user.interest_profile]
- * @param {Object} [props.user.interest_profile.categories] - e.g. { Music: 0.8, Tech: 0.6 }
- * @param {number} [props.user.interest_profile.discovery_openness] - 0.0 to 1.0
- * @param {Array<string>} [props.user.interest_profile.tags] - free-form interest tags
+ * @param {string|null} [props.user.profile_summary] - the chat's recap of the user's tastes
+ * @param {string|null} [props.user.profile_summary_updated_at]
  * @param {string} [props.user.notification_channel]
  * @param {string} [props.user.notification_frequency]
  * @param {string|null} [props.user.email_verified_at]
  * @param {string|null} [props.user.city]
  * @param {Array<string>} [props.cityOptions] - the cities Ghes currently covers
+ * @param {Object} props.interests - the interest_profile blob split by key family
+ * @param {Array<{key: string, score: number}>} props.interests.categories
+ * @param {Array<{key: string, score: number}>} props.interests.tags
+ * @param {Array<{key: string, score: number}>} props.interests.sources
+ * @param {Object} props.activity - see ProfileActivitySummarizer
  */
-export default function Profile({ user, cityOptions = [] }) {
-    const profile = user?.interest_profile || {};
-    const categories = profile.categories || {};
+export default function Profile({ user, cityOptions = [], interests, activity }) {
+    /* The three families arrive already split and sorted from
+       ProfilePresenter: `interest_profile` is one flat map, so splitting it
+       here was what left this page reading a `categories` sub-key that nothing
+       has ever written. */
+    const categories = interests?.categories ?? [];
+    const tags = interests?.tags ?? [];
+    const sources = interests?.sources ?? [];
     const discoveryOpenness = user?.discovery_openness ?? 0.5;
-    const tags = profile.tags || [];
     const isEmailVerified = !!user?.email_verified_at;
 
     const {
@@ -76,10 +86,6 @@ export default function Profile({ user, cityOptions = [] }) {
         e.preventDefault();
         put('/settings/notifications');
     };
-
-    const sortedCategories = Object.entries(categories).sort(
-        ([, a], [, b]) => b - a
-    );
 
     return (
         <AppLayout title="Profilul meu">
@@ -194,6 +200,11 @@ export default function Profile({ user, cityOptions = [] }) {
 
                 {/* Interest profile */}
                 <div className="lg:col-span-2 space-y-6">
+                    <ChatSummaryCard
+                        summary={user?.profile_summary}
+                        updatedAt={user?.profile_summary_updated_at}
+                    />
+
                     {/* Category scores */}
                     <Card>
                         <CardHeader className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -208,16 +219,16 @@ export default function Profile({ user, cityOptions = [] }) {
                             </Link>
                         </CardHeader>
                         <CardContent>
-                            {sortedCategories.length === 0 ? (
+                            {categories.length === 0 ? (
                                 <p className="text-sm text-gray-400">
                                     Niciun interes înregistrat încă. Finalizează onboarding-ul sau reacționează la evenimente pentru a-ți construi profilul.
                                 </p>
                             ) : (
                                 <div className="space-y-4">
-                                    {sortedCategories.map(([category, score]) => (
-                                        <div key={category}>
+                                    {categories.map(({ key, score }) => (
+                                        <div key={key}>
                                             <div className="flex items-center justify-between mb-1">
-                                                <CategoryBadge category={category} />
+                                                <CategoryBadge category={key} />
                                                 <span className="text-sm text-gray-500">
                                                     {Math.round(score * 100)}%
                                                 </span>
@@ -249,18 +260,50 @@ export default function Profile({ user, cityOptions = [] }) {
                             </CardHeader>
                             <CardContent>
                                 <div className="flex flex-wrap gap-2">
-                                    {tags.map((tag) => (
+                                    {tags.map(({ key }) => (
                                         <span
-                                            key={tag}
+                                            key={key}
                                             className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700"
                                         >
-                                            {tag}
+                                            {key}
                                         </span>
                                     ))}
                                 </div>
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Source affinity — scored on every reaction, invisible
+                        until now. */}
+                    {sources.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">
+                                    Surse preferate
+                                </CardTitle>
+                                <CardDescription>
+                                    De unde vin evenimentele la care reacționezi pozitiv.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex flex-wrap gap-2">
+                                    {sources.map(({ key, score }) => (
+                                        <span
+                                            key={key}
+                                            className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700"
+                                        >
+                                            {sourceLabel(key)}
+                                            <span className="text-xs text-gray-500">
+                                                {Math.round(score * 100)}%
+                                            </span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    <ActivitySummaryCard activity={activity} />
 
                     {/* Preferences */}
                     <Card>

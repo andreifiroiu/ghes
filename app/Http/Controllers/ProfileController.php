@@ -7,6 +7,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Resources\UserResource;
 use App\Services\City\CityCatalog;
+use App\Services\InterestProfile\ProfilePresenter;
+use App\Services\Profile\ProfileActivitySummarizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,11 +16,20 @@ use Inertia\Response;
 
 class ProfileController extends Controller
 {
+    public function __construct(
+        private readonly ProfilePresenter $profilePresenter,
+        private readonly ProfileActivitySummarizer $activitySummarizer,
+    ) {}
+
     public function show(Request $request): Response
     {
+        $user = $request->user();
+
         return Inertia::render('Dashboard/Profile', [
-            'user' => new UserResource($request->user()),
+            'user' => new UserResource($user),
             'cityOptions' => CityCatalog::labels(),
+            'interests' => $this->profilePresenter->present($user),
+            'activity' => $this->activitySummarizer->build($user),
         ]);
     }
 

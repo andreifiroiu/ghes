@@ -211,3 +211,136 @@ it('merges non-numeric metadata fields directly', function () {
     expect($merged['price_sensitive'])->toBeTrue();
     expect($merged['music'])->toBe(0.5);
 });
+
+it('keeps the summary the model writes', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode([
+                'music' => 0.9,
+                'summary' => 'Îți plac concertele de jazz și galeriile de artă.',
+            ])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'Îmi place jazzul', 'context' => 'onboarding',
+    ]);
+
+    $profile = makeProfileGenerator()->generateFromChat($user);
+
+    // Free-text keys are dropped by the parser unless whitelisted — that is
+    // what would silently empty the summary card.
+    expect($profile['summary'])->toBe('Îți plac concertele de jazz și galeriile de artă.');
+});
+
+it('falls back to the recap shown at the end of the chat', function () {
+    // Timestamps staggered on purpose: created_at is second-precision, so rows
+    // written in one call share it and the ordering under test would be moot.
+    $user = User::factory()->create();
+    $user->chatMessages()->createMany([
+        ['role' => 'assistant', 'content' => 'Un rezumat vechi. [PROFILE_READY]', 'context' => 'onboarding', 'created_at' => now()->subMinutes(3)],
+        ['role' => 'user', 'content' => 'da', 'context' => 'onboarding', 'created_at' => now()->subMinutes(2)],
+        ['role' => 'assistant', 'content' => "Deci: jazz și teatru.\n[PROFILE_READY]", 'context' => 'onboarding', 'created_at' => now()->subMinute()],
+    ]);
+
+    expect(makeProfileGenerator()->summaryFromChat($user))->toBe('Deci: jazz și teatru.');
+});
+
+it('has no fallback recap before the profile is ready', function () {
+    $user = User::factory()->create();
+    $user->chatMessages()->create([
+        'role' => 'assistant', 'content' => 'Ce fel de evenimente îți plac?', 'context' => 'onboarding',
+    ]);
+
+    expect(makeProfileGenerator()->summaryFromChat($user))->toBeNull();
+});
+
+it('seeds a refinement with the summary it is refining', function () {
+    // Without this the model summarises the correction alone, and that
+    // delta-only paragraph overwrites the full onboarding recap.
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode(['film' => 0.6])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create(['profile_summary' => 'Îți plac concertele de jazz.']);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'îmi plac și filmele', 'context' => 'profile_update',
+    ]);
+
+    makeProfileGenerator()->generateFromChat($user, 'profile_update');
+
+    Http::assertSent(function ($request) {
+        $sent = $request->data()['messages'][0]['content'];
+
+        return str_contains($sent, 'Îți plac concertele de jazz.')
+            && str_contains($sent, 'never a summary of the conversation on its own');
+    });
+});
+
+it('does not seed an onboarding generation with the stored summary', function () {
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode(['music' => 0.9])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create(['profile_summary' => 'Un rezumat vechi.']);
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'îmi place jazzul', 'context' => 'onboarding',
+    ]);
+
+    makeProfileGenerator()->generateFromChat($user);
+
+    Http::assertSent(fn ($request) => ! str_contains(
+        $request->data()['messages'][0]['content'], 'Un rezumat vechi.'
+    ));
+});
+
+it('rejects a summary that is not prose', function () {
+    // Models answer "plain prose, no bullet points" with a bullet array often
+    // enough that passing it through would look like a summary until the
+    // controller's is_string() check dropped it without trace.
+    Http::fake([
+        'api.anthropic.com/v1/messages' => Http::response([
+            'content' => [['type' => 'text', 'text' => json_encode([
+                'music' => 0.9,
+                'summary' => ['Îți plac concertele', 'Eviți cluburile'],
+            ])]],
+            'usage' => ['input_tokens' => 300, 'output_tokens' => 100],
+        ]),
+    ]);
+
+    $user = User::factory()->create();
+    $user->chatMessages()->create([
+        'role' => 'user', 'content' => 'jazz', 'context' => 'onboarding',
+    ]);
+
+    $profile = makeProfileGenerator()->generateFromChat($user);
+
+    expect($profile)->not->toHaveKey('summary');
+    expect($profile['music'])->toBe(0.9);
+});
+
+it('picks the last confirmed recap when two share a timestamp', function () {
+    // chat_messages is timestamp(0): two messages seconds apart round into the
+    // same second, and without a tiebreaker the superseded recap can win.
+    $user = User::factory()->create();
+    $at = now();
+
+    $user->chatMessages()->create([
+        'role' => 'assistant', 'content' => 'Deci: doar jazz. [PROFILE_READY]',
+        'context' => 'onboarding', 'created_at' => $at,
+    ]);
+    $user->chatMessages()->create([
+        'role' => 'assistant', 'content' => 'Deci: jazz și teatru. [PROFILE_READY]',
+        'context' => 'onboarding', 'created_at' => $at,
+    ]);
+
+    expect(makeProfileGenerator()->summaryFromChat($user))->toBe('Deci: jazz și teatru.');
+});

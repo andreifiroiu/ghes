@@ -87,3 +87,28 @@ export function formatDuration(startedAt, finishedAt) {
         ? `${minutes}m ${seconds % 60}s`
         : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
+
+/**
+ * A day-and-month stamp for activity lists, where the exact minute is noise —
+ * knowing you reacted to something on 3 sep. is the useful part, not 14:32.
+ *
+ * @param {string|null|undefined} iso
+ * @returns {string}
+ */
+export function formatDayMonth(iso) {
+    if (!iso) {
+        return '—';
+    }
+
+    const date = new Date(iso);
+
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+
+    return date.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+}

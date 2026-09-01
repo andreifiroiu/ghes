@@ -13,6 +13,7 @@ use App\Services\Chat\ProfileUpdateAgent;
 use App\Services\City\CityCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -118,7 +119,9 @@ class ChatController extends Controller
         // Extract non-score metadata
         $city = $this->resolveCity($user, $merged['city'] ?? null);
         $cityNotice = $this->cityNotice($merged['city'] ?? null);
-        unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times']);
+        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, 'onboarding');
+        $this->warnOnMissingSummary($user, $summary, $merged['summary'] ?? null);
+        unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times'], $merged['summary']);
 
         // Emptiness is only knowable once the metadata is stripped: a reply
         // carrying nothing but a city passes the check above, then leaves an
@@ -134,6 +137,7 @@ class ChatController extends Controller
             'interest_profile' => $merged,
             'city' => $city,
             'onboarding_completed' => true,
+            ...$this->summaryAttributes($user, $summary),
         ]);
 
         return response()->json([
@@ -234,11 +238,13 @@ class ChatController extends Controller
 
         $city = $this->resolveCity($user, $merged['city'] ?? null);
         $cityNotice = $this->cityNotice($merged['city'] ?? null);
-        unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times']);
+        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, 'profile_update');
+        unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times'], $merged['summary']);
 
         $user->update([
             'interest_profile' => $merged,
             'city' => $city,
+            ...$this->summaryAttributes($user, $summary),
         ]);
 
         return response()->json([
@@ -246,6 +252,62 @@ class ChatController extends Controller
             'profile' => $merged,
             'cityNotice' => $cityNotice,
             'redirectTo' => route('profile.show'),
+        ]);
+    }
+
+    /**
+     * Settle the profile summary to store after a profile generation.
+     *
+     * The generator is asked for one, but the model does occasionally return
+     * scores and nothing else — so the recap the user was shown at the end of
+     * the chat is the fallback. Both can be absent (a profile-update chat has
+     * no [PROFILE_READY] marker), in which case the existing summary stands
+     * rather than being cleared by a refinement.
+     */
+    private function resolveSummary(User $user, mixed $generated, string $context): ?string
+    {
+        if (is_string($generated) && trim($generated) !== '') {
+            return trim($generated);
+        }
+
+        return $this->profileGenerator->summaryFromChat($user, $context);
+    }
+
+    /**
+     * Re-reading the same [PROFILE_READY] message must not look like a fresh
+     * summary: the page shows "Actualizat <date>", and a date that moves while
+     * the prose does not is worse than no date at all.
+     *
+     * @return array{profile_summary?: string, profile_summary_updated_at?: Carbon}
+     */
+    private function summaryAttributes(User $user, ?string $summary): array
+    {
+        if ($summary === null || $summary === $user->profile_summary) {
+            return [];
+        }
+
+        return [
+            'profile_summary' => $summary,
+            'profile_summary_updated_at' => Carbon::now(),
+        ];
+    }
+
+    /**
+     * Onboarding that ends with no summary from either source is a defect, not
+     * a data condition — the model dropped the key *and* the [PROFILE_READY]
+     * recap the fallback reads was missing or renamed. Left unlogged it shows
+     * up only as a profile page telling the user to go and chat, which is what
+     * they just did.
+     */
+    private function warnOnMissingSummary(User $user, ?string $resolved, mixed $generated): void
+    {
+        if ($resolved !== null) {
+            return;
+        }
+
+        Log::warning('Profile confirmed with no summary from either source', [
+            'user_id' => $user->id,
+            'generated_type' => get_debug_type($generated),
         ]);
     }
 
