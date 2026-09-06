@@ -11,6 +11,7 @@ use App\Notifications\VerifyEmailNotification;
 use App\Services\City\CityCatalog;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -30,8 +31,20 @@ use Laravel\Sanctum\HasApiTokens;
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $created_at
  */
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements HasLocalePreference, MustVerifyEmail
 {
+    /**
+     * Notifications render in this locale. The app locale stays `en` (there is
+     * no `lang/en` tree, and switching it would change validation messages and
+     * Carbon everywhere); the framework's mail layout strings are translated
+     * in `lang/ro.json` and the product speaks Romanian, so every user gets
+     * Romanian mail regardless of the request that triggered it.
+     */
+    public function preferredLocale(): string
+    {
+        return 'ro';
+    }
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
 
