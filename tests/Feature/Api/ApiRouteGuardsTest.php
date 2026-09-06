@@ -22,6 +22,7 @@ const PUBLIC_V1_ROUTES = [
     'api/v1/meta',
     'api/v1/auth/register',
     'api/v1/auth/login',
+    'api/v1/auth/oauth/google',
 ];
 
 /**

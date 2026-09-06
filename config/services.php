@@ -48,6 +48,12 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
+        // Every OAuth client an ID token may be minted for — the iOS and
+        // Android apps have their own ids. The web client id is always one.
+        'client_ids' => array_values(array_unique(array_filter([
+            env('GOOGLE_CLIENT_ID'),
+            ...explode(',', (string) env('GOOGLE_CLIENT_IDS', '')),
+        ]))),
     ],
 
 ];

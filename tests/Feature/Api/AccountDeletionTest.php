@@ -11,7 +11,9 @@ use App\Models\PushSubscription;
 use App\Models\User;
 use App\Models\UserActivityLog;
 use App\Models\UserEventReaction;
+use App\Services\Auth\GoogleIdTokenVerifier;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 /**
  * A user with a row in every table that hangs off users.
@@ -94,6 +96,47 @@ it('refuses a wrong password and deletes nothing', function () {
 
     expect(User::whereKey($user->id)->exists())->toBeTrue()
         ->and(rowsOwnedBy($user)['personal_access_tokens'])->toBe(3);
+});
+
+it('accepts a fresh google id token for the same address instead of a password', function () {
+    config(['services.google.client_ids' => ['ios-client']]);
+    $user = User::factory()->create(['email' => 'ana@gmail.com']);
+    $pair = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email, 'password' => 'password', 'device_name' => 'phone', 'platform' => 'ios',
+    ])->json('data');
+    Http::fake([
+        GoogleIdTokenVerifier::TOKENINFO_URL.'*' => Http::response([
+            'iss' => 'https://accounts.google.com', 'aud' => 'ios-client', 'sub' => '1', 'email' => 'ana@gmail.com',
+            'email_verified' => 'true', 'exp' => (string) (time() + 600),
+        ]),
+    ]);
+
+    $this->withToken($pair['access_token'])
+        ->deleteJson('/api/v1/account', ['google_id_token' => 'a.b.c'])
+        ->assertOk();
+
+    expect(User::whereKey($user->id)->exists())->toBeFalse();
+});
+
+it('refuses a google id token for a different address', function () {
+    config(['services.google.client_ids' => ['ios-client']]);
+    $user = User::factory()->create(['email' => 'ana@gmail.com']);
+    $pair = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email, 'password' => 'password', 'device_name' => 'phone', 'platform' => 'ios',
+    ])->json('data');
+    Http::fake([
+        GoogleIdTokenVerifier::TOKENINFO_URL.'*' => Http::response([
+            'iss' => 'https://accounts.google.com', 'aud' => 'ios-client', 'sub' => '2', 'email' => 'someone-else@gmail.com',
+            'email_verified' => 'true', 'exp' => (string) (time() + 600),
+        ]),
+    ]);
+
+    $this->withToken($pair['access_token'])
+        ->deleteJson('/api/v1/account', ['google_id_token' => 'a.b.c'])
+        ->assertStatus(422)
+        ->assertJsonStructure(['error' => ['details' => ['google_id_token']]]);
+
+    expect(User::whereKey($user->id)->exists())->toBeTrue();
 });
 
 it('requires the password field', function () {

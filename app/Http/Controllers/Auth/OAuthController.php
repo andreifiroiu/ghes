@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Services\Auth\SocialAccountLinker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
+use Laravel\Socialite\AbstractUser;
 use Laravel\Socialite\Facades\Socialite;
 
 class OAuthController extends Controller
@@ -20,6 +20,10 @@ class OAuthController extends Controller
      */
     private const PROVIDERS = ['google'];
 
+    public function __construct(
+        private readonly SocialAccountLinker $linker,
+    ) {}
+
     /**
      * Redirect to the OAuth provider's consent screen.
      */
@@ -28,6 +32,19 @@ class OAuthController extends Controller
         abort_unless(in_array($provider, self::PROVIDERS, true), 404);
 
         return Socialite::driver($provider)->redirect();
+    }
+
+    /**
+     * Google's userinfo reports the flag as `email_verified` on the current
+     * endpoint and `verified_email` on the older one; accept either.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function emailIsVerified(array $raw): bool
+    {
+        $flag = $raw['email_verified'] ?? $raw['verified_email'] ?? false;
+
+        return $flag === true || $flag === 'true';
     }
 
     /**
@@ -51,17 +68,19 @@ class OAuthController extends Controller
                 ->withErrors(['email' => 'Contul Google nu are o adresă de email.']);
         }
 
-        $user = User::where('email', $email)->first();
+        // Accounts are linked purely by address, so the provider must vouch
+        // for it: an unverified Google address could otherwise sign in as
+        // whoever registered that address with a password.
+        // Every Socialite driver returns an AbstractUser; the contract alone
+        // does not expose the raw payload the flag lives in.
+        $raw = $oauthUser instanceof AbstractUser ? $oauthUser->getRaw() : [];
 
-        if ($user === null) {
-            $user = User::create([
-                'name' => $oauthUser->getName() ?? $oauthUser->getNickname() ?? $email,
-                'email' => $email,
-                'password' => Str::random(40), // hashed by the model cast; OAuth users sign in via the provider
-                'email_verified_at' => now(), // Google has verified the address
-                'onboarding_completed' => false,
-            ]);
+        if (! $this->emailIsVerified($raw)) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Adresa de email a contului Google nu este verificată.']);
         }
+
+        $user = $this->linker->findOrCreate($email, $oauthUser->getName() ?? $oauthUser->getNickname());
 
         Auth::login($user, remember: true);
 

@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('meta', MetaController::class)->name('meta');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:api-register')->name('auth.register');
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:api-auth')->name('auth.login');
+Route::post('auth/oauth/google', [AuthController::class, 'google'])->middleware('throttle:api-auth')->name('auth.oauth.google');
 
 // Refresh token only.
 Route::post('auth/refresh', [AuthController::class, 'refresh'])

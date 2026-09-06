@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Laravel\Socialite\Contracts\Provider;
-use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialiteUser;
 
-function fakeGoogleUser(string $email, ?string $name = 'Google User'): void
+function fakeGoogleUser(string $email, ?string $name = 'Google User', bool $verified = true): void
 {
     $oauthUser = Mockery::mock(SocialiteUser::class);
     $oauthUser->shouldReceive('getEmail')->andReturn($email);
     $oauthUser->shouldReceive('getName')->andReturn($name);
     $oauthUser->shouldReceive('getNickname')->andReturn(null);
+    $oauthUser->shouldReceive('getRaw')->andReturn(['email_verified' => $verified]);
 
     $provider = Mockery::mock(Provider::class);
     $provider->shouldReceive('user')->andReturn($oauthUser);
@@ -28,6 +29,10 @@ it('creates a new user from the google callback and logs in', function () {
     $response->assertRedirect(route('onboarding'));
     $this->assertDatabaseHas('users', ['email' => 'new@gmail.com', 'onboarding_completed' => false]);
     $this->assertAuthenticated();
+
+    // Google vouched for the address; the account must say so. This used to
+    // be silently dropped because the column is not mass-assignable.
+    expect(User::where('email', 'new@gmail.com')->sole()->email_verified_at)->not->toBeNull();
 });
 
 it('logs in an existing user via google', function () {
@@ -42,6 +47,36 @@ it('logs in an existing user via google', function () {
 
     $response->assertRedirect(route('dashboard'));
     $this->assertAuthenticatedAs($user);
+});
+
+it('refuses an unverified google address, so it cannot take over a password account', function () {
+    // Accounts link purely by address; the provider vouching for it is what
+    // keeps that safe. A deliberate change to the web flow, shared with the
+    // native exchange through SocialAccountLinker.
+    $victim = User::factory()->create(['email' => 'existing@gmail.com']);
+
+    fakeGoogleUser('existing@gmail.com', verified: false);
+
+    $this->get('/auth/google/callback')
+        ->assertRedirect(route('login'))
+        ->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+    expect(User::count())->toBe(1)->and($victim->fresh())->not->toBeNull();
+});
+
+it('accepts the older verified_email flag from google', function () {
+    $oauthUser = Mockery::mock(SocialiteUser::class);
+    $oauthUser->shouldReceive('getEmail')->andReturn('old@gmail.com');
+    $oauthUser->shouldReceive('getName')->andReturn('Old Flag');
+    $oauthUser->shouldReceive('getNickname')->andReturn(null);
+    $oauthUser->shouldReceive('getRaw')->andReturn(['verified_email' => true]);
+    $provider = Mockery::mock(Provider::class);
+    $provider->shouldReceive('user')->andReturn($oauthUser);
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    $this->get('/auth/google/callback')->assertRedirect(route('onboarding'));
+    $this->assertAuthenticated();
 });
 
 it('redirects to the provider consent screen', function () {

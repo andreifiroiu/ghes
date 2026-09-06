@@ -6,13 +6,17 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\DTOs\DeviceContext;
 use App\DTOs\TokenPair;
+use App\Exceptions\InvalidGoogleIdToken;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\GoogleSignInRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Services\Auth\GoogleIdTokenVerifier;
+use App\Services\Auth\SocialAccountLinker;
 use App\Services\Auth\TokenIssuer;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +29,8 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly TokenIssuer $tokens,
+        private readonly GoogleIdTokenVerifier $google,
+        private readonly SocialAccountLinker $linker,
     ) {}
 
     /**
@@ -67,6 +73,27 @@ class AuthController extends Controller
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
+
+        return $this->issued($user, $this->tokens->issuePair($user, DeviceContext::fromValidated($validated)));
+    }
+
+    /**
+     * Exchange a Google ID token, obtained by the app through PKCE against
+     * Google directly, for a token pair. Same identity rule as the web
+     * callback; the verifier's email_verified check is what makes linking
+     * by address safe.
+     */
+    public function google(GoogleSignInRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            $identity = $this->google->verify($validated['id_token']);
+        } catch (InvalidGoogleIdToken $e) {
+            throw ValidationException::withMessages(['id_token' => [$e->getMessage()]]);
+        }
+
+        $user = $this->linker->findOrCreate($identity->email, $identity->name);
 
         return $this->issued($user, $this->tokens->issuePair($user, DeviceContext::fromValidated($validated)));
     }
