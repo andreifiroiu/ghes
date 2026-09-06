@@ -11,8 +11,11 @@ use App\Http\Controllers\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Admin\ScraperController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\OAuthController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EmailReactionController;
@@ -92,7 +95,26 @@ Route::middleware('guest')->group(function () {
     // OAuth (Google)
     Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
     Route::get('auth/{provider}/callback', [OAuthController::class, 'callback'])->name('oauth.callback');
+
+    // Password reset. The ResetPassword notification builds its link from
+    // `password.reset`, so the name is load-bearing. Both POSTs are throttled:
+    // one sends mail to any address the caller names, the other burns tokens.
+    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
+    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])->middleware('throttle:6,1')->name('password.email');
+    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])->name('password.reset');
+    Route::post('reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:6,1')->name('password.update');
 });
+
+// Email verification landing. The VerifyEmail notification builds its link
+// from `verification.verify`; until this route existed every attempt to send
+// that mail threw. Outside the auth group on purpose — see the controller.
+// The throttle bounds writes from a public GET; the signature is what
+// prevents forgery, so the limit can be generous enough that an office
+// behind one NAT does not 429 each other's single-shot links.
+Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
+    ->whereUuid('id')
+    ->middleware(['signed', 'throttle:20,1'])
+    ->name('verification.verify');
 
 // Authenticated routes
 Route::middleware('auth')->group(function () {
@@ -118,7 +140,7 @@ Route::middleware('auth')->group(function () {
     // Profile
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::post('profile/resend-verification', [ProfileController::class, 'resendVerification'])->name('profile.resend-verification');
+    Route::post('profile/resend-verification', [ProfileController::class, 'resendVerification'])->middleware('throttle:6,1')->name('profile.resend-verification');
 
     // Self-service account deletion. Throttled like a sign-in: it checks a
     // password, and a wrong guess must not be free.

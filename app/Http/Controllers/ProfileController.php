@@ -40,11 +40,17 @@ class ProfileController extends Controller
 
         $emailChanged = isset($validated['email']) && $validated['email'] !== $user->email;
 
+        $user->fill($validated);
+
+        // Not mass-assignable on purpose — verified state must never arrive
+        // from a request — so it is cleared explicitly. Passing it through
+        // update() used to be silently dropped, leaving a changed address
+        // marked verified.
         if ($emailChanged) {
-            $validated['email_verified_at'] = null;
+            $user->forceFill(['email_verified_at' => null]);
         }
 
-        $user->update($validated);
+        $user->save();
 
         if ($emailChanged) {
             $user->sendEmailVerificationNotification();
