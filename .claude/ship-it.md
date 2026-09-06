@@ -8,9 +8,9 @@ sqlite/PostgreSQL split.** Tests run on sqlite in-memory while production runs P
 so a green suite is not proof a query works — and a wrong query's user-facing symptom is
 a silently empty event list.
 
-**Stack:** Laravel 13.17 · PHP 8.4 · Inertia v3 + React 19 + Tailwind v4 (hand-rolled
+**Stack:** Laravel 13.30 · PHP 8.4 · Inertia v3 + React 19 + Tailwind v4 (hand-rolled
 shadcn-style primitives in `resources/js/Components/ui/`) · PostgreSQL + Redis/Horizon ·
-Meilisearch via Scout · Pest 4. CLAUDE.md still claims "Laravel 12, PHP 8.3" — stale.
+Meilisearch via Scout · Pest 4 · Sanctum for the versioned `/api/v1` (see `openapi/v1.yaml`).
 
 **CI: there is no CI on this repo.** `.github/` holds only skill definitions, no
 workflows. The local gates below are the only gates.
@@ -45,8 +45,8 @@ the three DTOs, `ProfileScorer`). `--dirty` is the only way to get a meaningful 
   crashed because it reached configured PHP memory limit: 128M"* and prints
   `[ERROR] Found 1 error`. That line is a crash, not a result.
 - Level 6, larastan, `paths: app/` only — `tests/` and `database/` are not analysed.
-- No baseline file, but **5 pre-existing errors**: `ProfileUpdateRequest.php:22`,
-  `RunScraperJob.php:64`, `OnboardingAgent.php:136,138,147`. The bar is "still 5", not
+- No baseline file, but **4 pre-existing errors**: `RunScraperJob.php:72`,
+  `OnboardingAgent.php:136,138,147`. The bar is "still 4", not
   zero. Diff the error *sets*, not the count — a scratch worktree off `origin/main`
   with `vendor/` symlinked in runs PHPStan against the base without stashing.
 - Frontend: no ESLint, Prettier, or TypeScript. `npm run build` (Vite) is the only gate.
@@ -60,7 +60,8 @@ dev Postgres database (`bf_ghes`). Safe, but it is the source of the first trap 
 - Pest 4 exclusively. PHPUnit 12 is installed only as Pest's engine — never PHPUnit syntax.
 - `tests/Pest.php` applies `RefreshDatabase` to `Feature` only; `tests/Unit` gets no DB.
 - Affected: `php artisan test --compact <path>` or `--filter=<name>`.
-- Full: `php artisan test --compact` — ~90s, currently **784 passed, 1 skipped**. One
+- Full: `php artisan test --compact` — ~100s, currently **1119 passed, 1 skipped** on `main`
+  (more on the open API branches). One
   long-standing skip is expected; "1 skipped" is green.
 - `phpunit.xml` also forces `MAIL_MAILER=array`, so no test can send real mail.
 - Fixtures: seven factories (Event, User, UserEventReaction, ChatMessage, DiscoveryLog,
