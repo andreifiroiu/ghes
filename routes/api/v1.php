@@ -35,6 +35,7 @@ Route::get('meta', MetaController::class)->name('meta');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:api-register')->name('auth.register');
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:api-auth')->name('auth.login');
 Route::post('auth/oauth/google', [AuthController::class, 'google'])->middleware('throttle:api-auth')->name('auth.oauth.google');
+Route::post('auth/oauth/apple', [AuthController::class, 'apple'])->middleware('throttle:api-auth')->name('auth.oauth.apple');
 // Password recovery. Public by nature; throttled like a sign-in because one
 // sends mail to any address named and the other burns tokens.
 Route::post('auth/password/forgot', [AuthController::class, 'forgotPassword'])->middleware('throttle:api-auth')->name('auth.password.forgot');

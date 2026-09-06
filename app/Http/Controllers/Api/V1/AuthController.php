@@ -6,8 +6,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\DTOs\DeviceContext;
 use App\DTOs\TokenPair;
-use App\Exceptions\InvalidGoogleIdToken;
+use App\Enums\SocialProvider;
+use App\Exceptions\InvalidIdToken;
+use App\Exceptions\UnlinkableSocialIdentity;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\AppleSignInRequest;
 use App\Http\Requests\Api\GoogleSignInRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
@@ -18,6 +21,7 @@ use App\Http\Responses\ApiResponse;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Notifications\VerifyEmailNotification;
+use App\Services\Auth\AppleIdTokenVerifier;
 use App\Services\Auth\GoogleIdTokenVerifier;
 use App\Services\Auth\PasswordResetter;
 use App\Services\Auth\SocialAccountLinker;
@@ -34,6 +38,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly TokenIssuer $tokens,
         private readonly GoogleIdTokenVerifier $google,
+        private readonly AppleIdTokenVerifier $apple,
         private readonly SocialAccountLinker $linker,
         private readonly PasswordResetter $passwords,
     ) {}
@@ -94,11 +99,29 @@ class AuthController extends Controller
 
         try {
             $identity = $this->google->verify($validated['id_token']);
-        } catch (InvalidGoogleIdToken $e) {
+            $user = $this->linker->link(SocialProvider::Google, $identity->subject, $identity->email, $identity->name);
+        } catch (InvalidIdToken|UnlinkableSocialIdentity $e) {
             throw ValidationException::withMessages(['id_token' => [$e->getMessage()]]);
         }
 
-        $user = $this->linker->findOrCreate($identity->email, $identity->name);
+        return $this->issued($user, $this->tokens->issuePair($user, DeviceContext::fromValidated($validated)));
+    }
+
+    /**
+     * Exchange an Apple ID token for a token pair. Apple sends the address
+     * on the first sign-in only, so later sign-ins link by subject; the name
+     * arrives beside the token, not inside it, and the app forwards it.
+     */
+    public function apple(AppleSignInRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        try {
+            $identity = $this->apple->verify($validated['identity_token']);
+            $user = $this->linker->link(SocialProvider::Apple, $identity->subject, $identity->email, $validated['name'] ?? null);
+        } catch (InvalidIdToken|UnlinkableSocialIdentity $e) {
+            throw ValidationException::withMessages(['identity_token' => [$e->getMessage()]]);
+        }
 
         return $this->issued($user, $this->tokens->issuePair($user, DeviceContext::fromValidated($validated)));
     }

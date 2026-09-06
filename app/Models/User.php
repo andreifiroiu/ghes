@@ -178,6 +178,14 @@ class User extends Authenticatable implements HasLocalePreference, MustVerifyEma
     }
 
     /**
+     * @return HasMany<SocialIdentity, $this>
+     */
+    public function socialIdentities(): HasMany
+    {
+        return $this->hasMany(SocialIdentity::class);
+    }
+
+    /**
      * @return HasMany<Device, $this>
      */
     public function devices(): HasMany

@@ -183,6 +183,45 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /auth/oauth/apple:
+    post:
+      tags: [auth]
+      summary: Exchange an Apple ID token for a token pair
+      description: |
+        Sign in with Apple. The server verifies the token's signature against Apple's published
+        keys and checks issuer, audience and expiry. Apple includes the email on the **first**
+        sign-in only and may hand out a private relay address; accounts are linked by Apple's
+        stable subject, so later sign-ins without an email still find the account. The person's
+        name comes beside the token on first authorisation — forward it as `name`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [identity_token]
+                  properties:
+                    identity_token: { type: string }
+                    name: { type: [string, "null"], maxLength: 255 }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: The token failed verification, or the subject is unknown and no email was included; `details.identity_token` says which.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: Apple's key set could not be fetched; retry after `error.retry_after`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
   /auth/password/forgot:
     post:
       tags: [auth]
@@ -593,19 +632,20 @@ paths:
       summary: Delete the account, immediately and completely
       description: |
         Hard delete, no grace period. Requires re-authentication so a stolen access token cannot
-        do it: the current password, or — for accounts that sign in with Google — a fresh Google
-        ID token for the same address. Everything the account owns goes with it; every device's
-        tokens are revoked.
+        do it: the current password, or — for accounts that sign in with a provider — a fresh
+        Google ID token or Apple identity token for the linked identity. Everything the account
+        owns goes with it; every device's tokens are revoked.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: At least one of the two; when both are sent the password is what is checked.
+              description: At least one of the three; the password is checked first when sent.
               properties:
                 current_password: { type: string }
                 google_id_token: { type: string }
+                apple_identity_token: { type: string }
       responses:
         "200":
           $ref: "#/components/responses/Acknowledged"
