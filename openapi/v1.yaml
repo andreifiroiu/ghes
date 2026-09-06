@@ -1,0 +1,803 @@
+openapi: 3.1.0
+info:
+  title: Ghes API
+  version: "1.0"
+  description: |
+    Version 1 of the Ghes REST API, the contract the native client is built against.
+
+    **Hand-maintained.** `tests/Feature/Api/OpenApiContractTest.php` asserts that every
+    registered `api/v1` route (admin excluded) appears here and that every path here resolves
+    to a real route, so adding an endpoint without a spec entry fails the suite.
+
+    ## Envelope
+    Every success response has a top-level `data`:
+    - single resource → `{ "data": { … } }`
+    - plain list → `{ "data": [ … ] }`
+    - paginated list → `{ "data": [ … ], "links": { … }, "meta": { … } }`
+    - acknowledgement → `{ "data": { "message": "…" } }`
+
+    **Pagination trap.** `links` is an *object* (`first`, `last`, `prev`, `next`); the
+    page-number links are the *array* at `meta.links`. Read `links.next` and
+    `meta.last_page`; never iterate `links`.
+
+    ## Errors
+    Every failure is `{ "error": { "code", "message", "details" } }`. Switch on `code`
+    (`ErrorCode`), never on the message. A 429 also carries `error.retry_after` (seconds)
+    and a `Retry-After` header; so does the 503 `service_unavailable` raised during
+    planned maintenance — back off, do not treat it as a crash. A build below the minimum supported version receives 426
+    `upgrade_required`; any path under `/api` outside `/api/v1` receives 410
+    `upgrade_required`.
+
+    ## Auth
+    Bearer tokens issued by `POST /auth/register` and `POST /auth/login`. Phase 1 issues a
+    single long-lived access token; the access/refresh pair with rotation and per-device
+    revocation is the planned upgrade path (see the backend plan, workstream B). Full
+    OAuth-style refresh-token reuse detection is deliberately out of Phase 1.
+
+    ## Idempotency
+    `POST /feedback` and `POST /bookmarks` are upsert-backed and safe to retry blindly on a
+    network blip. `DELETE` on either is a no-op when nothing is there.
+
+    ## Search
+    `GET /events?search=` requires Meilisearch. When the index is unreachable the server falls
+    back to a database substring match, so results are still returned but relevance differs.
+
+    ## Headers
+    - `X-Ghes-App-Version: <semver>` — optional; enables the force-upgrade check.
+    - `X-Ghes-Live-Search: 1` — on `GET /events`, marks a keystroke-driven request so it is
+      not recorded as a settled search.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: meta
+  - name: auth
+  - name: events
+  - name: recommendations
+  - name: feedback
+  - name: profile
+  - name: notifications
+  - name: chat
+
+paths:
+  /meta:
+    get:
+      tags: [meta]
+      summary: Vocabularies and limits the client needs before its first screen
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Meta"
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Create an account and issue a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email, maxLength: 255 }
+                password: { type: string, minLength: 8 }
+                city:
+                  type: [string, "null"]
+                  description: One of `Meta.cities[].label`. Absent means the covered default city; an explicit null means no city.
+      responses:
+        "201":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange credentials for a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: Wrong credentials are reported as a validation failure on `email`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the token used for this request
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events:
+    get:
+      tags: [events]
+      summary: Browse upcoming events
+      description: |
+        Same filters and the same exclusions as the web browse page: events the user marked
+        `not_interested` are omitted (that *is* the "hide" mechanism — there is no separate
+        hide endpoint). `search` requires Meilisearch. Page size is `Meta.page_size`.
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { $ref: "#/components/schemas/Category" } }
+        - { name: city, in: query, schema: { type: string }, description: A city label from `Meta.cities` }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: range, in: query, schema: { type: string, enum: [weekend] } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: venue, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/EventPage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events/saved:
+    get:
+      tags: [events]
+      summary: The user's bookmarked events, soonest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/EventPage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events/{event}:
+    get:
+      tags: [events]
+      summary: Event detail with related events
+      description: Records an event view. A merged duplicate resolves to its canonical event; a hidden event is 404.
+      parameters:
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/Event"
+                      - type: object
+                        required: [related_events]
+                        properties:
+                          related_events:
+                            type: array
+                            items: { $ref: "#/components/schemas/Event" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /recommendations:
+    get:
+      tags: [recommendations]
+      summary: The personalised feed
+      description: Ranked recommendations plus the discovery slice, in the engine's order. Records impressions.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [recommendations, discovery, total_score]
+                    properties:
+                      recommendations:
+                        type: array
+                        items: { $ref: "#/components/schemas/Event" }
+                      discovery:
+                        type: array
+                        items: { $ref: "#/components/schemas/Event" }
+                      total_score: { type: number }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /recommendations/history:
+    get:
+      tags: [recommendations]
+      summary: Past digests and the events they carried, newest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/RecommendationBatch" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /feedback:
+    post:
+      tags: [feedback]
+      summary: React to an event (idempotent upsert)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_id, reaction]
+              properties:
+                event_id: { type: string, format: uuid }
+                reaction: { $ref: "#/components/schemas/Reaction" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [message, reaction]
+                    properties:
+                      message: { type: string }
+                      reaction: { $ref: "#/components/schemas/Reaction" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [feedback]
+      summary: Remove the user's reaction to an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /bookmarks:
+    post:
+      tags: [feedback]
+      summary: Save an event (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [feedback]
+      summary: Unsave an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /profile:
+    get:
+      tags: [profile]
+      summary: The authenticated user
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    put:
+      tags: [profile]
+      summary: Update account fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email, maxLength: 255 }
+                timezone: { type: string, description: An IANA timezone name }
+                city: { type: string, description: One of `Meta.cities[].label` }
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /profile/stats:
+    get:
+      tags: [profile]
+      summary: Reaction counts and discovery hit-rate
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProfileStats"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: Notification history, newest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Notification" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /chat/history:
+    get:
+      tags: [chat]
+      summary: Chat messages for a context
+      parameters:
+        - name: context
+          in: query
+          schema: { type: string, enum: [onboarding, profile_update], default: onboarding }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    TokenIssued:
+      description: A token and the user it belongs to
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [token, user]
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+    UserResource:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: "#/components/schemas/User" }
+    EventPage:
+      description: One page of events
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Paginated"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+    Acknowledged:
+      description: Done; nothing worth returning
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [message]
+                properties:
+                  message: { type: string }
+    Unauthenticated:
+      description: Missing, revoked or invalid token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationFailed:
+      description: Field errors under `error.details`, keyed by field
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: Too many requests; `error.retry_after` is in seconds
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - validation_failed
+        - unauthenticated
+        - token_expired
+        - forbidden
+        - not_found
+        - rate_limited
+        - upgrade_required
+        - bad_request
+        - service_unavailable
+        - server_error
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            details:
+              type: [object, "null"]
+              description: Field errors for `validation_failed`; otherwise null or a small context object.
+            retry_after:
+              type: integer
+              description: Only on 429.
+
+    Paginated:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: {} }
+        links:
+          type: object
+          description: An object, not a list.
+          required: [first, last, prev, next]
+          properties:
+            first: { type: [string, "null"] }
+            last: { type: [string, "null"] }
+            prev: { type: [string, "null"] }
+            next: { type: [string, "null"] }
+        meta:
+          type: object
+          required: [current_page, from, last_page, path, per_page, to, total, links]
+          properties:
+            current_page: { type: integer }
+            from: { type: [integer, "null"] }
+            last_page: { type: integer }
+            path: { type: string }
+            per_page: { type: integer }
+            to: { type: [integer, "null"] }
+            total: { type: integer }
+            links:
+              type: array
+              description: The page-number links.
+              items:
+                type: object
+                properties:
+                  url: { type: [string, "null"] }
+                  label: { type: string }
+                  active: { type: boolean }
+
+    Category:
+      type: string
+      description: Backing values of `EventCategory`; the live list is `Meta.categories`.
+      enum: [music, arts, sports, technology, food, nightlife, business, health, education, family, community, film, literature, other]
+
+    Reaction:
+      type: string
+      enum: [interested, not_interested]
+      description: '"Saved" is a bookmark, not a reaction. `not_interested` also hides the event from browse and the feed.'
+
+    EventIdBody:
+      type: object
+      required: [event_id]
+      properties:
+        event_id: { type: string, format: uuid }
+
+    Event:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - category
+        - tags
+        - venue
+        - address
+        - city
+        - latitude
+        - longitude
+        - starts_at
+        - ends_at
+        - price_min
+        - price_max
+        - currency
+        - is_free
+        - image_url
+        - popularity_score
+        - source
+        - source_url
+        - click_url
+        - sources_count
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        category: { $ref: "#/components/schemas/Category" }
+        tags: { type: array, items: { type: string } }
+        venue: { type: [string, "null"] }
+        address: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        latitude: { type: [number, "null"] }
+        longitude: { type: [number, "null"] }
+        starts_at: { type: [string, "null"], format: date-time }
+        ends_at: { type: [string, "null"], format: date-time }
+        price_min: { type: [number, "null"] }
+        price_max: { type: [number, "null"] }
+        currency: { type: [string, "null"] }
+        is_free: { type: boolean }
+        image_url: { type: [string, "null"] }
+        popularity_score: { type: [number, "null"] }
+        source: { type: string, description: The adapter key the canonical row was scraped under }
+        source_url: { type: string }
+        click_url:
+          type: string
+          description: The web redirect that records a click. Not for native use — it carries no bearer token, so the click would not train the recommender.
+        sources_count: { type: integer }
+        sources:
+          type: array
+          description: Only on the detail endpoint.
+          items:
+            type: object
+            required: [source, source_url]
+            properties:
+              source: { type: string }
+              source_url: { type: string }
+        current_reaction:
+          oneOf:
+            - $ref: "#/components/schemas/Reaction"
+            - type: "null"
+          description: Present when the request is authenticated.
+        is_saved:
+          type: boolean
+          description: Present when the request is authenticated.
+
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - email_verified_at
+        - interest_profile
+        - profile_summary
+        - profile_summary_updated_at
+        - discovery_openness
+        - notification_channel
+        - notification_frequency
+        - timezone
+        - city
+        - onboarding_completed
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        email_verified_at: { type: [string, "null"], format: date-time }
+        interest_profile:
+          type: [object, "null"]
+          additionalProperties: { type: number }
+          description: Category or tag → score in [0, 1].
+        profile_summary: { type: [string, "null"] }
+        profile_summary_updated_at: { type: [string, "null"], format: date-time }
+        discovery_openness: { type: [number, "null"], minimum: 0, maximum: 1 }
+        notification_channel: { type: [string, "null"], enum: [email, push, both, null] }
+        notification_frequency: { type: [string, "null"], enum: [daily, weekly, realtime, null] }
+        timezone: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        onboarding_completed: { type: boolean }
+
+    ProfileStats:
+      type: object
+      required: [reactions, discovery]
+      properties:
+        reactions:
+          type: object
+          required: [total, by_type, saved]
+          properties:
+            total: { type: integer }
+            by_type:
+              type: object
+              additionalProperties: { type: integer }
+            saved: { type: integer }
+        discovery:
+          type: object
+          required: [openness, surfaced, resolved, hits, hit_rate]
+          properties:
+            openness: { type: number }
+            surfaced: { type: integer }
+            resolved: { type: integer }
+            hits: { type: integer }
+            hit_rate: { type: number }
+
+    Notification:
+      type: object
+      required: [id, channel, frequency, subject, event_ids, discovery_event_ids, sent_at, opened_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        channel: { type: string, enum: [email, push, both] }
+        frequency: { type: string, enum: [daily, weekly, realtime] }
+        subject: { type: [string, "null"] }
+        event_ids: { type: array, items: { type: string, format: uuid } }
+        discovery_event_ids: { type: array, items: { type: string, format: uuid } }
+        sent_at: { type: [string, "null"], format: date-time }
+        opened_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+
+    RecommendationBatch:
+      type: object
+      required: [notification_id, sent_at, discovery_event_ids, events]
+      properties:
+        notification_id: { type: string, format: uuid }
+        sent_at: { type: [string, "null"], format: date-time }
+        discovery_event_ids: { type: array, items: { type: string, format: uuid } }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+
+    ChatMessage:
+      type: object
+      required: [id, role, content, context, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        context: { type: string, enum: [onboarding, profile_update] }
+        created_at: { type: [string, "null"], format: date-time }
+
+    Meta:
+      type: object
+      required:
+        - categories
+        - cities
+        - default_city
+        - reactions
+        - ranges
+        - notification_channels
+        - notification_frequencies
+        - page_size
+        - min_supported_app_version
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+        cities:
+          type: array
+          items:
+            type: object
+            required: [key, label, timezone]
+            properties:
+              key: { type: string }
+              label: { type: string, description: The value `users.city` stores and the profile endpoints accept }
+              timezone: { type: string }
+        default_city: { type: string }
+        reactions:
+          type: array
+          items: { $ref: "#/components/schemas/Reaction" }
+        ranges:
+          type: array
+          items: { type: string, enum: [weekend] }
+        notification_channels:
+          type: array
+          items: { type: string, enum: [email, push, both] }
+        notification_frequencies:
+          type: array
+          items: { type: string, enum: [daily, weekly, realtime] }
+        page_size:
+          type: integer
+          description: Rows per page on every event list. Read it; do not hardcode 20.
+        min_supported_app_version:
+          type: [string, "null"]
+          description: Builds below this receive 426 on every request.

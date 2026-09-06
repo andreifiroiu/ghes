@@ -9,6 +9,8 @@ use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
+use App\Http\Resources\RecommendationBatchResource;
+use App\Http\Responses\ApiResponse;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Models\User;
@@ -153,10 +155,15 @@ class RecommendationController extends Controller
 
         $batch = $this->recommendationEngine->recommend($user);
 
-        $recommendations = Event::whereIn('id', $batch->recommendedEventIds)
-            ->withUserContext($user)->get();
-        $discoveryEvents = Event::whereIn('id', $batch->discoveryEventIds)
-            ->withUserContext($user)->get();
+        // Same ranking fix as index(): whereIn() discards the engine's order.
+        $recommendations = $this->inBatchOrder(
+            Event::whereIn('id', $batch->recommendedEventIds)->withUserContext($user)->get(),
+            $batch->recommendedEventIds,
+        );
+        $discoveryEvents = $this->inBatchOrder(
+            Event::whereIn('id', $batch->discoveryEventIds)->withUserContext($user)->get(),
+            $batch->discoveryEventIds,
+        );
 
         $this->activity->logMany(
             ActivityType::EventImpression,
@@ -165,9 +172,9 @@ class RecommendationController extends Controller
             $user,
         );
 
-        return response()->json([
-            'recommendations' => EventResource::collection($recommendations),
-            'discovery' => EventResource::collection($discoveryEvents),
+        return ApiResponse::item([
+            'recommendations' => EventResource::collection($recommendations)->resolve(),
+            'discovery' => EventResource::collection($discoveryEvents)->resolve(),
             'total_score' => $batch->totalScore,
         ]);
     }
@@ -177,31 +184,15 @@ class RecommendationController extends Controller
      */
     public function apiHistory(Request $request): JsonResponse
     {
-        $notifications = Notification::query()
-            ->where('user_id', $request->user()->id)
-            ->whereNotNull('sent_at')
-            ->latest('sent_at')
-            ->limit(50)
-            ->get();
-
         $user = $request->user();
 
-        $history = $notifications->map(function (Notification $notification) use ($user) {
-            $eventIds = array_merge(
-                $notification->event_ids ?? [],
-                $notification->discovery_event_ids ?? [],
-            );
+        $notifications = Notification::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('sent_at')
+            ->latest('sent_at')
+            ->paginate((int) config('eventpulse.pagination.notifications', 20))
+            ->withQueryString();
 
-            return [
-                'notification_id' => $notification->id,
-                'sent_at' => $notification->sent_at,
-                'discovery_event_ids' => $notification->discovery_event_ids,
-                'events' => EventResource::collection(
-                    Event::whereIn('id', $eventIds)->withUserContext($user)->get(),
-                ),
-            ];
-        });
-
-        return response()->json(['history' => $history]);
+        return ApiResponse::paginated(RecommendationBatchResource::collection($notifications));
     }
 }

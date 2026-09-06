@@ -79,8 +79,32 @@ class AppServiceProvider extends ServiceProvider
         // Reuses the same allow-list as the rest of the admin area.
         LogViewer::auth(fn (Request $request): bool => (bool) $request->user()?->can('access-admin'));
 
+        // Consumed by ClassifyEventJob through the RateLimited job middleware.
         RateLimiter::for('anthropic-api', function () {
             return Limit::perMinute(100);
+        });
+
+        // The whole /api group, applied by throttleApi() in bootstrap/app.php.
+        // Keyed by the authenticated user when there is one, so one abusive
+        // token cannot exhaust the budget of everyone behind the same NAT.
+        // The sanctum guard is named explicitly: the default guard is `web`,
+        // which has no session here and would key every bearer request by IP.
+        //
+        // A request that carries a token the guard rejects (revoked, expired)
+        // is keyed by that token, not the IP: after a mass revocation, every
+        // stale client behind one NAT would otherwise drain a single bucket
+        // and see `rate_limited` instead of the `unauthenticated` that makes
+        // it sign in again. Only a request with no token at all keys by IP.
+        RateLimiter::for('api', function (Request $request) {
+            // 0 or blank is never "unlimited" — it would be one request a minute.
+            $perMinute = (int) config('eventpulse.api.throttle.per_minute');
+            $perMinute = $perMinute > 0 ? $perMinute : 120;
+            $token = $request->bearerToken();
+
+            $key = $request->user('sanctum')?->getAuthIdentifier()
+                ?? ($token !== null ? 'token:'.hash('sha256', $token) : $request->ip());
+
+            return Limit::perMinute($perMinute)->by((string) $key);
         });
     }
 }

@@ -12,6 +12,8 @@ use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\User;
 use App\Services\Activity\ActivityLogger;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -108,13 +110,33 @@ class BookmarkService
      */
     public function savedEventsFor(User $user): Collection
     {
+        return $this->savedEventsQuery($user)->get();
+    }
+
+    /**
+     * The same list, paginated for the API.
+     *
+     * @return LengthAwarePaginator<int, Event>
+     */
+    public function paginateSavedEventsFor(User $user, int $perPage): LengthAwarePaginator
+    {
+        return $this->savedEventsQuery($user)->paginate($perPage)->withQueryString();
+    }
+
+    /**
+     * Shared by the web page and the API so a filter added to one cannot
+     * leave the other behind.
+     *
+     * @return Builder<Event>
+     */
+    private function savedEventsQuery(User $user): Builder
+    {
         $bookmarkedEventIds = $user->bookmarks()->pluck('event_id');
 
         return Event::whereIn('id', $bookmarkedEventIds)
             ->visible()
             ->canonical()
             ->withUserContext($user)
-            ->orderBy('starts_at')
-            ->get();
+            ->orderBy('starts_at');
     }
 }

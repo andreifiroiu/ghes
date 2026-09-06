@@ -355,6 +355,20 @@ return [
     ],
 
     'default_city' => env('EVENTPULSE_DEFAULT_CITY', 'timisoara'),
+    'api' => [
+        'throttle' => [
+            // Requests per minute per user (or per IP before sign-in) across
+            // the whole /api group. Named limiter `api` in AppServiceProvider.
+            // Blank and 0 both mean the default — 0 is not "unlimited", it
+            // would be one request per minute.
+            'per_minute' => (int) (env('EVENTPULSE_API_RATE_LIMIT') ?: 120),
+        ],
+    ],
+    'mobile' => [
+        // Builds reporting a lower `X-Ghes-App-Version` are answered 426.
+        // Null means no floor; the header is optional either way.
+        'min_supported_version' => env('EVENTPULSE_MOBILE_MIN_VERSION'),
+    ],
     'eventbrite_api_key' => env('EVENTBRITE_API_KEY'),
     'serpapi_api_key' => env('SERPAPI_API_KEY'),
     'apify_api_token' => env('APIFY_API_TOKEN'),
@@ -401,6 +415,8 @@ return [
     'pagination' => [
         // Rows per page for each paginated listing.
         'events' => 18,
+        // API notification history and past recommendation batches.
+        'notifications' => 20,
         'admin_events' => 20,
         'admin_users' => 20,
         'admin_scraper_runs' => 25,

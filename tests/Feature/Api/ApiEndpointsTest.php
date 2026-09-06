@@ -9,16 +9,18 @@ use App\Models\User;
 use Laravel\Sanctum\Sanctum;
 
 it('requires authentication', function () {
-    $this->getJson('/api/profile')->assertStatus(401);
+    $this->getJson('/api/v1/profile')
+        ->assertStatus(401)
+        ->assertJsonPath('error.code', 'unauthenticated');
 });
 
 it('returns the authenticated user profile', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/profile')
+    $this->getJson('/api/v1/profile')
         ->assertStatus(200)
-        ->assertJsonPath('id', $user->id);
+        ->assertJsonPath('data.id', $user->id);
 });
 
 it('returns profile stats with reactions and discovery hit-rate', function () {
@@ -33,12 +35,14 @@ it('returns profile stats with reactions and discovery hit-rate', function () {
 
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/profile/stats')
+    $this->getJson('/api/v1/profile/stats')
         ->assertStatus(200)
-        ->assertJsonPath('reactions.saved', 2)
+        ->assertJsonPath('data.reactions.saved', 2)
         ->assertJsonStructure([
-            'reactions' => ['total', 'by_type', 'saved'],
-            'discovery' => ['openness', 'surfaced', 'resolved', 'hits', 'hit_rate'],
+            'data' => [
+                'reactions' => ['total', 'by_type', 'saved'],
+                'discovery' => ['openness', 'surfaced', 'resolved', 'hits', 'hit_rate'],
+            ],
         ]);
 });
 
@@ -48,10 +52,11 @@ it('lists notification history', function () {
 
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/notifications')
+    $this->getJson('/api/v1/notifications')
         ->assertStatus(200)
-        ->assertJsonStructure(['data', 'total'])
-        ->assertJsonPath('total', 3);
+        ->assertJsonStructure(['data', 'links', 'meta'])
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('meta.total', 3);
 });
 
 it('returns recommendation history from sent notifications', function () {
@@ -67,9 +72,10 @@ it('returns recommendation history from sent notifications', function () {
 
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/recommendations/history')
+    $this->getJson('/api/v1/recommendations/history')
         ->assertStatus(200)
-        ->assertJsonCount(1, 'history');
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.events.0.id', $event->id);
 });
 
 it('returns chat history for a context', function () {
@@ -78,15 +84,17 @@ it('returns chat history for a context', function () {
 
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/chat/history')
+    $this->getJson('/api/v1/chat/history')
         ->assertStatus(200)
-        ->assertJsonCount(1);
+        ->assertJsonCount(1, 'data');
 });
 
 it('forbids admin event stats for non-admins', function () {
     Sanctum::actingAs(User::factory()->create());
 
-    $this->getJson('/api/admin/events/stats')->assertStatus(403);
+    $this->getJson('/api/v1/admin/events/stats')
+        ->assertStatus(403)
+        ->assertJsonPath('error.code', 'forbidden');
 });
 
 it('returns admin event stats for admins', function () {
@@ -95,10 +103,12 @@ it('returns admin event stats for admins', function () {
 
     Sanctum::actingAs($user);
 
-    $this->getJson('/api/admin/events/stats')
+    $this->getJson('/api/v1/admin/events/stats')
         ->assertStatus(200)
         ->assertJsonStructure([
-            'events' => ['total', 'classified', 'geocoded', 'enriched', 'by_category'],
-            'scraper_runs' => ['total', 'failed'],
+            'data' => [
+                'events' => ['total', 'classified', 'geocoded', 'enriched', 'by_category'],
+                'scraper_runs' => ['total', 'failed'],
+            ],
         ]);
 });

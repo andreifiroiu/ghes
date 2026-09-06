@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\BookmarkRequest;
 use App\Http\Resources\EventResource;
+use App\Http\Responses\ApiResponse;
 use App\Services\Bookmarks\BookmarkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -49,8 +50,38 @@ class BookmarkController extends Controller
 
     public function apiIndex(Request $request): JsonResponse
     {
-        return EventResource::collection(
-            $this->bookmarks->savedEventsFor($request->user()),
-        )->response();
+        return ApiResponse::paginated(EventResource::collection(
+            $this->bookmarks->paginateSavedEventsFor(
+                $request->user(),
+                (int) config('eventpulse.pagination.events', 20),
+            ),
+        ));
+    }
+
+    /**
+     * API twin of store(). Idempotent — a retried save is a no-op — so the
+     * client may resend it blindly on a network blip.
+     */
+    public function apiStore(BookmarkRequest $request): JsonResponse
+    {
+        /** @var array{event_id: string} $validated */
+        $validated = $request->validated();
+
+        $this->bookmarks->add($request->user(), $validated['event_id']);
+
+        return ApiResponse::message('Event saved.');
+    }
+
+    /**
+     * API twin of destroy().
+     */
+    public function apiDestroy(BookmarkRequest $request): JsonResponse
+    {
+        /** @var array{event_id: string} $validated */
+        $validated = $request->validated();
+
+        $this->bookmarks->remove($request->user(), $validated['event_id']);
+
+        return ApiResponse::message('Event unsaved.');
     }
 }

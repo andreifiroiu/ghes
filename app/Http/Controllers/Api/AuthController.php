@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
+use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Services\City\CityCatalog;
 use Illuminate\Http\JsonResponse;
@@ -48,9 +49,9 @@ class AuthController extends Controller
 
         $user = User::create($attributes);
 
-        return response()->json([
+        return ApiResponse::item([
             'token' => $user->createToken('api')->plainTextToken,
-            'user' => new UserResource($user),
+            'user' => (new UserResource($user))->resolve(),
         ], 201);
     }
 
@@ -72,9 +73,9 @@ class AuthController extends Controller
             ]);
         }
 
-        return response()->json([
+        return ApiResponse::item([
             'token' => $user->createToken('api')->plainTextToken,
-            'user' => new UserResource($user),
+            'user' => (new UserResource($user))->resolve(),
         ]);
     }
 
@@ -87,6 +88,6 @@ class AuthController extends Controller
         $token = $request->user()->currentAccessToken();
         $token->delete();
 
-        return response()->json(['message' => 'Logged out.']);
+        return ApiResponse::message('Logged out.');
     }
 }

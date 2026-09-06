@@ -10,6 +10,7 @@ use App\Enums\DigestAction;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
 use App\Http\Resources\EventResource;
+use App\Http\Responses\ApiResponse;
 use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
 use App\Models\Notification;
@@ -358,16 +359,19 @@ class EventController extends Controller
 
         $this->recordBrowse($request, $events->pluck('id')->all(), ActivitySurface::Api);
 
-        return EventResource::collection($events)->response();
+        return ApiResponse::paginated(EventResource::collection($events));
     }
 
     public function apiShow(Request $request, Event $event): JsonResponse
     {
         $props = $this->detailProps($request, $event, ActivitySurface::Api);
 
-        return response()->json([
-            'data' => $props['event']->resolve(),
-            'relatedEvents' => $props['relatedEvents'],
+        // One resource under `data`, with the related list embedded rather
+        // than beside it: the client has exactly one parser for a detail
+        // response, and a sibling key would need a second.
+        return ApiResponse::item([
+            ...$props['event']->resolve(),
+            'related_events' => $props['relatedEvents'],
         ]);
     }
 }

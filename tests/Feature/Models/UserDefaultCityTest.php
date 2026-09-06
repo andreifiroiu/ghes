@@ -28,7 +28,7 @@ it('honours an explicit null city', function () {
 });
 
 it('gives API signups without a city the covered one', function () {
-    $this->postJson('/api/auth/register', [
+    $this->postJson('/api/v1/auth/register', [
         'name' => 'Elena',
         'email' => 'elena@example.test',
         'password' => 'password123',
@@ -62,7 +62,7 @@ it('gives users who register on the web a city straight away', function () {
 it('honours an explicit null city from the API', function () {
     // User::booted() documents that an explicit null means "no city"; the one
     // signup path that accepts the field has to be able to express it.
-    $this->postJson('/api/auth/register', [
+    $this->postJson('/api/v1/auth/register', [
         'name' => 'Florin',
         'email' => 'florin@example.test',
         'password' => 'password123',
@@ -75,16 +75,17 @@ it('honours an explicit null city from the API', function () {
 it('refuses to register with a city no source covers', function () {
     // Registration and PUT /api/profile used to disagree, so a client could
     // create an account holding a city the profile endpoint rejects forever.
-    $this->postJson('/api/auth/register', [
+    $this->postJson('/api/v1/auth/register', [
         'name' => 'Gabi',
         'email' => 'gabi@example.test',
         'password' => 'password123',
         'city' => 'Cluj-Napoca',
-    ])->assertStatus(422)->assertJsonValidationErrors('city');
+    ])->assertStatus(422)->assertJsonPath('error.code', 'validation_failed')
+        ->assertJsonStructure(['error' => ['details' => ['city']]]);
 });
 
 it('accepts a covered city at registration', function () {
-    $this->postJson('/api/auth/register', [
+    $this->postJson('/api/v1/auth/register', [
         'name' => 'Horia',
         'email' => 'horia@example.test',
         'password' => 'password123',

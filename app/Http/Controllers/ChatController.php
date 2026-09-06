@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ChatRequest;
 use App\Http\Resources\ChatMessageResource;
+use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Services\Chat\OnboardingAgent;
 use App\Services\Chat\ProfileGenerator;
@@ -160,7 +161,7 @@ class ChatController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        return ChatMessageResource::collection($messages)->response();
+        return ApiResponse::collection(ChatMessageResource::collection($messages));
     }
 
     /**
