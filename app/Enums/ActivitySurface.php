@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
-use App\Http\Middleware\ResolveClientSurface;
-use Illuminate\Http\Request;
-
 /**
  * Where an activity happened.
  *
@@ -46,19 +43,5 @@ enum ActivitySurface: string
     public static function fromRequest(mixed $value, self $default = self::EventsIndex): self
     {
         return is_string($value) ? (self::tryFrom($value) ?? $default) : $default;
-    }
-
-    /**
-     * The surface for an API request: an explicit `from` wins; otherwise the
-     * endpoint's own mobile screen when the client identified itself as the
-     * app (see ResolveClientSurface), else the ambiguous `api`.
-     */
-    public static function forApi(Request $request, self $mobileDefault): self
-    {
-        $default = $request->attributes->get(ResolveClientSurface::ATTRIBUTE) === true
-            ? $mobileDefault
-            : self::Api;
-
-        return self::fromRequest($request->input('from'), $default);
     }
 }

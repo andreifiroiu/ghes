@@ -56,8 +56,10 @@ info:
       send `from=push` when a screen was opened from a notification, as the web digest does.
     - `X-Ghes-Live-Search: 1` — on `GET /events`, marks a keystroke-driven request so it is
       not recorded as a settled search.
-    - The client's `User-Agent` must not contain `preview`, `fetcher` or `scanner`, or its
-      activity is discarded as bot traffic. React Native's defaults are fine.
+    - Send a real `User-Agent`. A UA matching the server's bot denylist (words that identify
+      link previewers and scanners) has its activity recorded but flagged, and flagged rows
+      are excluded from rates, ranking and profile signals. React Native's defaults are fine.
+      On a JSON request, a `from` in the body takes precedence over one in the query string.
 servers:
   - url: /api/v1
 security:

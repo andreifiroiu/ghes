@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ActivitySurface;
+use App\Enums\ActivityType;
+use App\Http\Middleware\ResolveClientSurface;
 use App\Http\Requests\BookmarkRequest;
 use App\Http\Resources\EventResource;
 use App\Http\Responses\ApiResponse;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Bookmarks\BookmarkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +21,7 @@ class BookmarkController extends Controller
 {
     public function __construct(
         private readonly BookmarkService $bookmarks,
+        private readonly ActivityLogger $activity,
     ) {}
 
     public function store(BookmarkRequest $request): JsonResponse
@@ -50,12 +55,21 @@ class BookmarkController extends Controller
 
     public function apiIndex(Request $request): JsonResponse
     {
-        return ApiResponse::paginated(EventResource::collection(
-            $this->bookmarks->paginateSavedEventsFor(
-                $request->user(),
-                (int) config('eventpulse.pagination.events', 20),
-            ),
-        ));
+        $events = $this->bookmarks->paginateSavedEventsFor(
+            $request->user(),
+            (int) config('eventpulse.pagination.events', 20),
+        );
+
+        // The saved screen is a surface of its own; without this the app's
+        // funnel would have no `mobile_saved` rows to read.
+        $this->activity->logMany(
+            ActivityType::EventImpression,
+            ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileSaved),
+            $events->getCollection()->pluck('id')->all(),
+            $request->user(),
+        );
+
+        return ApiResponse::paginated(EventResource::collection($events));
     }
 
     /**

@@ -38,6 +38,14 @@ it('falls back to the screen default when the client identifies itself as the ap
     expect(UserActivityLog::where('surface', ActivitySurface::Api->value)->count())->toBe(0);
 });
 
+it('records the saved surface for the saved list when the client is the app', function () {
+    auth()->user()->bookmarks()->create(['event_id' => $this->event->id]);
+
+    $this->withHeader('X-Ghes-Client', 'mobile')->getJson('/api/v1/events/saved')->assertOk();
+
+    expect(UserActivityLog::ofType(ActivityType::EventImpression)->sole()->surface)->toBe(ActivitySurface::MobileSaved);
+});
+
 it('records the feed surface for the recommendations when the client is the app', function () {
     $this->withHeader('X-Ghes-Client', 'mobile')->getJson('/api/v1/recommendations')->assertOk();
 
