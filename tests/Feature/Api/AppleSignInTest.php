@@ -196,6 +196,65 @@ it('refetches the key set once when a token names a kid that arrived after cachi
     Http::assertSentCount(2);
 });
 
+it('treats a key set without keys as an outage and caches nothing', function () {
+    Http::fake([
+        AppleIdTokenVerifier::JWKS_URL => Http::sequence()
+            ->push(['keys' => []])
+            ->push(['keys' => [appleKeyPair()['jwk']]]),
+    ]);
+
+    $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['email' => 'a@icloud.com', 'email_verified' => 'true'])))
+        ->assertStatus(503)
+        ->assertJsonPath('error.code', 'service_unavailable');
+
+    // Nothing was cached, so the next attempt fetches again and succeeds.
+    $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['email' => 'a@icloud.com', 'email_verified' => 'true'])))
+        ->assertOk();
+    Http::assertSentCount(2);
+});
+
+it('rate-limits the refetch an unknown kid can trigger, keeping the cached keys', function () {
+    fakeAppleJwks(['kid-1']);
+
+    // Warm the cache with a good token.
+    $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['email' => 'a@icloud.com', 'email_verified' => 'true'])))->assertOk();
+    Http::assertSentCount(1);
+
+    // Garbage tokens naming unknown kids: the first may refetch once, the
+    // rest must not reach Apple at all, and the cache stays warm.
+    foreach (['kid-x', 'kid-y', 'kid-z'] as $kid) {
+        $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['email' => 'b@icloud.com', 'email_verified' => 'true'], $kid, appleKeyPair($kid)['private'])))
+            ->assertStatus(422);
+    }
+    Http::assertSentCount(2);
+
+    // A legitimate sign-in still works from the cache.
+    $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['sub' => 'other', 'email' => 'c@icloud.com', 'email_verified' => 'true'])))->assertOk();
+    Http::assertSentCount(2);
+});
+
+it('rejects an unverified apple address in the verifier itself, so the deletion re-check cannot be fooled', function () {
+    fakeAppleJwks();
+    $victim = User::factory()->create(['email' => 'victim@example.test']);
+    $pair = $this->postJson('/api/v1/auth/login', [
+        'email' => $victim->email, 'password' => 'password', 'device_name' => 'phone', 'platform' => 'ios',
+    ])->json('data');
+
+    // A stolen access token plus an Apple ID whose address Apple has not
+    // verified must not be enough to destroy the account.
+    $this->withToken($pair['access_token'])
+        ->deleteJson('/api/v1/account', ['apple_identity_token' => appleToken(['sub' => 'attacker', 'email' => 'victim@example.test', 'email_verified' => 'false'])])
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.apple_identity_token.0', 'The Apple account email is not verified.');
+
+    expect(User::whereKey($victim->id)->exists())->toBeTrue();
+
+    // And the sign-in path refuses it too.
+    $this->postJson('/api/v1/auth/oauth/apple', appleBody(appleToken(['sub' => 'attacker', 'email' => 'victim@example.test', 'email_verified' => 'false'])))
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.identity_token.0', 'The Apple account email is not verified.');
+});
+
 it('reports apple being unreachable as a 503 to retry', function () {
     Http::fake([AppleIdTokenVerifier::JWKS_URL => fn () => throw new ConnectionException('down')]);
 

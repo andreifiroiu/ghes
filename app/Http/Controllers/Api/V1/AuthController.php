@@ -118,11 +118,6 @@ class AuthController extends Controller
 
         try {
             $identity = $this->apple->verify($validated['identity_token']);
-
-            if ($identity->email !== null && ! $identity->emailVerified) {
-                throw new InvalidIdToken('The Apple account email is not verified.');
-            }
-
             $user = $this->linker->link(SocialProvider::Apple, $identity->subject, $identity->email, $validated['name'] ?? null);
         } catch (InvalidIdToken|UnlinkableSocialIdentity $e) {
             throw ValidationException::withMessages(['identity_token' => [$e->getMessage()]]);

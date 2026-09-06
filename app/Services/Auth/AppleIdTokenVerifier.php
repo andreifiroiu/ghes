@@ -9,6 +9,7 @@ use App\Exceptions\InvalidIdToken;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -28,6 +29,9 @@ class AppleIdTokenVerifier
     public const ISSUER = 'https://appleid.apple.com';
 
     private const JWKS_CACHE_KEY = 'apple:jwks';
+
+    /** How often an unknown `kid` may trigger a fresh fetch from Apple. */
+    private const JWKS_REFRESH_LIMITER = 'apple:jwks-refresh';
 
     /**
      * @throws InvalidIdToken when the token fails a check
@@ -62,7 +66,7 @@ class AppleIdTokenVerifier
         }
 
         $audience = $claims['aud'] ?? null;
-        $audiences = is_array($audience) ? $audience : [$audience];
+        $audiences = array_values(array_filter(is_array($audience) ? $audience : [$audience], 'is_string'));
 
         if (array_intersect($audiences, $this->clientIds()) === []) {
             throw new InvalidIdToken('The token was not issued for this app.');
@@ -79,13 +83,23 @@ class AppleIdTokenVerifier
         }
 
         $email = $claims['email'] ?? null;
+        $email = is_string($email) && $email !== '' ? strtolower($email) : null;
+
+        // Apple sends the flags as strings or booleans depending on the flow;
+        // both spellings of "yes" count.
+        $emailVerified = in_array($claims['email_verified'] ?? null, [true, 'true'], true);
+
+        // Enforced here, not in the callers: an address the provider does
+        // not vouch for must never reach the linker or the deletion
+        // re-check, whichever caller forgets.
+        if ($email !== null && ! $emailVerified) {
+            throw new InvalidIdToken('The Apple account email is not verified.');
+        }
 
         return new AppleIdentity(
             subject: $subject,
-            email: is_string($email) && $email !== '' ? strtolower($email) : null,
-            // Apple sends the flag as a string or a boolean depending on the
-            // flow; both spellings of "yes" count.
-            emailVerified: in_array($claims['email_verified'] ?? null, [true, 'true'], true),
+            email: $email,
+            emailVerified: $emailVerified,
             isPrivateEmail: in_array($claims['is_private_email'] ?? null, [true, 'true'], true),
         );
     }
@@ -129,26 +143,45 @@ class AppleIdTokenVerifier
      */
     private function keys(bool $fresh = false): array
     {
-        if ($fresh) {
-            Cache::forget(self::JWKS_CACHE_KEY);
+        /** @var list<array<string, mixed>>|null $cached */
+        $cached = Cache::get(self::JWKS_CACHE_KEY);
+        $cached = is_array($cached) && $cached !== [] ? $cached : null;
+
+        if (! $fresh && $cached !== null) {
+            return $cached;
         }
 
-        /** @var list<array<string, mixed>> $keys */
-        $keys = Cache::remember(self::JWKS_CACHE_KEY, now()->addHours(6), function (): array {
-            try {
-                $response = Http::acceptJson()->timeout(10)->get(self::JWKS_URL);
-            } catch (ConnectionException $e) {
-                throw new HttpException(503, 'Apple sign-in is temporarily unavailable.', $e, ['Retry-After' => '30']);
-            }
+        // The refresh is reachable by anyone who sends a token naming an
+        // unknown `kid`, before any signature check. Without this a stream
+        // of garbage tokens would turn every sign-in into an Apple round-trip
+        // and eventually get us rate-limited by Apple — the cache would be
+        // protecting nothing. A real rotation needs one fetch, not one per
+        // request.
+        if ($fresh && $cached !== null && ! RateLimiter::attempt(self::JWKS_REFRESH_LIMITER, 1, fn () => true, 300)) {
+            return $cached;
+        }
 
-            if (! $response->successful()) {
-                throw new HttpException(503, 'Apple sign-in is temporarily unavailable.', null, ['Retry-After' => '30']);
-            }
+        try {
+            $response = Http::acceptJson()->timeout(10)->get(self::JWKS_URL);
+        } catch (ConnectionException $e) {
+            throw new HttpException(503, 'Apple sign-in is temporarily unavailable.', $e, ['Retry-After' => '30']);
+        }
 
-            $keys = $response->json('keys');
+        if (! $response->successful()) {
+            throw new HttpException(503, 'Apple sign-in is temporarily unavailable.', null, ['Retry-After' => '30']);
+        }
 
-            return is_array($keys) ? array_values($keys) : [];
-        });
+        $keys = $response->json('keys');
+        $keys = is_array($keys) ? array_values($keys) : [];
+
+        // A 200 without keys is an outage in disguise (interstitial, truncated
+        // body): say so as a 503 the client retries, and cache nothing —
+        // caching it would lock every Apple sign-in out for six hours.
+        if ($keys === []) {
+            throw new HttpException(503, 'Apple sign-in is temporarily unavailable.', null, ['Retry-After' => '30']);
+        }
+
+        Cache::put(self::JWKS_CACHE_KEY, $keys, now()->addHours(6));
 
         return $keys;
     }

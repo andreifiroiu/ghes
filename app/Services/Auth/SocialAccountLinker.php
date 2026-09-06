@@ -8,6 +8,7 @@ use App\Enums\SocialProvider;
 use App\Exceptions\UnlinkableSocialIdentity;
 use App\Models\SocialIdentity;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -37,6 +38,21 @@ class SocialAccountLinker
     {
         $email = $email !== null ? strtolower($email) : null;
 
+        try {
+            return $this->linkOnce($provider, $subject, $email, $name);
+        } catch (UniqueConstraintViolationException) {
+            // Two first sign-ins of one subject racing: the loser now finds
+            // the identity the winner stored.
+            return $this->linkOnce($provider, $subject, $email, $name);
+        }
+    }
+
+    /**
+     * @throws UnlinkableSocialIdentity
+     * @throws UniqueConstraintViolationException when another request stored the same identity first
+     */
+    private function linkOnce(SocialProvider $provider, string $subject, ?string $email, ?string $name): User
+    {
         return DB::transaction(function () use ($provider, $subject, $email, $name): User {
             $identity = SocialIdentity::query()
                 ->where('provider', $provider)
