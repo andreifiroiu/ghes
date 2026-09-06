@@ -65,7 +65,7 @@ class BookmarkController extends Controller
         $this->activity->logMany(
             ActivityType::EventImpression,
             ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileSaved),
-            $events->getCollection()->pluck('id')->all(),
+            array_column($events->items(), 'id'),
             $request->user(),
         );
 
