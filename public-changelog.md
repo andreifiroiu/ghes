@@ -2,7 +2,7 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
-## 2026-09-06 — Nou — Îți poți șterge contul din pagina de profil (#PRNUM)
+## 2026-09-06 — Nou — Îți poți șterge contul din pagina de profil (#35)
 
 La finalul paginii de profil ai acum o secțiune „Șterge contul". Îți confirmi parola și contul
 dispare pe loc, împreună cu tot ce ține de el: reacțiile, evenimentele salvate, profilul de interese,
