@@ -142,6 +142,38 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /auth/oauth/google:
+    post:
+      tags: [auth]
+      summary: Exchange a Google ID token for a token pair
+      description: |
+        The app runs PKCE against Google directly (`expo-auth-session`) and posts the resulting
+        `id_token`. The server verifies it with Google, requires a verified email, and links or
+        creates the account by address — the same rule as web sign-in. A new account starts with
+        onboarding pending.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [id_token]
+                  properties:
+                    id_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: The token failed verification; `details.id_token` says which check.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /auth/refresh:
     post:
       tags: [auth]
@@ -477,19 +509,20 @@ paths:
       tags: [profile]
       summary: Delete the account, immediately and completely
       description: |
-        Hard delete, no grace period. Requires the current password so a stolen access token
-        cannot do it. Everything the account owns goes with it; every device's tokens are
-        revoked. Accounts created with Google sign-in have no known password and cannot use
-        this yet — native Google re-authentication is the planned path.
+        Hard delete, no grace period. Requires re-authentication so a stolen access token cannot
+        do it: the current password, or — for accounts that sign in with Google — a fresh Google
+        ID token for the same address. Everything the account owns goes with it; every device's
+        tokens are revoked.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [current_password]
+              description: Exactly one of the two.
               properties:
                 current_password: { type: string }
+                google_id_token: { type: string }
       responses:
         "200":
           $ref: "#/components/responses/Acknowledged"
