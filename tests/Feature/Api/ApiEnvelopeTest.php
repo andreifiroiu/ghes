@@ -17,7 +17,7 @@ describe('success envelope', function () {
     it('wraps every single resource under data', function () {
         $user = User::factory()->create();
         $event = Event::factory()->create(['starts_at' => now()->addDay()]);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/v1/profile')
             ->assertOk()
@@ -42,7 +42,7 @@ describe('success envelope', function () {
     it('wraps acknowledgements under data too', function () {
         $user = User::factory()->create();
         $event = Event::factory()->create();
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->postJson('/api/v1/feedback', ['event_id' => $event->id, 'reaction' => 'interested'])
             ->assertOk()
@@ -65,7 +65,7 @@ describe('success envelope', function () {
         $user = User::factory()->create();
         Event::factory()->count(2)->create(['starts_at' => now()->addDay()]);
         Notification::factory()->count(2)->create(['user_id' => $user->id, 'sent_at' => now()]);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         foreach (['/api/v1/events', '/api/v1/events/saved', '/api/v1/notifications', '/api/v1/recommendations/history'] as $path) {
             $response = $this->getJson($path)->assertOk();
@@ -93,7 +93,7 @@ describe('success envelope', function () {
             'sent_at' => '2026-03-03 08:00:00',
             'opened_at' => null,
         ]);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $iso = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/';
 
@@ -111,7 +111,7 @@ describe('success envelope', function () {
         $user = User::factory()->create();
         Event::factory()->count(3)->create(['starts_at' => now()->addDay()])
             ->each(fn (Event $event) => $user->bookmarks()->create(['event_id' => $event->id]));
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/v1/events/saved')
             ->assertOk()
@@ -122,7 +122,7 @@ describe('success envelope', function () {
 
 describe('error envelope', function () {
     it('shapes validation failures', function () {
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         $response = $this->postJson('/api/v1/feedback', ['reaction' => 'nope'])
             ->assertStatus(422)
@@ -137,7 +137,7 @@ describe('error envelope', function () {
             ->assertStatus(401)
             ->assertExactJson(['error' => ['code' => 'unauthenticated', 'message' => 'Unauthenticated.', 'details' => null]]);
 
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         $this->getJson('/api/v1/admin/events/stats')
             ->assertStatus(403)
@@ -150,7 +150,7 @@ describe('error envelope', function () {
 
     it('shapes rate limiting with a retry hint', function () {
         config(['eventpulse.api.throttle.per_minute' => 1]);
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         $this->getJson('/api/v1/profile')->assertOk();
 
@@ -161,7 +161,7 @@ describe('error envelope', function () {
     });
 
     it('lets a thrown response through untouched', function () {
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         Route::get('/api/v1/teapot', fn () => throw new HttpResponseException(response()->json(['data' => ['tea' => true]], 418)))
             ->middleware('api');
@@ -177,7 +177,7 @@ describe('error envelope', function () {
     });
 
     it('keeps a maintenance 503 as a 503 with its retry hint', function () {
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         // What PreventRequestsDuringMaintenance raises for `artisan down --retry=600`.
         Route::get('/api/v1/down', fn () => throw new HttpException(503, 'Service Unavailable', null, ['Retry-After' => 600]))
@@ -191,7 +191,7 @@ describe('error envelope', function () {
     });
 
     it('derives the code from the status for other http exceptions', function () {
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         // What Response::denyAsNotFound() becomes after prepareException(): a
         // plain HttpException with a 404 status, not a NotFoundHttpException.
@@ -209,7 +209,7 @@ describe('error envelope', function () {
     });
 
     it('keeps a gate deny message', function () {
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         Route::get('/api/v1/suspended', fn () => throw new AuthorizationException('Your account is suspended.'))
             ->middleware('api');
@@ -222,7 +222,7 @@ describe('error envelope', function () {
 
     it('shapes an unhandled exception as a server error without leaking it', function () {
         config(['app.debug' => false]);
-        Sanctum::actingAs(User::factory()->create());
+        Sanctum::actingAs(User::factory()->create(), ['*']);
 
         Route::get('/api/v1/boom', fn () => throw new RuntimeException('secret detail'))
             ->middleware('api');

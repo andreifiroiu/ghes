@@ -16,7 +16,7 @@ it('requires authentication', function () {
 
 it('returns the authenticated user profile', function () {
     $user = User::factory()->create();
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/profile')
         ->assertStatus(200)
@@ -33,7 +33,7 @@ it('returns profile stats with reactions and discovery hit-rate', function () {
         ])
     );
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/profile/stats')
         ->assertStatus(200)
@@ -50,7 +50,7 @@ it('lists notification history', function () {
     $user = User::factory()->create();
     Notification::factory()->count(3)->create(['user_id' => $user->id]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/notifications')
         ->assertStatus(200)
@@ -70,7 +70,7 @@ it('returns recommendation history from sent notifications', function () {
         'sent_at' => now(),
     ]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/recommendations/history')
         ->assertStatus(200)
@@ -82,7 +82,7 @@ it('returns chat history for a context', function () {
     $user = User::factory()->create();
     $user->chatMessages()->create(['role' => 'user', 'content' => 'salut', 'context' => 'onboarding']);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/chat/history')
         ->assertStatus(200)
@@ -90,7 +90,7 @@ it('returns chat history for a context', function () {
 });
 
 it('forbids admin event stats for non-admins', function () {
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->create(), ['*']);
 
     $this->getJson('/api/v1/admin/events/stats')
         ->assertStatus(403)
@@ -101,7 +101,7 @@ it('returns admin event stats for admins', function () {
     $user = User::factory()->create();
     config(['eventpulse.admin_emails' => [$user->email]]);
 
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $this->getJson('/api/v1/admin/events/stats')
         ->assertStatus(200)

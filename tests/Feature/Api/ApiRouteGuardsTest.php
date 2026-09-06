@@ -7,6 +7,8 @@ use Illuminate\Auth\Middleware\Authorize;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Routing\Route as RouteInstance;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 /**
@@ -87,6 +89,28 @@ it('keeps the public set exactly as documented', function () {
     expect($public)->toBe($expected);
 });
 
+it('requires the access ability on every token-authenticated route except refresh', function () {
+    foreach (v1Routes() as $route) {
+        if (in_array($route->uri(), PUBLIC_V1_ROUTES, true)) {
+            continue;
+        }
+
+        $middleware = resolvedMiddleware($route);
+
+        if ($route->uri() === 'api/v1/auth/refresh') {
+            expect(in_array(CheckForAnyAbility::class.':token:refresh', $middleware, true))
+                ->toBeTrue('auth/refresh must accept only the refresh ability');
+            expect(in_array(CheckAbilities::class.':api:access', $middleware, true))
+                ->toBeFalse('auth/refresh must not require the access ability');
+
+            continue;
+        }
+
+        expect(in_array(CheckAbilities::class.':api:access', $middleware, true))
+            ->toBeTrue("{$route->uri()} does not require the api:access ability, so a refresh token could reach it");
+    }
+});
+
 it('gates every v1 admin route behind the admin gate', function () {
     $adminRoutes = array_filter(
         v1Routes(),
@@ -98,6 +122,8 @@ it('gates every v1 admin route behind the admin gate', function () {
     foreach ($adminRoutes as $route) {
         expect(in_array(Authorize::class.':access-admin', resolvedMiddleware($route), true))
             ->toBeTrue("{$route->uri()} is not gated");
+        expect(in_array(CheckAbilities::class.':admin', resolvedMiddleware($route), true))
+            ->toBeTrue("{$route->uri()} does not require the admin token ability");
     }
 });
 

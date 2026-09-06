@@ -15,7 +15,7 @@ enum ApiErrorCode: string
 {
     case ValidationFailed = 'validation_failed';
     case Unauthenticated = 'unauthenticated';
-    /** Reserved for the access/refresh token lifecycle; not emitted yet. */
+    /** The bearer token exists but is past its expiry — refresh rather than sign in again. */
     case TokenExpired = 'token_expired';
     case Forbidden = 'forbidden';
     case NotFound = 'not_found';

@@ -362,6 +362,21 @@ return [
             // Blank and 0 both mean the default — 0 is not "unlimited", it
             // would be one request per minute.
             'per_minute' => (int) (env('EVENTPULSE_API_RATE_LIMIT') ?: 120),
+            // Sign-in attempts per minute per email+IP, registrations per
+            // hour per IP, token refreshes per minute per device.
+            'auth_per_minute' => 5,
+            // Sign-in attempts per minute per IP across every address, so
+            // cycling addresses (credential stuffing) is bounded too.
+            'auth_per_minute_per_ip' => 20,
+            'register_per_hour' => 10,
+            'refresh_per_minute' => 30,
+        ],
+        'tokens' => [
+            // Access tokens are short-lived and cannot mint new ones; refresh
+            // tokens are long-lived and can do nothing else. Enforced per token
+            // via expires_at — config/sanctum.php `expiration` must stay null.
+            'access_ttl_minutes' => 60,
+            'refresh_ttl_days' => 60,
         ],
     ],
     'mobile' => [

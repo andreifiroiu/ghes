@@ -22,6 +22,8 @@ it('honours an explicit null city', function () {
         'email' => 'bogdan@example.test',
         'password' => 'password',
         'city' => null,
+        'device_name' => 'Test phone',
+        'platform' => 'ios',
     ]);
 
     expect($user->city)->toBeNull();
@@ -32,6 +34,8 @@ it('gives API signups without a city the covered one', function () {
         'name' => 'Elena',
         'email' => 'elena@example.test',
         'password' => 'password123',
+        'device_name' => 'Test phone',
+        'platform' => 'ios',
     ])->assertCreated();
 
     expect(User::where('email', 'elena@example.test')->sole()->city)->toBe('Timișoara');
@@ -67,6 +71,8 @@ it('honours an explicit null city from the API', function () {
         'email' => 'florin@example.test',
         'password' => 'password123',
         'city' => null,
+        'device_name' => 'Test phone',
+        'platform' => 'ios',
     ])->assertCreated();
 
     expect(User::where('email', 'florin@example.test')->sole()->city)->toBeNull();
@@ -80,6 +86,8 @@ it('refuses to register with a city no source covers', function () {
         'email' => 'gabi@example.test',
         'password' => 'password123',
         'city' => 'Cluj-Napoca',
+        'device_name' => 'Test phone',
+        'platform' => 'ios',
     ])->assertStatus(422)->assertJsonPath('error.code', 'validation_failed')
         ->assertJsonStructure(['error' => ['details' => ['city']]]);
 });
@@ -90,6 +98,8 @@ it('accepts a covered city at registration', function () {
         'email' => 'horia@example.test',
         'password' => 'password123',
         'city' => 'Timișoara',
+        'device_name' => 'Test phone',
+        'platform' => 'ios',
     ])->assertCreated();
 
     expect(User::where('email', 'horia@example.test')->sole()->city)->toBe('Timișoara');

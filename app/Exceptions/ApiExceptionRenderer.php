@@ -13,6 +13,8 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -54,11 +56,7 @@ final class ApiExceptionRenderer
                 $e->status,
                 $e->errors(),
             ),
-            $e instanceof AuthenticationException => ApiResponse::error(
-                ApiErrorCode::Unauthenticated,
-                'Unauthenticated.',
-                401,
-            ),
+            $e instanceof AuthenticationException => $this->unauthenticated($request),
             // A gate's own deny message survives; only the empty default is
             // replaced.
             $e instanceof AuthorizationException,
@@ -77,6 +75,52 @@ final class ApiExceptionRenderer
             $e instanceof HttpExceptionInterface => $this->http($e),
             default => $this->serverError($e),
         };
+    }
+
+    /**
+     * An expired token gets its own code: the client answers it with a
+     * refresh, whereas a revoked or unknown one means signing in again.
+     * The lookup is the same one the guard just did, so it costs one query
+     * only on the failure path.
+     */
+    private function unauthenticated(Request $request): JsonResponse
+    {
+        $bearer = $request->bearerToken();
+
+        // Only for a bearer shaped the way the guard would have looked up: a
+        // non-numeric id before the pipe is a type error against Postgres's
+        // bigint column, and the guard refuses those before querying.
+        if ($bearer !== null && $this->isWellFormedBearer($bearer)) {
+            /** @var class-string<PersonalAccessToken> $model */
+            $model = Sanctum::$personalAccessTokenModel;
+            $token = $model::findToken($bearer);
+
+            // Only an expired *access* token means "refresh": an expired
+            // refresh token must read as "sign in again", or a client
+            // following the contract would loop on refresh forever.
+            if ($token instanceof \App\Models\PersonalAccessToken
+                && $token->name === \App\Models\PersonalAccessToken::NAME_ACCESS
+                && $token->expires_at !== null
+                && $token->expires_at->isPast()) {
+                return ApiResponse::error(ApiErrorCode::TokenExpired, 'Token expired.', 401);
+            }
+        }
+
+        return ApiResponse::error(ApiErrorCode::Unauthenticated, 'Unauthenticated.', 401);
+    }
+
+    /**
+     * Sanctum's own precondition for `id|token`: the id part must be digits.
+     */
+    private function isWellFormedBearer(string $bearer): bool
+    {
+        if (! str_contains($bearer, '|')) {
+            return true;
+        }
+
+        [$id] = explode('|', $bearer, 2);
+
+        return ctype_digit($id);
     }
 
     private function rateLimited(TooManyRequestsHttpException $e): JsonResponse

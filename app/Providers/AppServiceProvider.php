@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\PersonalAccessToken;
 use App\Services\Anthropic\AnthropicClient;
 use App\Services\Scraping\ScraperOrchestrator;
 use GuzzleHttp\Client as GuzzleClient;
@@ -13,6 +14,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 use Laravel\Scout\Scout;
 use Meilisearch\Client;
 use Opcodes\LogViewer\Facades\LogViewer;
@@ -69,6 +71,9 @@ class AppServiceProvider extends ServiceProvider
     {
         JsonResource::withoutWrapping();
 
+        // Tokens carry the device they were issued to.
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
+
         Gate::define('access-admin', function ($user): bool {
             $admins = (array) config('eventpulse.admin_emails', []);
 
@@ -105,6 +110,37 @@ class AppServiceProvider extends ServiceProvider
                 ?? ($token !== null ? 'token:'.hash('sha256', $token) : $request->ip());
 
             return Limit::perMinute($perMinute)->by((string) $key);
+        });
+
+        // Credential guessing: keyed by the address being tried plus the IP,
+        // so one attacker cannot lock a victim out from everywhere, and one
+        // NAT cannot be locked out by one bad neighbour.
+        // Two dimensions: per address+IP for the account being attacked,
+        // and per IP alone so cycling addresses is bounded as well.
+        RateLimiter::for('api-auth', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return [
+                Limit::perMinute((int) config('eventpulse.api.throttle.auth_per_minute', 5))
+                    ->by($email.'|'.$request->ip()),
+                Limit::perMinute((int) config('eventpulse.api.throttle.auth_per_minute_per_ip', 20))
+                    ->by('ip|'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('api-register', function (Request $request) {
+            return Limit::perHour((int) config('eventpulse.api.throttle.register_per_hour', 10))
+                ->by((string) $request->ip());
+        });
+
+        // Keyed by the device whose pair is being rotated. Runs after
+        // auth:sanctum by middleware priority, so the token is resolved.
+        RateLimiter::for('api-refresh', function (Request $request) {
+            $token = $request->user('sanctum')?->currentAccessToken();
+            $deviceId = $token instanceof PersonalAccessToken ? $token->device_id : null;
+
+            return Limit::perMinute((int) config('eventpulse.api.throttle.refresh_per_minute', 30))
+                ->by((string) ($deviceId ?? $request->ip()));
         });
     }
 }

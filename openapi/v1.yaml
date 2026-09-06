@@ -29,10 +29,15 @@ info:
     `upgrade_required`.
 
     ## Auth
-    Bearer tokens issued by `POST /auth/register` and `POST /auth/login`. Phase 1 issues a
-    single long-lived access token; the access/refresh pair with rotation and per-device
-    revocation is the planned upgrade path (see the backend plan, workstream B). Full
-    OAuth-style refresh-token reuse detection is deliberately out of Phase 1.
+    `POST /auth/register` and `POST /auth/login` return a **token pair** bound to a device:
+    a short-lived `access_token` (send as `Authorization: Bearer …` on every call) and a
+    long-lived `refresh_token` (valid only on `POST /auth/refresh`). Persist the returned
+    `device_id` and send it on the next sign-in so the old pair is replaced, not duplicated.
+    When a call answers 401 `token_expired`, refresh; the old pair is revoked the moment the
+    new one is issued. A replayed refresh token answers 401 `unauthenticated` — sign in again.
+    Full OAuth-style reuse detection (revoking the whole family on replay) is deliberately
+    out of Phase 1. `POST /auth/logout` revokes this device's pair; `/auth/logout-all` every
+    device.
 
     ## Idempotency
     `POST /feedback` and `POST /bookmarks` are upsert-backed and safe to retry blindly on a
@@ -81,22 +86,24 @@ paths:
   /auth/register:
     post:
       tags: [auth]
-      summary: Create an account and issue a token
+      summary: Create an account and issue a token pair
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [name, email, password]
-              properties:
-                name: { type: string, maxLength: 255 }
-                email: { type: string, format: email, maxLength: 255 }
-                password: { type: string, minLength: 8 }
-                city:
-                  type: [string, "null"]
-                  description: One of `Meta.cities[].label`. Absent means the covered default city; an explicit null means no city.
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [name, email, password]
+                  properties:
+                    name: { type: string, maxLength: 255 }
+                    email: { type: string, format: email, maxLength: 255 }
+                    password: { type: string, minLength: 8 }
+                    city:
+                      type: [string, "null"]
+                      description: One of `Meta.cities[].label`. Absent means the covered default city; an explicit null means no city.
       responses:
         "201":
           $ref: "#/components/responses/TokenIssued"
@@ -108,18 +115,21 @@ paths:
   /auth/login:
     post:
       tags: [auth]
-      summary: Exchange credentials for a token
+      summary: Exchange credentials for a token pair
+      description: Signing in again from the same `device_id` replaces that device's pair.
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string, format: email }
-                password: { type: string }
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [email, password]
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string }
       responses:
         "200":
           $ref: "#/components/responses/TokenIssued"
@@ -132,13 +142,63 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the pair (send the refresh token as the bearer)
+      description: |
+        Authenticate with the **refresh** token. Both tokens of the old pair are revoked and a
+        new pair for the same device is returned. An access token here answers 403; a refresh
+        token that was already rotated answers 401.
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The bearer is an access token, not a refresh token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /auth/logout:
     post:
       tags: [auth]
-      summary: Revoke the token used for this request
+      summary: Sign out this device (revokes its access and refresh tokens)
       responses:
         "200":
           $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /auth/logout-all:
+    post:
+      tags: [auth]
+      summary: Sign out every device
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /auth/sessions:
+    get:
+      tags: [auth]
+      summary: Devices holding a live pair, most recently active first
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
         "401":
           $ref: "#/components/responses/Unauthenticated"
 
@@ -443,7 +503,7 @@ components:
 
   responses:
     TokenIssued:
-      description: A token and the user it belongs to
+      description: A token pair bound to the device, and the user it belongs to
       content:
         application/json:
           schema:
@@ -451,11 +511,12 @@ components:
             required: [data]
             properties:
               data:
-                type: object
-                required: [token, user]
-                properties:
-                  token: { type: string }
-                  user: { $ref: "#/components/schemas/User" }
+                allOf:
+                  - $ref: "#/components/schemas/TokenPair"
+                  - type: object
+                    required: [user]
+                    properties:
+                      user: { $ref: "#/components/schemas/User" }
     UserResource:
       description: OK
       content:
@@ -596,6 +657,41 @@ components:
       required: [event_id]
       properties:
         event_id: { type: string, format: uuid }
+
+    DeviceFields:
+      type: object
+      description: The installed app a token pair is issued to.
+      required: [device_name, platform]
+      properties:
+        device_id:
+          type: [string, "null"]
+          format: uuid
+          description: Persisted by the client after the first sign-in. Omit on a fresh install; the server mints one.
+        device_name: { type: string, maxLength: 100, example: "iPhone 15 Pro" }
+        platform: { type: string, enum: [ios, android, web] }
+        app_version: { type: [string, "null"], maxLength: 32, example: "1.0.0" }
+
+    TokenPair:
+      type: object
+      required: [access_token, access_expires_at, refresh_token, refresh_expires_at, device_id]
+      properties:
+        access_token: { type: string, description: "Bearer for every call; ability api:access." }
+        access_expires_at: { type: string, format: date-time }
+        refresh_token: { type: string, description: "Bearer for POST /auth/refresh only; ability token:refresh." }
+        refresh_expires_at: { type: string, format: date-time }
+        device_id: { type: string, format: uuid }
+
+    Session:
+      type: object
+      required: [device_id, device_name, platform, app_version, signed_in_at, last_used_at, is_current]
+      properties:
+        device_id: { type: string, format: uuid }
+        device_name: { type: [string, "null"] }
+        platform: { type: [string, "null"], enum: [ios, android, web, null] }
+        app_version: { type: [string, "null"] }
+        signed_in_at: { type: [string, "null"], format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+        is_current: { type: boolean }
 
     Event:
       type: object

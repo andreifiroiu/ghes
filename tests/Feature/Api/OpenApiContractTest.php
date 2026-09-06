@@ -128,7 +128,7 @@ function expectKeysToMatchSchema(array $payload, array $schema): void
 it('serves events shaped like the Event schema', function () {
     $user = User::factory()->create();
     Event::factory()->create(['starts_at' => now()->addDay()]);
-    Sanctum::actingAs($user);
+    Sanctum::actingAs($user, ['*']);
 
     $event = $this->getJson('/api/v1/events')->assertOk()->json('data.0');
 
@@ -136,7 +136,7 @@ it('serves events shaped like the Event schema', function () {
 });
 
 it('serves the profile shaped like the User schema', function () {
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->create(), ['*']);
 
     $user = $this->getJson('/api/v1/profile')->assertOk()->json('data');
 

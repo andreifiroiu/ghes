@@ -48,3 +48,8 @@ Schedule::job(new PruneActivityLogsJob)
 
 Schedule::command('horizon:snapshot')
     ->everyFiveMinutes();
+
+// Expired access and refresh tokens are dead the moment they expire; this
+// only keeps the table from growing by one row per sign-in forever.
+Schedule::command('sanctum:prune-expired --hours=24')
+    ->daily();

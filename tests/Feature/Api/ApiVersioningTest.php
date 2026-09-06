@@ -8,7 +8,7 @@ use Laravel\Sanctum\Sanctum;
 
 it('serves version 1 under /api/v1', function () {
     Event::factory()->create(['starts_at' => now()->addDay()]);
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->create(), ['*']);
 
     $this->getJson('/api/v1/events')
         ->assertOk()
@@ -16,7 +16,7 @@ it('serves version 1 under /api/v1', function () {
 });
 
 it('answers the retired unversioned paths with 410 and an upgrade code', function () {
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->create(), ['*']);
 
     $this->getJson('/api/events')
         ->assertStatus(410)
@@ -29,7 +29,7 @@ it('answers the retired unversioned paths with 410 and an upgrade code', functio
 });
 
 it('reports an unknown v1 path as not found, not as a retired version', function () {
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->create(), ['*']);
 
     $this->getJson('/api/v1/no-such-thing')
         ->assertNotFound()
