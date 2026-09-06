@@ -49,8 +49,17 @@ info:
 
     ## Headers
     - `X-Ghes-App-Version: <semver>` — optional; enables the force-upgrade check.
+    - `X-Ghes-Client: mobile` — send on every request. Activity the app generates (impressions,
+      views, clicks) is then attributed to the per-screen surfaces `mobile_feed`,
+      `mobile_browse`, `mobile_event_detail`, `mobile_saved` by default instead of the
+      ambiguous `api`. A `from=<surface>` query or body parameter overrides the default —
+      send `from=push` when a screen was opened from a notification, as the web digest does.
     - `X-Ghes-Live-Search: 1` — on `GET /events`, marks a keystroke-driven request so it is
       not recorded as a settled search.
+    - Send a real `User-Agent`. A UA matching the server's bot denylist (words that identify
+      link previewers and scanners) has its activity recorded but flagged, and flagged rows
+      are excluded from rates, ranking and profile signals. React Native's defaults are fine.
+      On a JSON request, a `from` in the body takes precedence over one in the query string.
 servers:
   - url: /api/v1
 security:

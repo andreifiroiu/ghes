@@ -8,6 +8,7 @@ use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Enums\Reaction;
 use App\Http\Controllers\Concerns\ResolvesCity;
+use App\Http\Middleware\ResolveClientSurface;
 use App\Http\Resources\EventResource;
 use App\Http\Resources\RecommendationBatchResource;
 use App\Http\Responses\ApiResponse;
@@ -167,7 +168,7 @@ class RecommendationController extends Controller
 
         $this->activity->logMany(
             ActivityType::EventImpression,
-            ActivitySurface::Api,
+            ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileFeed),
             [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
             $user,
         );

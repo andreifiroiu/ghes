@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ResolveClientSurface;
 use App\Http\Responses\ApiResponse;
 use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
@@ -45,7 +46,7 @@ class EventClickController extends Controller
 
         $log = $this->activity->log(
             ActivityType::EventClick,
-            ActivitySurface::fromRequest($request->input('from'), ActivitySurface::Api),
+            ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileEventDetail),
             eventId: $event->id,
             user: $user,
             context: ['authenticated' => true, 'source' => $destination['source']],
