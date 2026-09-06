@@ -389,6 +389,8 @@ return [
             'chat_per_day' => 200,
             // Device registrations per minute per user.
             'devices_per_minute' => 30,
+            // Verification mails per minute per user.
+            'verify_per_minute' => 6,
         ],
         'tokens' => [
             // Access tokens are short-lived and cannot mint new ones; refresh

@@ -165,6 +165,13 @@ class AppServiceProvider extends ServiceProvider
                 ->by('devices|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
         });
 
+        // Each call sends a mail to the caller's own address; bounded so a
+        // stuck retry loop in a client cannot flood their inbox.
+        RateLimiter::for('api-verify', function (Request $request) {
+            return Limit::perMinute((int) config('eventpulse.api.throttle.verify_per_minute', 6))
+                ->by('verify|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         RateLimiter::for('api-register', function (Request $request) {
             return Limit::perHour((int) config('eventpulse.api.throttle.register_per_hour', 10))
                 ->by((string) $request->ip());

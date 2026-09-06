@@ -11,11 +11,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\GoogleSignInRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
+use App\Http\Requests\ForgotPasswordRequest;
+use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\Auth\GoogleIdTokenVerifier;
+use App\Services\Auth\PasswordResetter;
 use App\Services\Auth\SocialAccountLinker;
 use App\Services\Auth\TokenIssuer;
 use Illuminate\Auth\AuthenticationException;
@@ -31,6 +35,7 @@ class AuthController extends Controller
         private readonly TokenIssuer $tokens,
         private readonly GoogleIdTokenVerifier $google,
         private readonly SocialAccountLinker $linker,
+        private readonly PasswordResetter $passwords,
     ) {}
 
     /**
@@ -96,6 +101,64 @@ class AuthController extends Controller
         $user = $this->linker->findOrCreate($identity->email, $identity->name);
 
         return $this->issued($user, $this->tokens->issuePair($user, DeviceContext::fromValidated($validated)));
+    }
+
+    /**
+     * Send a password reset link. Same answer whether or not the address has
+     * an account — the endpoint must not reveal which addresses do.
+     */
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        /** @var array{email: string} $validated */
+        $validated = $request->validated();
+
+        $this->passwords->sendLink($validated['email']);
+
+        return ApiResponse::message(PasswordResetter::LINK_MESSAGE);
+    }
+
+    /**
+     * Apply a reset with the token from the mailed link. The link itself
+     * opens the web reset page; a native client that intercepts it can post
+     * the token here instead. Every device's pair is revoked with the old
+     * password.
+     */
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        /** @var array{token: string, email: string, password: string} $validated */
+        $validated = $request->validated();
+
+        $error = $this->passwords->reset($validated);
+
+        if ($error !== null) {
+            throw ValidationException::withMessages(['email' => [$error]]);
+        }
+
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower($validated['email'])])->first();
+
+        if ($user !== null) {
+            // A changed password must end every session the old one opened.
+            $this->tokens->revokeAll($user);
+        }
+
+        return ApiResponse::message('Parola a fost schimbată. Intră în cont cu noua parolă.');
+    }
+
+    /**
+     * Resend the verification mail. The link carries the mobile intent, so
+     * after verifying, the browser bounces back into the app.
+     */
+    public function sendVerification(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return ApiResponse::message('Email already verified.', ['verified' => true]);
+        }
+
+        $user->sendEmailVerificationNotification(VerifyEmailNotification::INTENT_MOBILE);
+
+        return ApiResponse::message('Verification email sent.', ['verified' => false]);
     }
 
     /**
