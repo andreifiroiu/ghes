@@ -141,9 +141,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-chat', function (Request $request) {
             $key = 'chat|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip());
 
+            // Distinct keys per window: the throttle derives the cache key
+            // from the limiter name plus the limit key, so two limits sharing
+            // one key would share one counter — every request would count
+            // twice against the minute window and the day window would take
+            // the minute's TTL and never fire.
             return [
-                Limit::perMinute((int) config('eventpulse.api.throttle.chat_per_minute', 20))->by($key),
-                Limit::perDay((int) config('eventpulse.api.throttle.chat_per_day', 200))->by($key),
+                Limit::perMinute((int) config('eventpulse.api.throttle.chat_per_minute', 20))->by($key.'|minute'),
+                Limit::perDay((int) config('eventpulse.api.throttle.chat_per_day', 200))->by($key.'|day'),
             ];
         });
 

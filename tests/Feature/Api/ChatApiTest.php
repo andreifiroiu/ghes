@@ -144,6 +144,28 @@ it('throttles chat posts per user', function () {
         ->assertJsonPath('error.code', 'rate_limited');
 });
 
+it('caps chat posts per day independently of the minute window', function () {
+    config(['eventpulse.api.throttle.chat_per_minute' => 20, 'eventpulse.api.throttle.chat_per_day' => 2]);
+    fakeClaude('ok', 'ok', 'ok');
+    Sanctum::actingAs(User::factory()->create(), ['*']);
+
+    $this->postJson('/api/v1/onboarding/chat', ['message' => 'a'])->assertOk();
+    $this->postJson('/api/v1/onboarding/chat', ['message' => 'b'])->assertOk();
+    $this->postJson('/api/v1/onboarding/chat', ['message' => 'c'])->assertStatus(429);
+});
+
+it('counts each chat post once against the minute window', function () {
+    config(['eventpulse.api.throttle.chat_per_minute' => 3, 'eventpulse.api.throttle.chat_per_day' => 200]);
+    fakeClaude('ok', 'ok', 'ok', 'ok');
+    Sanctum::actingAs(User::factory()->create(), ['*']);
+
+    foreach (['a', 'b', 'c'] as $message) {
+        $this->postJson('/api/v1/onboarding/chat', ['message' => $message])->assertOk();
+    }
+
+    $this->postJson('/api/v1/onboarding/chat', ['message' => 'd'])->assertStatus(429);
+});
+
 it('leaves the web chat JSON unchanged', function () {
     fakeClaude('Sună bine!');
     $user = User::factory()->create(['onboarding_completed' => false]);
