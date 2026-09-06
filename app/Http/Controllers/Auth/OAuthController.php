@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\SocialProvider;
+use App\Exceptions\UnlinkableSocialIdentity;
 use App\Http\Controllers\Controller;
 use App\Services\Auth\SocialAccountLinker;
 use Illuminate\Http\RedirectResponse;
@@ -80,7 +82,17 @@ class OAuthController extends Controller
                 ->withErrors(['email' => 'Adresa de email a contului Google nu este verificată.']);
         }
 
-        $user = $this->linker->findOrCreate($email, $oauthUser->getName() ?? $oauthUser->getNickname());
+        try {
+            $user = $this->linker->link(
+                SocialProvider::Google,
+                (string) $oauthUser->getId(),
+                $email,
+                $oauthUser->getName() ?? $oauthUser->getNickname(),
+            );
+        } catch (UnlinkableSocialIdentity) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Contul Google nu are o adresă de email.']);
+        }
 
         Auth::login($user, remember: true);
 

@@ -87,6 +87,19 @@ it('links a password account whose address differs only in case', function () {
     expect(User::count())->toBe(1);
 });
 
+it('links by subject on later sign-ins, so a changed google address keeps the account', function () {
+    fakeTokenInfo();
+    $first = $this->postJson('/api/v1/auth/oauth/google', googleSignInBody())->assertOk()->json('data.user.id');
+
+    fakeTokenInfo(['email' => 'renamed@gmail.com']);
+    $this->postJson('/api/v1/auth/oauth/google', googleSignInBody())
+        ->assertOk()
+        ->assertJsonPath('data.user.id', $first);
+
+    expect(User::count())->toBe(1)
+        ->and(User::find($first)->socialIdentities()->where('provider', 'google')->where('subject', '1234567890')->exists())->toBeTrue();
+});
+
 it('rejects a token minted for another app', function () {
     fakeTokenInfo(['aud' => 'someone-elses-client.apps.googleusercontent.com']);
 

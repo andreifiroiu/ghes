@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api;
 
-use App\Exceptions\InvalidGoogleIdToken;
+use App\Enums\SocialProvider;
+use App\Exceptions\InvalidIdToken;
+use App\Services\Auth\AppleIdTokenVerifier;
 use App\Services\Auth\GoogleIdTokenVerifier;
+use App\Services\Auth\SocialAccountLinker;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Validator;
 
 /**
  * Re-authentication before deleting the account: the current password, or —
- * for accounts that sign in with Google and hold a password they do not
- * know — a fresh Google ID token for the same address.
+ * for accounts that sign in with a provider and hold a password they do not
+ * know — a fresh ID token from that provider for the linked identity.
  */
 class DeleteAccountRequest extends FormRequest
 {
@@ -28,8 +31,9 @@ class DeleteAccountRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'current_password' => ['required_without:google_id_token', 'string'],
-            'google_id_token' => ['required_without:current_password', 'string', 'max:4096'],
+            'current_password' => ['required_without_all:google_id_token,apple_identity_token', 'string'],
+            'google_id_token' => ['required_without_all:current_password,apple_identity_token', 'string', 'max:4096'],
+            'apple_identity_token' => ['required_without_all:current_password,google_id_token', 'string', 'max:8192'],
         ];
     }
 
@@ -55,24 +59,50 @@ class DeleteAccountRequest extends FormRequest
                     return;
                 }
 
-                $this->checkGoogleToken($validator);
+                if ($this->filled('google_id_token')) {
+                    $this->checkProviderToken($validator, 'google_id_token', SocialProvider::Google);
+
+                    return;
+                }
+
+                $this->checkProviderToken($validator, 'apple_identity_token', SocialProvider::Apple);
             },
         ];
     }
 
-    private function checkGoogleToken(Validator $validator): void
+    /**
+     * The token must verify and its subject must be one of this account's
+     * linked identities — or, for a provider account that signed in before
+     * identities were stored, carry this account's address.
+     */
+    private function checkProviderToken(Validator $validator, string $field, SocialProvider $provider): void
     {
         try {
-            $identity = app(GoogleIdTokenVerifier::class)->verify((string) $this->input('google_id_token'));
-        } catch (InvalidGoogleIdToken $e) {
-            $validator->errors()->add('google_id_token', $e->getMessage());
+            [$subject, $email] = match ($provider) {
+                SocialProvider::Google => (function (): array {
+                    $identity = app(GoogleIdTokenVerifier::class)->verify((string) $this->input('google_id_token'));
+
+                    return [$identity->subject, $identity->email];
+                })(),
+                SocialProvider::Apple => (function (): array {
+                    $identity = app(AppleIdTokenVerifier::class)->verify((string) $this->input('apple_identity_token'));
+
+                    return [$identity->subject, $identity->email];
+                })(),
+            };
+        } catch (InvalidIdToken $e) {
+            $validator->errors()->add($field, $e->getMessage());
 
             return;
         }
 
-        // The verifier lowercases the identity; the account's address may not be.
-        if ($identity->email !== strtolower((string) $this->user()?->email)) {
-            $validator->errors()->add('google_id_token', 'The Google account does not match this account.');
+        $user = $this->user();
+
+        $linked = $user !== null && app(SocialAccountLinker::class)->belongsTo($user, $provider, $subject);
+        $sameAddress = $email !== null && $user !== null && $email === strtolower((string) $user->email);
+
+        if (! $linked && ! $sameAddress) {
+            $validator->errors()->add($field, 'The provider account does not match this account.');
         }
     }
 }

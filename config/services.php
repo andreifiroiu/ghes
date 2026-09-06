@@ -56,4 +56,10 @@ return [
         ]))),
     ],
 
+    'apple' => [
+        // The iOS bundle id and any service id Sign in with Apple is
+        // configured for; an ID token's `aud` must be one of them.
+        'client_ids' => array_values(array_filter(explode(',', (string) env('APPLE_CLIENT_IDS', '')))),
+    ],
+
 ];

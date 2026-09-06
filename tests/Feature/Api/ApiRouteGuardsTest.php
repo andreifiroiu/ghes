@@ -23,6 +23,7 @@ const PUBLIC_V1_ROUTES = [
     'api/v1/auth/register',
     'api/v1/auth/login',
     'api/v1/auth/oauth/google',
+    'api/v1/auth/oauth/apple',
     'api/v1/auth/password/forgot',
     'api/v1/auth/password/reset',
 ];
