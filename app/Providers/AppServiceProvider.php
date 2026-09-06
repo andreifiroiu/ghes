@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\PushChannel;
 use App\Models\PersonalAccessToken;
 use App\Services\Anthropic\AnthropicClient;
+use App\Services\Notification\ExpoPushSender;
 use App\Services\Scraping\ScraperOrchestrator;
 use GuzzleHttp\Client as GuzzleClient;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -35,6 +37,10 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ScraperOrchestrator::class, fn ($app) => new ScraperOrchestrator($app));
+
+        // The native push channel. Swapping to FCM/APNs directly is a new
+        // implementation bound here, not a change to the dispatcher.
+        $this->app->bind(PushChannel::class, ExpoPushSender::class);
 
         // Scout builds its Meilisearch client without an HTTP client, so Guzzle
         // applies no timeout at all. That was survivable when a search happened
@@ -150,6 +156,13 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute((int) config('eventpulse.api.throttle.chat_per_minute', 20))->by($key.'|minute'),
                 Limit::perDay((int) config('eventpulse.api.throttle.chat_per_day', 200))->by($key.'|day'),
             ];
+        });
+
+        // Device registration is a cheap upsert the app repeats on every
+        // launch; bounded per user so a misbehaving client cannot spin.
+        RateLimiter::for('api-devices', function (Request $request) {
+            return Limit::perMinute((int) config('eventpulse.api.throttle.devices_per_minute', 30))
+                ->by('devices|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
         });
 
         RateLimiter::for('api-register', function (Request $request) {

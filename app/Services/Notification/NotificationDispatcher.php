@@ -18,7 +18,7 @@ class NotificationDispatcher
 {
     public function __construct(
         private readonly EmailRenderer $emailRenderer,
-        private readonly PushSender $pushSender,
+        private readonly PushFanout $pushFanout,
         private readonly ActivityLogger $activity,
     ) {}
 
@@ -56,12 +56,16 @@ class NotificationDispatcher
 
         if (in_array($channel, [NotificationChannel::Push, NotificationChannel::Both], true)) {
             $eventCount = count($notification->event_ids ?? []) + count($notification->discovery_event_ids ?? []);
-            $this->pushSender->sendToUser(
-                $user,
-                $subject,
-                "Ai {$eventCount} evenimente noi recomandate pentru tine.",
-                route('dashboard'),
-            );
+
+            // Never throws — sent_at is set right after this, and an escaping
+            // push failure would re-send the email on retry.
+            $push = $this->pushFanout->sendToUser($user, PushPayload::digest($notification, $subject, $eventCount));
+
+            Log::info("Notification {$notification->id} push fan-out", [
+                'web' => $push->web,
+                'expo' => $push->expo,
+                'suppressed' => $push->suppressed,
+            ]);
         }
 
         $notification->update(['sent_at' => now()]);

@@ -131,6 +131,10 @@ class AuthController extends Controller
 
         if ($token->device_id !== null) {
             $this->tokens->revokeDevice($request->user(), $token->device_id);
+
+            // The push registration made from this install goes too;
+            // otherwise the digest keeps landing on a signed-out phone.
+            $request->user()->devices()->where('install_id', $token->device_id)->delete();
         } else {
             $token->delete();
         }
@@ -144,6 +148,10 @@ class AuthController extends Controller
     public function logoutAll(Request $request): JsonResponse
     {
         $this->tokens->revokeAll($request->user());
+
+        // "Everywhere" includes every phone's push registration; a signed-out
+        // handset must not keep receiving the digest.
+        $request->user()->devices()->delete();
 
         return ApiResponse::message('Logged out everywhere.');
     }

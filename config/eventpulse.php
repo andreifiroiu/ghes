@@ -185,6 +185,19 @@ return [
             'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
             'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
         ],
+        // Native push through the Expo Push Service (see App\Contracts\PushChannel).
+        'expo' => [
+            'enabled' => (bool) env('EXPO_PUSH_ENABLED', false),
+            'endpoint' => env('EXPO_PUSH_ENDPOINT', 'https://exp.host/--/api/v2/push/send'),
+            'receipts_endpoint' => env('EXPO_PUSH_RECEIPTS_ENDPOINT', 'https://exp.host/--/api/v2/push/getReceipts'),
+            'access_token' => env('EXPO_ACCESS_TOKEN'),
+            'batch_size' => 100,
+            'timeout_seconds' => 10,
+            // Receipts are available a few minutes after the tickets.
+            'receipt_delay_minutes' => 20,
+            // A device that has not checked in for this long is forgotten.
+            'stale_device_days' => 120,
+        ],
     ],
     'dedup' => [
         'enabled' => (bool) env('EVENTPULSE_DEDUP_ENABLED', true),
@@ -374,6 +387,8 @@ return [
             // a daily cap so one account cannot run up the bill.
             'chat_per_minute' => 20,
             'chat_per_day' => 200,
+            // Device registrations per minute per user.
+            'devices_per_minute' => 30,
         ],
         'tokens' => [
             // Access tokens are short-lived and cannot mint new ones; refresh
@@ -387,6 +402,9 @@ return [
         // Builds reporting a lower `X-Ghes-App-Version` are answered 426.
         // Null means no floor; the header is optional either way.
         'min_supported_version' => env('EVENTPULSE_MOBILE_MIN_VERSION'),
+        // URL scheme the native app registers; the verification link bounces
+        // back through it when the mail was requested from the app.
+        'scheme' => env('EVENTPULSE_MOBILE_SCHEME', 'ghes'),
     ],
     'eventbrite_api_key' => env('EVENTBRITE_API_KEY'),
     'serpapi_api_key' => env('SERPAPI_API_KEY'),

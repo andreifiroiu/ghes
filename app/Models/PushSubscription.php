@@ -20,6 +20,7 @@ class PushSubscription extends Model
      */
     protected $fillable = [
         'user_id',
+        'install_id',
         'endpoint',
         'public_key',
         'auth_token',
