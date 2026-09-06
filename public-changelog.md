@@ -2,6 +2,20 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-06 — Nou — Ți-ai uitat parola? Acum o poți reseta (#27)
+
+Pe pagina de autentificare ai un link nou, „Ai uitat parola?". Scrie adresa de
+email a contului și primești un mesaj cu un link de resetare; deschide-l, alege o
+parolă nouă și intră în cont cu ea. Linkul e valabil o oră și merge o singură dată.
+
+## 2026-09-06 — Rezolvat — Confirmarea adresei de email funcționează din nou (#27)
+
+Pe pagina de profil, butonul „Retrimite emailul" de lângă adresa neverificată dădea
+o eroare în loc să trimită ceva, iar schimbarea adresei de email se împiedica de
+aceeași problemă. Acum primești mesajul de confirmare, în română, iar linkul din el
+îți marchează adresa ca verificată. Tot de acum, când îți schimbi adresa, cea nouă
+trebuie confirmată la rândul ei — înainte rămânea marcată ca verificată din greșeală.
+
 ## 2026-09-01 — Nou — Caută evenimente pe măsură ce scrii, cu sugestii (#24)
 
 În lista de evenimente, rezultatele se actualizează pe măsură ce tastezi — nu mai
