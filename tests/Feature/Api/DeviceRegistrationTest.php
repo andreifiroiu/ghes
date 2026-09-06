@@ -75,6 +75,29 @@ it('rejects a token the expo service cannot deliver to', function () {
     expect(Device::count())->toBe(0);
 });
 
+it('requires an install id on native platforms', function () {
+    Sanctum::actingAs(User::factory()->create(), ['*']);
+
+    $body = deviceBody();
+    unset($body['install_id']);
+
+    $this->postJson('/api/v1/devices', $body)
+        ->assertStatus(422)
+        ->assertJsonStructure(['error' => ['details' => ['install_id']]]);
+});
+
+it('drops every device on logout-all', function () {
+    $user = User::factory()->create();
+    Device::factory()->count(2)->create(['user_id' => $user->id]);
+    $pair = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email, 'password' => 'password', 'device_name' => 'phone', 'platform' => 'ios',
+    ])->json('data');
+
+    $this->withToken($pair['access_token'])->postJson('/api/v1/auth/logout-all')->assertOk();
+
+    expect(Device::count())->toBe(0);
+});
+
 it('lists the account\'s devices', function () {
     $user = User::factory()->create();
     Device::factory()->count(2)->create(['user_id' => $user->id]);

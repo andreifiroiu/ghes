@@ -8,11 +8,12 @@ use App\Contracts\PushChannel;
 use App\Jobs\FetchExpoPushReceiptsJob;
 use App\Models\Device;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Throwable;
+use RuntimeException;
 
 /**
  * Delivers through the Expo Push Service.
@@ -20,7 +21,8 @@ use Throwable;
  * One HTTPS endpoint and one credential instead of an APNs key plus an FCM
  * service account. Tickets come back synchronously per message; receipts
  * (which is where `DeviceNotRegistered` usually shows up) arrive later and
- * are fetched by a delayed job. Never throws — see PushChannel.
+ * are fetched by a delayed job. Runs inside SendNativePushJob, so a failure
+ * to reach the service throws and is retried there.
  */
 class ExpoPushSender implements PushChannel
 {
@@ -40,15 +42,8 @@ class ExpoPushSender implements PushChannel
 
         $accepted = 0;
 
-        try {
-            foreach ($devices->chunk((int) config('eventpulse.push.expo.batch_size', 100)) as $chunk) {
-                $accepted += $this->sendBatch($chunk->values(), $payload);
-            }
-        } catch (Throwable $e) {
-            // A push failure must never reach the dispatcher: sent_at is set
-            // after this branch, and an escaping exception would re-send the
-            // email on retry.
-            Log::error('Expo push failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+        foreach ($devices->chunk((int) config('eventpulse.push.expo.batch_size', 100)) as $chunk) {
+            $accepted += $this->sendBatch($chunk->values(), $payload);
         }
 
         return $accepted;
@@ -57,7 +52,7 @@ class ExpoPushSender implements PushChannel
     /**
      * @param  Collection<int, Device>  $devices
      */
-    private function sendBatch($devices, PushPayload $payload): int
+    private function sendBatch(Collection $devices, PushPayload $payload): int
     {
         $messages = $devices->map(fn (Device $device): array => [
             'to' => $device->push_token,
@@ -69,16 +64,36 @@ class ExpoPushSender implements PushChannel
             'data' => $payload->data(),
         ])->all();
 
-        $response = $this->client()->post((string) config('eventpulse.push.expo.endpoint'), $messages);
-
-        if (! $response->successful()) {
-            Log::warning('Expo push rejected the batch', ['status' => $response->status(), 'body' => $response->body()]);
-
-            return 0;
+        try {
+            $response = $this->client()->post((string) config('eventpulse.push.expo.endpoint'), $messages);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('Expo push service unreachable: '.$e->getMessage(), 0, $e);
         }
 
-        /** @var array<int, array<string, mixed>> $tickets */
-        $tickets = $response->json('data', []);
+        if (! $response->successful()) {
+            // Retried by the job. A push-only user has no email to fall
+            // back on, so dropping this would lose the digest outright.
+            throw new RuntimeException(sprintf(
+                'Expo push service rejected the batch (%d): %s',
+                $response->status(),
+                mb_substr($response->body(), 0, 500),
+            ));
+        }
+
+        $tickets = $response->json('data');
+
+        if (! is_array($tickets) || count($tickets) !== $devices->count()) {
+            // A request-level error (e.g. too many experience ids) comes back
+            // as `errors` with no `data`; a short list means some messages
+            // were dropped. Either way, say so instead of under-counting.
+            Log::error('Expo returned fewer tickets than messages', [
+                'expected' => $devices->count(),
+                'got' => is_array($tickets) ? count($tickets) : 0,
+                'errors' => $response->json('errors'),
+            ]);
+
+            $tickets = is_array($tickets) ? $tickets : [];
+        }
 
         $accepted = 0;
         $ticketsByToken = [];
@@ -128,7 +143,12 @@ class ExpoPushSender implements PushChannel
         }
     }
 
-    private function client(): PendingRequest
+    /**
+     * The HTTP client both the send and the receipts request use, so the
+     * access token (required once Expo's enhanced push security is on)
+     * cannot be attached to one and forgotten on the other.
+     */
+    public function client(): PendingRequest
     {
         $client = Http::acceptJson()->timeout((int) config('eventpulse.push.expo.timeout_seconds', 10));
 

@@ -12,15 +12,18 @@ use App\Services\Notification\PushPayload;
  *
  * One implementation today (Expo). Kept behind an interface so a later move
  * to FCM v1 / APNs directly is a new class bound in the container, not
- * surgery on the dispatcher. Implementations must never throw: the digest
- * dispatcher sets `sent_at` after the push branch, so an escaping exception
- * would re-send the email on retry.
+ * surgery on the dispatcher. Called from SendNativePushJob, so a transient
+ * failure should throw to be retried; the digest dispatcher never calls it
+ * inline.
  */
 interface PushChannel
 {
     /**
      * Deliver to every registered device of the user. Returns how many
-     * deliveries were accepted by the service.
+     * deliveries the service accepted.
+     *
+     * @throws \RuntimeException when the service could not be reached or
+     *                           rejected the request — the caller retries
      */
     public function send(User $user, PushPayload $payload): int;
 }

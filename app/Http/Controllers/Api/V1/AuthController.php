@@ -149,6 +149,10 @@ class AuthController extends Controller
     {
         $this->tokens->revokeAll($request->user());
 
+        // "Everywhere" includes every phone's push registration; a signed-out
+        // handset must not keep receiving the digest.
+        $request->user()->devices()->delete();
+
         return ApiResponse::message('Logged out everywhere.');
     }
 

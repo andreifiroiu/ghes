@@ -8,8 +8,9 @@ use App\Models\Device;
 use App\Services\Notification\ExpoPushSender;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 /**
  * Collect the receipts for a batch of Expo push tickets, ~20 minutes after
@@ -25,6 +26,11 @@ class FetchExpoPushReceiptsJob implements ShouldQueue
     public int $tries = 3;
 
     /**
+     * @var list<int>
+     */
+    public array $backoff = [120, 600, 1800];
+
+    /**
      * @param  array<string, string>  $ticketsByToken  ticket id => push token
      */
     public function __construct(
@@ -33,27 +39,47 @@ class FetchExpoPushReceiptsJob implements ShouldQueue
         $this->onQueue('notifications');
     }
 
-    public function handle(): void
+    public function handle(ExpoPushSender $expo): void
     {
         if ($this->ticketsByToken === []) {
             return;
         }
 
-        $response = Http::acceptJson()
-            ->timeout((int) config('eventpulse.push.expo.timeout_seconds', 10))
-            ->post((string) config('eventpulse.push.expo.receipts_endpoint'), ['ids' => array_keys($this->ticketsByToken)]);
+        try {
+            $response = $expo->client()->post(
+                (string) config('eventpulse.push.expo.receipts_endpoint'),
+                ['ids' => array_keys($this->ticketsByToken)],
+            );
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('Expo receipts endpoint unreachable: '.$e->getMessage(), 0, $e);
+        }
+
+        // Rate limited or down: worth retrying. Any other rejection is about
+        // this request and will not change.
+        if ($response->status() === 429 || $response->serverError()) {
+            throw new RuntimeException('Expo receipts endpoint answered '.$response->status());
+        }
 
         if (! $response->successful()) {
-            Log::warning('Expo receipts request failed', ['status' => $response->status()]);
+            Log::error('Expo receipts request rejected', [
+                'status' => $response->status(),
+                'body' => mb_substr($response->body(), 0, 500),
+                'tickets' => array_keys($this->ticketsByToken),
+            ]);
 
             return;
         }
 
-        /** @var array<string, array<string, mixed>> $receipts */
-        $receipts = $response->json('data', []);
+        $receipts = $response->json('data');
+
+        if (! is_array($receipts)) {
+            Log::error('Expo receipts response carried no data', ['body' => mb_substr($response->body(), 0, 500)]);
+
+            return;
+        }
 
         foreach ($receipts as $ticketId => $receipt) {
-            if (($receipt['status'] ?? null) === 'ok') {
+            if (! is_array($receipt) || ($receipt['status'] ?? null) === 'ok') {
                 continue;
             }
 

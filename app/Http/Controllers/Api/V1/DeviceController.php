@@ -9,6 +9,7 @@ use App\Http\Requests\Api\DeviceRegistrationRequest;
 use App\Http\Resources\DeviceResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\Device;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -34,20 +35,25 @@ class DeviceController extends Controller
     {
         $validated = $request->validated();
 
-        $device = Device::updateOrCreate(
-            ['push_token' => $validated['push_token']],
-            [
-                'user_id' => $request->user()->id,
-                'platform' => $validated['platform'],
-                'install_id' => $validated['install_id'] ?? null,
-                'device_name' => $validated['device_name'] ?? null,
-                'app_version' => $validated['app_version'] ?? null,
-                'os_version' => $validated['os_version'] ?? null,
-                'locale' => $validated['locale'] ?? null,
-                'timezone' => $validated['timezone'] ?? null,
-                'last_seen_at' => now(),
-            ],
-        );
+        $attributes = [
+            'user_id' => $request->user()->id,
+            'platform' => $validated['platform'],
+            'install_id' => $validated['install_id'] ?? null,
+            'device_name' => $validated['device_name'] ?? null,
+            'app_version' => $validated['app_version'] ?? null,
+            'os_version' => $validated['os_version'] ?? null,
+            'locale' => $validated['locale'] ?? null,
+            'timezone' => $validated['timezone'] ?? null,
+            'last_seen_at' => now(),
+        ];
+
+        try {
+            $device = Device::updateOrCreate(['push_token' => $validated['push_token']], $attributes);
+        } catch (UniqueConstraintViolationException) {
+            // Two first registrations of one token racing (a cold start
+            // commonly fires the call twice): the loser now finds the row.
+            $device = Device::updateOrCreate(['push_token' => $validated['push_token']], $attributes);
+        }
 
         return ApiResponse::item(new DeviceResource($device), $device->wasRecentlyCreated ? 201 : 200);
     }
