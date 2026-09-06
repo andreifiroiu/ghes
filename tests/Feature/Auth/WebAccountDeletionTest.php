@@ -8,9 +8,13 @@ use Illuminate\Support\Facades\DB;
 
 beforeEach(fn () => $this->withoutVite());
 
-it('shows the deletion section on the profile page', function () {
-    $this->actingAs(User::factory()->create())->get('/profile')->assertOk();
-    expect(file_get_contents(resource_path('js/Pages/Dashboard/Profile.jsx')))->toContain('Șterge contul');
+it('renders the profile page the deletion form lives on', function () {
+    // The form is unconditional markup in Dashboard/Profile; the behaviour it
+    // drives is covered by the requests below.
+    $this->actingAs(User::factory()->create())
+        ->get('/profile')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Dashboard/Profile')->has('user'));
 });
 
 it('deletes the account with the right password, signs out and lands on the home page', function () {

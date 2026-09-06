@@ -455,10 +455,14 @@ export default function Profile({ user, cityOptions = [], interests, activity })
                                     value={deleteData.current_password}
                                     onChange={(e) => setDeleteData('current_password', e.target.value)}
                                     autoComplete="current-password"
+                                    aria-describedby={deleteErrors.current_password ? 'delete_current_password_error' : undefined}
+                                    aria-invalid={deleteErrors.current_password ? true : undefined}
                                     required
                                 />
                                 {deleteErrors.current_password && (
-                                    <p className="text-sm text-red-600">{deleteErrors.current_password}</p>
+                                    <p id="delete_current_password_error" role="alert" className="text-sm text-red-600">
+                                        {deleteErrors.current_password}
+                                    </p>
                                 )}
                             </CardContent>
                             <CardFooter>
