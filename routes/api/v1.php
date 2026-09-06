@@ -35,6 +35,10 @@ Route::get('meta', MetaController::class)->name('meta');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:api-register')->name('auth.register');
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:api-auth')->name('auth.login');
 Route::post('auth/oauth/google', [AuthController::class, 'google'])->middleware('throttle:api-auth')->name('auth.oauth.google');
+// Password recovery. Public by nature; throttled like a sign-in because one
+// sends mail to any address named and the other burns tokens.
+Route::post('auth/password/forgot', [AuthController::class, 'forgotPassword'])->middleware('throttle:api-auth')->name('auth.password.forgot');
+Route::post('auth/password/reset', [AuthController::class, 'resetPassword'])->middleware('throttle:api-auth')->name('auth.password.reset');
 
 // Refresh token only.
 Route::post('auth/refresh', [AuthController::class, 'refresh'])
@@ -45,6 +49,7 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
     Route::post('auth/logout-all', [AuthController::class, 'logoutAll'])->name('auth.logout-all');
     Route::get('auth/sessions', [AuthController::class, 'sessions'])->name('auth.sessions');
+    Route::post('auth/email/verification-notification', [AuthController::class, 'sendVerification'])->middleware('throttle:api-verify')->name('auth.verification.send');
 
     Route::get('events', [EventController::class, 'apiIndex'])->name('events.index');
     Route::get('events/saved', [BookmarkController::class, 'apiIndex'])->name('events.saved');

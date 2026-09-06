@@ -183,6 +183,80 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Send a password reset link
+      description: Always answers the same way, whether or not the address has an account. The link opens the web reset page; the app may intercept it and post the token to `/auth/password/reset`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Set a new password with the token from the reset link
+      description: On success every device's token pair is revoked; sign in again. A bad or used token is a 422 on `email` with the same message as an unknown address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/email/verification-notification:
+    post:
+      tags: [auth]
+      summary: Resend the email verification link
+      description: The link lands in the browser and, once verified, bounces back into the app via its URL scheme. Poll `GET /profile` for `email_verified_at` to confirm.
+      responses:
+        "200":
+          description: Sent, or already verified (`data.verified` says which)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [message, verified]
+                    properties:
+                      message: { type: string }
+                      verified: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /auth/refresh:
     post:
       tags: [auth]
