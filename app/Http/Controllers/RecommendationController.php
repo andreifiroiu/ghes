@@ -167,7 +167,7 @@ class RecommendationController extends Controller
 
         $this->activity->logMany(
             ActivityType::EventImpression,
-            ActivitySurface::Api,
+            ActivitySurface::forApi($request, ActivitySurface::MobileFeed),
             [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
             $user,
         );

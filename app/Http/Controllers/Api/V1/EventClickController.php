@@ -45,7 +45,7 @@ class EventClickController extends Controller
 
         $log = $this->activity->log(
             ActivityType::EventClick,
-            ActivitySurface::fromRequest($request->input('from'), ActivitySurface::Api),
+            ActivitySurface::forApi($request, ActivitySurface::MobileEventDetail),
             eventId: $event->id,
             user: $user,
             context: ['authenticated' => true, 'source' => $destination['source']],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\ApiVersionGoneController;
 use App\Http\Middleware\EnforceMinimumAppVersion;
+use App\Http\Middleware\ResolveClientSurface;
 use Illuminate\Support\Facades\Route;
 
 // The API is versioned by path, with no unversioned alias: a second mount
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 // lives in its own file under routes/api/.
 Route::prefix('v1')
     ->name('api.v1.')
-    ->middleware(EnforceMinimumAppVersion::class)
+    ->middleware([EnforceMinimumAppVersion::class, ResolveClientSurface::class])
     ->group(base_path('routes/api/v1.php'));
 
 // Anything else under /api is a version this server does not serve — in

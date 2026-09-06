@@ -357,14 +357,16 @@ class EventController extends Controller
     {
         $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
 
-        $this->recordBrowse($request, $events->pluck('id')->all(), ActivitySurface::Api);
+        $this->recordBrowse($request, $events->pluck('id')->all(), ActivitySurface::forApi($request, ActivitySurface::MobileBrowse));
 
         return ApiResponse::paginated(EventResource::collection($events));
     }
 
     public function apiShow(Request $request, Event $event): JsonResponse
     {
-        $props = $this->detailProps($request, $event, ActivitySurface::Api);
+        // Resolved here, so a mobile detail view opened from a push can carry
+        // `from=push` the same way the digest does on the web page.
+        $props = $this->detailProps($request, $event, ActivitySurface::forApi($request, ActivitySurface::MobileEventDetail));
 
         // One resource under `data`, with the related list embedded rather
         // than beside it: the client has exactly one parser for a detail
