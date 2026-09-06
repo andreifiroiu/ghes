@@ -29,6 +29,7 @@ class AccountDeleter
 
             // Cascades on Postgres, but explicit here so the sqlite test
             // connection and a future driver without the constraint agree.
+            $user->devices()->delete();
             $user->pushSubscriptions()->delete();
 
             $user->delete();

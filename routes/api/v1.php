@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\EventClickController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\BookmarkController;
@@ -80,6 +81,11 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     Route::get('profile/chat', [ChatController::class, 'apiProfileChat'])->name('profile.chat.show');
     Route::post('profile/chat', [ChatController::class, 'apiProfileChatStore'])->middleware('throttle:api-chat')->name('profile.chat.store');
     Route::post('profile/chat/apply', [ChatController::class, 'apiApplyProfileUpdate'])->middleware('throttle:api-chat')->name('profile.chat.apply');
+
+    // Native push registrations. Idempotent upsert keyed on the push token.
+    Route::get('devices', [DeviceController::class, 'index'])->name('devices.index');
+    Route::post('devices', [DeviceController::class, 'store'])->middleware('throttle:api-devices')->name('devices.store');
+    Route::delete('devices', [DeviceController::class, 'destroy'])->middleware('throttle:api-devices')->name('devices.destroy');
 
     Route::get('settings/notifications', [NotificationSettingsController::class, 'apiShow'])->name('settings.notifications.show');
     Route::put('settings/notifications', [NotificationSettingsController::class, 'apiUpdate'])->name('settings.notifications.update');

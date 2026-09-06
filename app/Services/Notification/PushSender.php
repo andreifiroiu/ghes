@@ -19,13 +19,24 @@ class PushSender
      * no-ops when push is disabled, VAPID keys are missing, or the user has no
      * subscriptions. Expired/gone subscriptions are pruned.
      */
-    public function sendToUser(User $user, string $title, string $body, ?string $url = null): int
+    /**
+     * @param  list<string>  $excludeInstallIds  Subscriptions made from a handset that also
+     *                                           holds a native device; PushFanout suppresses
+     *                                           them so one phone is not notified twice.
+     */
+    public function sendToUser(User $user, string $title, string $body, ?string $url = null, array $excludeInstallIds = []): int
     {
         if (! $this->isConfigured()) {
             return 0;
         }
 
-        $subscriptions = $user->pushSubscriptions()->get();
+        $query = $user->pushSubscriptions();
+
+        if ($excludeInstallIds !== []) {
+            $query->where(fn ($q) => $q->whereNull('install_id')->orWhereNotIn('install_id', $excludeInstallIds));
+        }
+
+        $subscriptions = $query->get();
 
         if ($subscriptions->isEmpty()) {
             return 0;

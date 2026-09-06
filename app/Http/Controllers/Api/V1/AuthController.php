@@ -131,6 +131,10 @@ class AuthController extends Controller
 
         if ($token->device_id !== null) {
             $this->tokens->revokeDevice($request->user(), $token->device_id);
+
+            // The push registration made from this install goes too;
+            // otherwise the digest keeps landing on a signed-out phone.
+            $request->user()->devices()->where('install_id', $token->device_id)->delete();
         } else {
             $token->delete();
         }

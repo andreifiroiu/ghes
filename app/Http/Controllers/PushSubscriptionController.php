@@ -19,6 +19,9 @@ class PushSubscriptionController extends Controller
             'keys.p256dh' => ['required', 'string'],
             'keys.auth' => ['required', 'string'],
             'content_encoding' => ['nullable', 'string'],
+            // Persisted by the browser so a handset that also runs the native
+            // app is recognised as one device and not notified twice.
+            'install_id' => ['nullable', 'uuid'],
         ]);
 
         $request->user()->pushSubscriptions()->updateOrCreate(
@@ -27,6 +30,7 @@ class PushSubscriptionController extends Controller
                 'public_key' => $validated['keys']['p256dh'],
                 'auth_token' => $validated['keys']['auth'],
                 'content_encoding' => $validated['content_encoding'] ?? 'aesgcm',
+                'install_id' => $validated['install_id'] ?? null,
             ],
         );
 
