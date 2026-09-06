@@ -76,6 +76,21 @@ export default function Profile({ user, cityOptions = [], interests, activity })
         router.post('/profile/resend-verification');
     };
 
+    const {
+        data: deleteData,
+        setData: setDeleteData,
+        delete: destroyAccount,
+        processing: deleting,
+        errors: deleteErrors,
+    } = useForm({
+        current_password: '',
+    });
+
+    const handleDeleteAccount = (e) => {
+        e.preventDefault();
+        destroyAccount('/account');
+    };
+
     const { data, setData, put, processing, recentlySuccessful } = useForm({
         channel: user?.notification_channel || 'email',
         frequency: user?.notification_frequency || 'daily',
@@ -418,6 +433,45 @@ export default function Profile({ user, cityOptions = [], interests, activity })
                     )}
 
                     <ActivitySummaryCard activity={activity} />
+
+                    {/* Self-service deletion: the same cleanup the app and the
+                        admin panel use, behind a password check. */}
+                    <Card className="border-red-200">
+                        <CardHeader>
+                            <CardTitle className="text-lg text-red-700">Șterge contul</CardTitle>
+                            <CardDescription>
+                                Contul dispare pe loc, împreună cu reacțiile, evenimentele salvate,
+                                profilul de interese, conversațiile și notificările. Nu îl putem
+                                recupera după aceea. Dacă ai intrat mereu cu Google și nu ai o
+                                parolă, folosește mai întâi „Ai uitat parola?" ca să îți setezi una.
+                            </CardDescription>
+                        </CardHeader>
+                        <form onSubmit={handleDeleteAccount}>
+                            <CardContent className="space-y-2">
+                                <Label htmlFor="delete_current_password">Confirmă parola</Label>
+                                <Input
+                                    id="delete_current_password"
+                                    type="password"
+                                    value={deleteData.current_password}
+                                    onChange={(e) => setDeleteData('current_password', e.target.value)}
+                                    autoComplete="current-password"
+                                    required
+                                />
+                                {deleteErrors.current_password && (
+                                    <p className="text-sm text-red-600">{deleteErrors.current_password}</p>
+                                )}
+                            </CardContent>
+                            <CardFooter>
+                                <Button
+                                    type="submit"
+                                    variant="destructive"
+                                    disabled={deleting || !deleteData.current_password}
+                                >
+                                    {deleting ? 'Se șterge...' : 'Șterge contul definitiv'}
+                                </Button>
+                            </CardFooter>
+                        </form>
+                    </Card>
                 </div>
             </div>
         </AppLayout>

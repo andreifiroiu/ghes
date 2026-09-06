@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\AnalyticsController as AdminAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
@@ -118,6 +119,10 @@ Route::middleware('auth')->group(function () {
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('profile/resend-verification', [ProfileController::class, 'resendVerification'])->name('profile.resend-verification');
+
+    // Self-service account deletion. Throttled like a sign-in: it checks a
+    // password, and a wrong guess must not be free.
+    Route::delete('account', [AccountController::class, 'destroy'])->middleware('throttle:6,1')->name('account.destroy');
 
     // Ongoing profile-update chat
     Route::get('profile/chat', [ChatController::class, 'profileChat'])->name('profile.chat');
