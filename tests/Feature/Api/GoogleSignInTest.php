@@ -73,6 +73,20 @@ it('links an existing account by address and keeps its state', function () {
     expect(User::count())->toBe(1);
 });
 
+it('links a password account whose address differs only in case', function () {
+    // Google reports addresses lowercase; nothing lowercases them at
+    // registration. Without a case-insensitive match this person would end
+    // up with two accounts and a password that opens neither.
+    $existing = User::factory()->create(['email' => 'Ana@Gmail.com']);
+    fakeTokenInfo(['email' => 'ana@gmail.com']);
+
+    $this->postJson('/api/v1/auth/oauth/google', googleSignInBody())
+        ->assertOk()
+        ->assertJsonPath('data.user.id', $existing->id);
+
+    expect(User::count())->toBe(1);
+});
+
 it('rejects a token minted for another app', function () {
     fakeTokenInfo(['aud' => 'someone-elses-client.apps.googleusercontent.com']);
 

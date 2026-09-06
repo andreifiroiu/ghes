@@ -73,9 +73,11 @@ class GoogleIdTokenVerifier
 
         $name = $claims['name'] ?? null;
 
+        // Normalised once, at the boundary: the linker and the deletion
+        // re-check both compare against this, and must agree.
         return new GoogleIdentity(
             subject: $subject,
-            email: $email,
+            email: strtolower($email),
             name: is_string($name) && $name !== '' ? $name : null,
         );
     }

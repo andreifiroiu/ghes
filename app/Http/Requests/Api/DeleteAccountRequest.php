@@ -70,7 +70,8 @@ class DeleteAccountRequest extends FormRequest
             return;
         }
 
-        if (strcasecmp($identity->email, (string) $this->user()?->email) !== 0) {
+        // The verifier lowercases the identity; the account's address may not be.
+        if ($identity->email !== strtolower((string) $this->user()?->email)) {
             $validator->errors()->add('google_id_token', 'The Google account does not match this account.');
         }
     }

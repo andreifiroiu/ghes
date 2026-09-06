@@ -21,7 +21,12 @@ class SocialAccountLinker
 {
     public function findOrCreate(string $email, ?string $name): User
     {
-        $user = User::where('email', $email)->first();
+        // Case-insensitive on purpose. Nothing normalises addresses at
+        // registration, so a password account holding `Ana@Gmail.com` must
+        // still be the account Google's lowercase `ana@gmail.com` links to —
+        // otherwise the person ends up with two accounts and a password that
+        // opens neither. Postgres compares bytes; LOWER() works on sqlite too.
+        $user = User::whereRaw('LOWER(email) = ?', [strtolower($email)])->first();
 
         if ($user !== null) {
             return $user;
