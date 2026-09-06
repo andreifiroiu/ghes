@@ -6,6 +6,8 @@ namespace App\Models;
 
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationFrequency;
+use App\Notifications\ResetPasswordNotification;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\City\CityCatalog;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -32,6 +34,24 @@ class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
+
+    /**
+     * Send the verification mail. `$intent` names where the link should land
+     * after verifying: null for the web profile page,
+     * {@see VerifyEmailNotification::INTENT_MOBILE} to bounce back into the app.
+     */
+    public function sendEmailVerificationNotification(?string $intent = null): void
+    {
+        $this->notify(new VerifyEmailNotification($intent));
+    }
+
+    /**
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
+    }
 
     /**
      * Give every new account the covered city.

@@ -355,6 +355,11 @@ return [
     ],
 
     'default_city' => env('EVENTPULSE_DEFAULT_CITY', 'timisoara'),
+    'mobile' => [
+        // URL scheme the native app registers; the verification link bounces
+        // back through it when the mail was requested from the app.
+        'scheme' => env('EVENTPULSE_MOBILE_SCHEME', 'ghes'),
+    ],
     'eventbrite_api_key' => env('EVENTBRITE_API_KEY'),
     'serpapi_api_key' => env('SERPAPI_API_KEY'),
     'apify_api_token' => env('APIFY_API_TOKEN'),

@@ -6,7 +6,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class RegisterRequest extends FormRequest
+class ResetPasswordRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,15 +14,16 @@ class RegisterRequest extends FormRequest
     }
 
     /**
+     * Same password rule as registration, so a reset cannot set a password
+     * that signup would have refused.
+     *
      * @return array<string, array<int, string>>
      */
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'unique:users'],
-            // `string` matters: without it a numeric JSON body compares by
-            // value, and `9` satisfies min:8.
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ];
     }
