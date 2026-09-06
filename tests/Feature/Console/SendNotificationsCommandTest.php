@@ -7,7 +7,9 @@ use App\Jobs\SendNotificationJob;
 use App\Models\Notification;
 use App\Models\User;
 use App\Services\Notification\NotificationComposer;
+use App\Services\Notification\NotificationDispatcher;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 
@@ -129,4 +131,14 @@ it('reports when nobody is due', function () {
         ->assertSuccessful();
 
     Queue::assertNothingPushed();
+});
+
+it('skips a digest whose notification was deleted before the worker ran', function () {
+    // Account deletion cascades event_notifications; the queued job must
+    // finish quietly rather than fail three times over a row that is gone.
+    Log::spy();
+
+    (new SendNotificationJob(fake()->uuid()))->handle(app(NotificationDispatcher::class));
+
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message) => str_contains($message, 'no longer exists'))->once();
 });

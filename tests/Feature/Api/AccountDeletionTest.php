@@ -108,6 +108,26 @@ it('requires the password field', function () {
         ->assertJsonStructure(['error' => ['details' => ['current_password']]]);
 });
 
+it('throttles password guesses like a sign-in', function () {
+    $user = User::factory()->create();
+    $pair = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email, 'password' => 'password', 'device_name' => 'phone', 'platform' => 'ios',
+    ])->json('data');
+
+    foreach (range(1, 5) as $i) {
+        $this->withToken($pair['access_token'])
+            ->deleteJson('/api/v1/account', ['current_password' => "guess-{$i}"])
+            ->assertStatus(422);
+    }
+
+    $this->withToken($pair['access_token'])
+        ->deleteJson('/api/v1/account', ['current_password' => 'password'])
+        ->assertStatus(429)
+        ->assertJsonPath('error.code', 'rate_limited');
+
+    expect(User::whereKey($user->id)->exists())->toBeTrue();
+});
+
 it('leaves the deleted account unable to use its tokens', function () {
     $user = User::factory()->create();
     $pair = $this->postJson('/api/v1/auth/login', [

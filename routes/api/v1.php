@@ -59,8 +59,9 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     Route::get('profile/stats', [ProfileController::class, 'stats'])->name('profile.stats');
 
     // Self-service deletion: required by both stores for any app that can
-    // create an account.
-    Route::delete('account', [AccountController::class, 'destroy'])->name('account.destroy');
+    // create an account. Throttled like a sign-in: it checks a password, so
+    // a stolen access token must not get to guess one at the general rate.
+    Route::delete('account', [AccountController::class, 'destroy'])->middleware('throttle:api-reauth')->name('account.destroy');
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('chat/history', [ChatController::class, 'apiHistory'])->name('chat.history');

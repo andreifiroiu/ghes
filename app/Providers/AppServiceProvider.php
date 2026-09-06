@@ -128,6 +128,14 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        // Password re-checks by an already signed-in user (account deletion).
+        // Keyed by the account, so a stolen token gets the same handful of
+        // guesses a login attempt would, wherever it is used from.
+        RateLimiter::for('api-reauth', function (Request $request) {
+            return Limit::perMinute((int) config('eventpulse.api.throttle.auth_per_minute', 5))
+                ->by('reauth|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         RateLimiter::for('api-register', function (Request $request) {
             return Limit::perHour((int) config('eventpulse.api.throttle.register_per_hour', 10))
                 ->by((string) $request->ip());
