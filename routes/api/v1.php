@@ -6,6 +6,7 @@ use App\Enums\TokenAbility;
 use App\Http\Controllers\Api\AdminStatsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\BookmarkController;
@@ -56,6 +57,10 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::get('profile/stats', [ProfileController::class, 'stats'])->name('profile.stats');
+
+    // Self-service deletion: required by both stores for any app that can
+    // create an account.
+    Route::delete('account', [AccountController::class, 'destroy'])->name('account.destroy');
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('chat/history', [ChatController::class, 'apiHistory'])->name('chat.history');

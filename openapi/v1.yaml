@@ -432,6 +432,32 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
+  /account:
+    delete:
+      tags: [profile]
+      summary: Delete the account, immediately and completely
+      description: |
+        Hard delete, no grace period. Requires the current password so a stolen access token
+        cannot do it. Everything the account owns goes with it; every device's tokens are
+        revoked. Accounts created with Google sign-in have no known password and cannot use
+        this yet — native Google re-authentication is the planned path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password]
+              properties:
+                current_password: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
   /profile/stats:
     get:
       tags: [profile]
