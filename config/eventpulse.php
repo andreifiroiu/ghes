@@ -370,6 +370,10 @@ return [
             'auth_per_minute_per_ip' => 20,
             'register_per_hour' => 10,
             'refresh_per_minute' => 30,
+            // Chat POSTs each cost a Claude call: a minute cap for bursts and
+            // a daily cap so one account cannot run up the bill.
+            'chat_per_minute' => 20,
+            'chat_per_day' => 200,
         ],
         'tokens' => [
             // Access tokens are short-lived and cannot mint new ones; refresh

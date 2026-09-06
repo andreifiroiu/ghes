@@ -10,6 +10,7 @@ use App\Jobs\ProcessActivitySignalJob;
 use App\Models\Event;
 use App\Models\Notification;
 use App\Services\Activity\ActivityLogger;
+use App\Services\Activity\ClickDestinationResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -25,6 +26,7 @@ class ActivityController extends Controller
 
     public function __construct(
         private readonly ActivityLogger $activity,
+        private readonly ClickDestinationResolver $destinations,
     ) {}
 
     /**
@@ -41,7 +43,7 @@ class ActivityController extends Controller
 
         abort_if($event->is_hidden, 404);
 
-        $destination = $this->destinationFor($request, $event);
+        $destination = $this->destinations->resolve($event, $request->query('s'));
 
         abort_if($destination === null, 404);
 
@@ -74,38 +76,6 @@ class ActivityController extends Controller
         // 302, not 301: a permanent redirect would be cached by the browser and
         // every click after the first would never reach us again.
         return redirect()->away($destination['url'], 302);
-    }
-
-    /**
-     * Where this click should land, and which provider it credits.
-     *
-     * A popular event is listed by several providers, and the detail page
-     * offers one button each, so `?s=` says which was chosen. It *selects*
-     * among the event's own stored URLs rather than supplying one — the value
-     * is matched against this event's `event_sources` rows and ignored if it
-     * does not name one of them. Anything else would turn a public redirect
-     * into an open one.
-     *
-     * @return array{url: string, source: string}|null
-     */
-    private function destinationFor(Request $request, Event $event): ?array
-    {
-        $requested = $request->query('s');
-
-        if (is_string($requested) && $requested !== '') {
-            $match = $event->sources()
-                ->where('source', $requested)
-                ->whereNotNull('source_url')
-                ->first();
-
-            if ($match !== null && $match->source_url !== '') {
-                return ['url' => $match->source_url, 'source' => $match->source];
-            }
-        }
-
-        return $event->source_url === ''
-            ? null
-            : ['url' => $event->source_url, 'source' => $event->source];
     }
 
     /**

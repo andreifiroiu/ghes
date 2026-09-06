@@ -267,6 +267,46 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /events/{event}/click:
+    post:
+      tags: [events]
+      summary: Record an outbound click and get the URL to open
+      description: |
+        Use this instead of opening `Event.click_url`: that web redirect carries no bearer token,
+        so a click through it would be logged but would never train the recommender. The returned
+        `url` is always one of the event's own stored URLs; `source` only selects among the
+        providers listed in `Event.sources` and is ignored when it names none of them.
+      parameters:
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, description: "A provider key from `Event.sources[].source`" }
+                from: { type: string, description: "The screen the click came from: an activity surface value" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [url, source]
+                    properties:
+                      url: { type: string, format: uri }
+                      source: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /recommendations:
     get:
       tags: [recommendations]
@@ -521,6 +561,191 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
 
+  /onboarding:
+    get:
+      tags: [chat]
+      summary: The onboarding thread, seeded with the welcome message on first open
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [messages, onboarding_complete]
+                    properties:
+                      messages:
+                        type: array
+                        items: { $ref: "#/components/schemas/ChatMessage" }
+                      onboarding_complete: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /onboarding/chat:
+    post:
+      tags: [chat]
+      summary: Send an onboarding message and get the assistant's reply
+      description: Costs an LLM call; limited per user per minute and per day.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user_message, assistant_message, onboarding_complete]
+                    properties:
+                      user_message: { $ref: "#/components/schemas/ChatMessage" }
+                      assistant_message: { $ref: "#/components/schemas/ChatMessage" }
+                      onboarding_complete: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /onboarding/confirm:
+    post:
+      tags: [chat]
+      summary: Generate and store the interest profile from the onboarding chat
+      description: 422 `validation_failed` with `details.conversation` when the chat does not yet yield a profile — keep chatting.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProfileApplied"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /profile/chat:
+    get:
+      tags: [chat]
+      summary: The profile-refinement thread, seeded on first open
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      tags: [chat]
+      summary: Send a profile-refinement message and get the assistant's reply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user_message, assistant_message]
+                    properties:
+                      user_message: { $ref: "#/components/schemas/ChatMessage" }
+                      assistant_message: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /profile/chat/apply:
+    post:
+      tags: [chat]
+      summary: Apply the changes inferred from the profile-refinement chat
+      description: 422 `validation_failed` with `details.conversation` when no change can be inferred.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProfileApplied"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /settings/notifications:
+    get:
+      tags: [profile]
+      summary: Notification settings and the values they accept
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user, channels, frequencies]
+                    properties:
+                      user: { $ref: "#/components/schemas/User" }
+                      channels:
+                        type: array
+                        items: { type: string, enum: [email, push, both] }
+                      frequencies:
+                        type: array
+                        items: { type: string, enum: [daily, weekly, realtime] }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    put:
+      tags: [profile]
+      summary: Update notification settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, frequency]
+              properties:
+                channel: { type: string, enum: [email, push, both] }
+                frequency: { type: string, enum: [daily, weekly, realtime] }
+                discovery_openness: { type: number, minimum: 0, maximum: 1 }
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -564,6 +789,22 @@ components:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/Event" }
+    ProfileApplied:
+      description: The stored profile scores and, when the chat named a city Ghes does not cover, a notice
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [profile, city_notice]
+                properties:
+                  profile:
+                    type: object
+                    additionalProperties: { type: number }
+                  city_notice: { type: [string, "null"] }
     Acknowledged:
       description: Done; nothing worth returning
       content:
@@ -743,6 +984,7 @@ components:
         - source
         - source_url
         - click_url
+        - ics_url
         - sources_count
       properties:
         id: { type: string, format: uuid }
@@ -768,6 +1010,9 @@ components:
         click_url:
           type: string
           description: The web redirect that records a click. Not for native use — it carries no bearer token, so the click would not train the recommender.
+        ics_url:
+          type: [string, "null"]
+          description: The event as an iCalendar file, for handing to the OS calendar. Null when the event has no parseable start.
         sources_count: { type: integer }
         sources:
           type: array
@@ -868,6 +1113,12 @@ components:
         events:
           type: array
           items: { $ref: "#/components/schemas/Event" }
+
+    ChatMessageBody:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, maxLength: 2000 }
 
     ChatMessage:
       type: object

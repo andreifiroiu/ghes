@@ -136,6 +136,17 @@ class AppServiceProvider extends ServiceProvider
                 ->by('reauth|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
         });
 
+        // Every chat POST is an LLM call. Keyed by user (the routes are
+        // authenticated); the daily ceiling is what bounds the bill.
+        RateLimiter::for('api-chat', function (Request $request) {
+            $key = 'chat|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute((int) config('eventpulse.api.throttle.chat_per_minute', 20))->by($key),
+                Limit::perDay((int) config('eventpulse.api.throttle.chat_per_day', 200))->by($key),
+            ];
+        });
+
         RateLimiter::for('api-register', function (Request $request) {
             return Limit::perHour((int) config('eventpulse.api.throttle.register_per_hour', 10))
                 ->by((string) $request->ip());

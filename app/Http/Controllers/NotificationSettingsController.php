@@ -8,6 +8,8 @@ use App\Enums\NotificationChannel;
 use App\Enums\NotificationFrequency;
 use App\Http\Requests\NotificationSettingsRequest;
 use App\Http\Resources\UserResource;
+use App\Http\Responses\ApiResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,6 +32,46 @@ class NotificationSettingsController extends Controller
         /** @var array{channel: string, frequency: string, discovery_openness?: float} $validated */
         $validated = $request->validated();
 
+        $request->user()->update($this->attributesFrom($validated));
+
+        return redirect()->back()
+            ->with('success', 'Notification settings updated.');
+    }
+
+    /**
+     * API twin of show(). No VAPID key: native push does not use it.
+     */
+    public function apiShow(Request $request): JsonResponse
+    {
+        return ApiResponse::item([
+            'user' => (new UserResource($request->user()))->resolve(),
+            'channels' => array_column(NotificationChannel::cases(), 'value'),
+            'frequencies' => array_column(NotificationFrequency::cases(), 'value'),
+        ]);
+    }
+
+    /**
+     * API twin of update(): the same request, the user back instead of a redirect.
+     */
+    public function apiUpdate(NotificationSettingsRequest $request): JsonResponse
+    {
+        /** @var array{channel: string, frequency: string, discovery_openness?: float} $validated */
+        $validated = $request->validated();
+
+        $user = $request->user();
+        $user->update($this->attributesFrom($validated));
+
+        return ApiResponse::item(new UserResource($user->fresh()));
+    }
+
+    /**
+     * Shared by both update paths so a new setting cannot land on one only.
+     *
+     * @param  array{channel: string, frequency: string, discovery_openness?: float}  $validated
+     * @return array<string, mixed>
+     */
+    private function attributesFrom(array $validated): array
+    {
         $attributes = [
             'notification_channel' => NotificationChannel::from($validated['channel']),
             'notification_frequency' => NotificationFrequency::from($validated['frequency']),
@@ -41,9 +83,6 @@ class NotificationSettingsController extends Controller
             $attributes['discovery_openness'] = (float) $validated['discovery_openness'];
         }
 
-        $request->user()->update($attributes);
-
-        return redirect()->back()
-            ->with('success', 'Notification settings updated.');
+        return $attributes;
     }
 }

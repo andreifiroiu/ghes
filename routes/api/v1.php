@@ -8,11 +8,13 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\EventClickController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\RecommendationController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +47,9 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     Route::get('events', [EventController::class, 'apiIndex'])->name('events.index');
     Route::get('events/saved', [BookmarkController::class, 'apiIndex'])->name('events.saved');
     Route::get('events/{event}', [EventController::class, 'apiShow'])->whereUuid('event')->name('events.show');
+    // The authenticated twin of the public `go/{event}` redirect: logs the
+    // click, nudges the profile, returns the URL for the client to open.
+    Route::post('events/{event}/click', EventClickController::class)->whereUuid('event')->name('events.click');
 
     Route::get('recommendations', [RecommendationController::class, 'apiIndex'])->name('recommendations');
     Route::get('recommendations/history', [RecommendationController::class, 'apiHistory'])->name('recommendations.history');
@@ -65,6 +70,18 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('chat/history', [ChatController::class, 'apiHistory'])->name('chat.history');
+
+    // The two LLM chats. Every POST here costs a Claude call, hence the
+    // per-user limiter with a daily ceiling on top of the minute one.
+    Route::get('onboarding', [ChatController::class, 'apiOnboarding'])->name('onboarding.show');
+    Route::post('onboarding/chat', [ChatController::class, 'apiStore'])->middleware('throttle:api-chat')->name('onboarding.chat');
+    Route::post('onboarding/confirm', [ChatController::class, 'apiConfirmProfile'])->middleware('throttle:api-chat')->name('onboarding.confirm');
+    Route::get('profile/chat', [ChatController::class, 'apiProfileChat'])->name('profile.chat.show');
+    Route::post('profile/chat', [ChatController::class, 'apiProfileChatStore'])->middleware('throttle:api-chat')->name('profile.chat.store');
+    Route::post('profile/chat/apply', [ChatController::class, 'apiApplyProfileUpdate'])->middleware('throttle:api-chat')->name('profile.chat.apply');
+
+    Route::get('settings/notifications', [NotificationSettingsController::class, 'apiShow'])->name('settings.notifications.show');
+    Route::put('settings/notifications', [NotificationSettingsController::class, 'apiUpdate'])->name('settings.notifications.update');
 
     // The gate checks the user; the ability checks the token. Both, so an
     // admin's token issued before they were made admin does not gain the
