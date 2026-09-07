@@ -232,6 +232,13 @@ class EventController extends Controller
             );
         }
 
+        // The app can measure impressions itself (a card 60 % visible for a
+        // second, reported through POST /activity) and says so by header.
+        // Counting every served card as well would double its denominator.
+        if (ResolveClientSurface::clientRecordsImpressions($request)) {
+            return;
+        }
+
         $this->activity->logMany(ActivityType::EventImpression, $surface, $eventIds, $user);
     }
 

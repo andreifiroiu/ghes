@@ -39,6 +39,7 @@ class UserActivityLog extends Model
         'user_id',
         'event_id',
         'notification_id',
+        'client_event_id',
         'type',
         'surface',
         'session_key',

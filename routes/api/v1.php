@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AdminStatsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\V1\AccountController;
+use App\Http\Controllers\Api\V1\ActivityBatchController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\EventClickController;
@@ -58,6 +59,10 @@ Route::middleware(['auth:sanctum', 'abilities:'.TokenAbility::AccessApi->value])
     // The authenticated twin of the public `go/{event}` redirect: logs the
     // click, nudges the profile, returns the URL for the client to open.
     Route::post('events/{event}/click', EventClickController::class)->whereUuid('event')->name('events.click');
+    // The app's buffered impressions, views, clicks and searches, with
+    // client ids so a retried flush is a no-op. Bounded per user: the app
+    // flushes at most every 30 s, so a client spinning on it is a bug.
+    Route::post('activity', ActivityBatchController::class)->middleware('throttle:api-activity')->name('activity.store');
 
     Route::get('recommendations', [RecommendationController::class, 'apiIndex'])->name('recommendations');
     Route::get('recommendations/history', [RecommendationController::class, 'apiHistory'])->name('recommendations.history');

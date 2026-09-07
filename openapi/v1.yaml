@@ -56,6 +56,11 @@ info:
       send `from=push` when a screen was opened from a notification, as the web digest does.
     - `X-Ghes-Live-Search: 1` — on `GET /events`, marks a keystroke-driven request so it is
       not recorded as a settled search.
+    - `X-Ghes-Impressions: client` — on `GET /events`, `GET /events/saved` and
+      `GET /recommendations`, says the app measures impressions on-device and reports them
+      through `POST /activity`, so the server does not also count every card it serves.
+      Ignored without `X-Ghes-Client: mobile`, and until the account has reported a client
+      impression in the last 24 hours.
     - Send a real `User-Agent`. A UA matching the server's bot denylist (words that identify
       link previewers and scanners) has its activity recorded but flagged, and flagged rows
       are excluded from rates, ranking and profile signals. React Native's defaults are fine.
@@ -68,6 +73,7 @@ tags:
   - name: meta
   - name: auth
   - name: events
+  - name: activity
   - name: recommendations
   - name: feedback
   - name: profile
@@ -460,6 +466,62 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /activity:
+    post:
+      tags: [activity]
+      summary: Report a batch of on-device impressions
+      description: |
+        The server counts a card as seen the moment a page is served — every card on page two
+        of an infinite list, scrolled to or not. The app measures the real thing (a card at
+        least 60 % visible for a second), buffers it, and flushes here in batches. Each item
+        carries a client-generated `id`: a batch retried after a network blip is a no-op for
+        every id already stored, so replaying a whole buffer is safe. `at` is when the
+        impression happened and becomes the row's timestamp even when the flush is days late
+        (clamped to the last 7 days, never the future).
+
+        Send `X-Ghes-Impressions: client` on the list endpoints once the tracker is on, so the
+        server stops counting every served card as well. The header is honoured only after this
+        account has reported at least one client impression in the last 24 hours: until the
+        first flush lands, and again whenever flushes stop, the server keeps counting, so a
+        tracker that is off or broken never leaves the click-through rate without a denominator.
+
+        **Impressions only.** Views, clicks and settled searches are already logged by
+        `GET /events/{event}`, `POST /events/{event}/click` and `GET /events`, which the app
+        calls anyway; reporting them here as well would count them twice. Reactions and
+        bookmarks are logged by their own endpoints.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivityBatch" }
+      responses:
+        "202":
+          description: |
+            Stored. `accepted` rows were written. `duplicates` were ids already stored (a clean
+            replay) or repeated within the batch. `dropped` named an event that does not exist
+            or is hidden — a non-zero `dropped` on every flush means the app is sending the
+            wrong ids, and the server logs each such batch.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [message, accepted, duplicates, dropped]
+                    properties:
+                      message: { type: string }
+                      accepted: { type: integer }
+                      duplicates: { type: integer }
+                      dropped: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /recommendations:
     get:
@@ -1170,6 +1232,38 @@ components:
       required: [event_id]
       properties:
         event_id: { type: string, format: uuid }
+
+    ActivityBatch:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/ClientActivityEvent" }
+
+    ClientActivityEvent:
+      type: object
+      required: [id, type, event_id, at]
+      properties:
+        id: { type: string, format: uuid, description: "Client-generated; the idempotency key" }
+        type: { type: string, enum: [event_impression] }
+        event_id: { type: string, format: uuid }
+        from:
+          type: string
+          enum: [mobile_feed, mobile_browse, mobile_event_detail, mobile_saved, push, api]
+          description: |
+            The screen the card was on. Defaults to `mobile_browse` when the request carries
+            `X-Ghes-Client: mobile`, else `api`. Send `push` for a list opened from a
+            notification, as the web digest links do.
+        at:
+          type: string
+          format: date-time
+          description: |
+            When the card became visible; kept as the row's timestamp. ISO 8601 with an
+            explicit offset (`Z` or `±hh:mm`, milliseconds optional) — what
+            `Date.prototype.toISOString()` produces. A timestamp without an offset is rejected.
 
     DeviceFields:
       type: object

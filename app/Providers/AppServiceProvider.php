@@ -165,6 +165,15 @@ class AppServiceProvider extends ServiceProvider
                 ->by('devices|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
         });
 
+        // Activity batches: up to 100 rows each, so the per-minute cap is
+        // also a cap on how fast one account can grow the activity table.
+        // The app flushes at most every 30 s; the headroom is for replaying
+        // a buffer that filled up offline.
+        RateLimiter::for('api-activity', function (Request $request) {
+            return Limit::perMinute((int) config('eventpulse.api.throttle.activity_per_minute', 10))
+                ->by('activity|'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         // Each call sends a mail to the caller's own address; bounded so a
         // stuck retry loop in a client cannot flood their inbox.
         RateLimiter::for('api-verify', function (Request $request) {
