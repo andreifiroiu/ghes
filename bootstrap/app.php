@@ -40,7 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // routinely drop or partition the session cookie issued by the GET, and
         // the POST would then 419 with a bare English error page after the user
         // has already been told what is about to happen.
-        $middleware->validateCsrfTokens(except: [
+        $middleware->preventRequestForgery(except: [
             'reactions/*',
         ]);
     })

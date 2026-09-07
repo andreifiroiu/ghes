@@ -6,8 +6,8 @@ Ghes is a personalized local event discovery platform. It scrapes events from mu
 
 ## Tech Stack
 
-- **Backend:** Laravel 12, PHP 8.3
-- **Frontend:** React 18 + Inertia.js + shadcn/ui + Tailwind CSS v4
+- **Backend:** Laravel 13, PHP 8.4 (composer requires ^8.3)
+- **Frontend:** React 19 + Inertia.js v3 + hand-rolled shadcn-style primitives (`resources/js/Components/ui/`) + Tailwind CSS v4
 - **Database:** PostgreSQL 16
 - **Cache / Queue broker:** Redis 7
 - **Queue worker:** Laravel Horizon
@@ -30,7 +30,7 @@ eventpulse/
 │   │   └── ScraperAdapter.php
 │   ├── DTOs/                       # Data Transfer Objects
 │   │   └── RawEvent.php
-│   ├── Enums/                      # PHP 8.3 enums
+│   ├── Enums/                      # PHP enums
 │   │   ├── EventCategory.php
 │   │   ├── Reaction.php
 │   │   ├── NotificationChannel.php
@@ -161,7 +161,7 @@ eventpulse/
 
 ### PHP / Laravel
 
-- **PHP 8.3 features**: Use enums, readonly properties, typed properties, named arguments, match expressions, first-class callables.
+- **Modern PHP features**: Use enums, readonly properties, typed properties, named arguments, match expressions, first-class callables.
 - **Strict types**: Every PHP file starts with `declare(strict_types=1);`
 - **Return types**: Every method has an explicit return type.
 - **Formatting**: Laravel Pint with default `laravel` preset. Run `./vendor/bin/pint` before commits.
@@ -319,7 +319,7 @@ Build in this order:
 11. **API + controllers** — all routes and controllers
 12. **Frontend pages** — Onboarding chat → Dashboard → Event browse → Settings
 13. **Artisan commands** — CLI wrappers for all scheduled operations
-14. **Scheduled tasks** — `app/Console/Kernel.php` scheduling
+14. **Scheduled tasks** — `routes/console.php` scheduling (no `app/Console/Kernel.php` on Laravel 11+)
 15. **Tests** — unit tests for services, feature tests for API endpoints
 
 ## Things to Watch Out For

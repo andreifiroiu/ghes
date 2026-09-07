@@ -34,7 +34,7 @@ workflows. The local gates below are the only gates.
 
 `vendor/bin/pint --dirty --format agent` — no `pint.json`, so the default `laravel` preset.
 
-**Never run Pint repo-wide.** 14 pre-existing files fail it (six `0001_01_01_*`
+**Never run Pint repo-wide.** 13 pre-existing files fail it (six `0001_01_01_*`
 migrations, `NotificationFactory`, `bootstrap/providers.php`, `HorizonServiceProvider`,
 the three DTOs, `ProfileScorer`). `--dirty` is the only way to get a meaningful result.
 
@@ -167,5 +167,5 @@ internal-only writes nothing, which is a valid outcome.
 
 - `config/eventpulse.php` and every `eventpulse.*` key keep the old product name. The
   product is now Ghes; the keys are read in dozens of places and in tests. Not cleanup.
-- The 5 PHPStan errors and 14 Pint-dirty files above — fixing them inflates every diff
+- The 4 PHPStan errors and 13 Pint-dirty files above — fixing them inflates every diff
   and hides the real change.
