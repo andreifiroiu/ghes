@@ -617,7 +617,7 @@ paths:
                 name: { type: string, maxLength: 255 }
                 email: { type: string, format: email, maxLength: 255 }
                 timezone: { type: string, description: An IANA timezone name }
-                city: { type: string, description: One of `Meta.cities[].label` }
+                city: { type: string, description: "One of `Meta.cities[].label`" }
       responses:
         "200":
           $ref: "#/components/responses/UserResource"
