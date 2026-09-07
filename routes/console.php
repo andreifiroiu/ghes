@@ -3,6 +3,7 @@
 use App\Jobs\ApplyPassiveDecayJob;
 use App\Jobs\CleanupExpiredEventsJob;
 use App\Jobs\PruneActivityLogsJob;
+use App\Jobs\PruneStaleDevicesJob;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('eventpulse:scrape')
@@ -46,5 +47,14 @@ Schedule::job(new PruneActivityLogsJob)
     ->weeklyOn(1, '04:30')
     ->withoutOverlapping();
 
+Schedule::job(new PruneStaleDevicesJob)
+    ->weeklyOn(1, '04:45')
+    ->withoutOverlapping();
+
 Schedule::command('horizon:snapshot')
     ->everyFiveMinutes();
+
+// Expired access and refresh tokens are dead the moment they expire; this
+// only keeps the table from growing by one row per sign-in forever.
+Schedule::command('sanctum:prune-expired --hours=24')
+    ->daily();

@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ApiErrorCode;
 use App\Http\Requests\ChatRequest;
 use App\Http\Resources\ChatMessageResource;
+use App\Http\Responses\ApiResponse;
+use App\Models\ChatMessage;
 use App\Models\User;
+use App\Services\Chat\ChatThread;
 use App\Services\Chat\OnboardingAgent;
 use App\Services\Chat\ProfileGenerator;
 use App\Services\Chat\ProfileUpdateAgent;
@@ -24,6 +28,7 @@ class ChatController extends Controller
         private readonly OnboardingAgent $onboardingAgent,
         private readonly ProfileGenerator $profileGenerator,
         private readonly ProfileUpdateAgent $profileUpdateAgent,
+        private readonly ChatThread $thread,
     ) {}
 
     /**
@@ -35,20 +40,7 @@ class ChatController extends Controller
     {
         $user = $request->user();
 
-        $messages = $user->chatMessages()
-            ->where('context', 'onboarding')
-            ->orderBy('created_at')
-            ->get();
-
-        // Seed the welcome message on first visit
-        if ($messages->isEmpty()) {
-            $welcome = $user->chatMessages()->create([
-                'role' => 'assistant',
-                'content' => $this->onboardingAgent->welcomeMessage(),
-                'context' => 'onboarding',
-            ]);
-            $messages = collect([$welcome]);
-        }
+        $messages = $this->thread->messagesFor($user, ChatThread::CONTEXT_ONBOARDING);
 
         return Inertia::render('Onboarding/Chat', [
             'messages' => ChatMessageResource::collection($messages)->resolve(),
@@ -65,33 +57,39 @@ class ChatController extends Controller
      */
     public function store(ChatRequest $request): JsonResponse
     {
-        $validated = $request->validated();
         $user = $request->user();
 
-        // Save user message
-        $userMsg = $user->chatMessages()->create([
-            'role' => 'user',
-            'content' => $validated['message'],
-            'context' => 'onboarding',
-        ]);
-
-        // Get AI response
-        $responseText = $this->onboardingAgent->chat($user, $validated['message']);
-
-        // Save assistant message
-        $assistantMsg = $user->chatMessages()->create([
-            'role' => 'assistant',
-            'content' => $responseText,
-            'context' => 'onboarding',
-        ]);
-
-        $isComplete = $this->onboardingAgent->isOnboardingComplete($user);
+        [$userMsg, $assistantMsg] = $this->onboardingExchange($user, $request->validated()['message']);
 
         return response()->json([
             'userMessage' => new ChatMessageResource($userMsg),
             'assistantMessage' => new ChatMessageResource($assistantMsg),
-            'onboardingComplete' => $isComplete,
+            'onboardingComplete' => $this->onboardingAgent->isOnboardingComplete($user),
         ]);
+    }
+
+    /**
+     * Save the user's onboarding message and the agent's reply.
+     *
+     * @return array{0: ChatMessage, 1: ChatMessage}
+     */
+    private function onboardingExchange(User $user, string $message): array
+    {
+        $userMsg = $user->chatMessages()->create([
+            'role' => 'user',
+            'content' => $message,
+            'context' => ChatThread::CONTEXT_ONBOARDING,
+        ]);
+
+        $responseText = $this->onboardingAgent->chat($user, $message);
+
+        $assistantMsg = $user->chatMessages()->create([
+            'role' => 'assistant',
+            'content' => $responseText,
+            'context' => ChatThread::CONTEXT_ONBOARDING,
+        ]);
+
+        return [$userMsg, $assistantMsg];
     }
 
     /**
@@ -101,15 +99,41 @@ class ChatController extends Controller
      */
     public function confirmProfile(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $result = $this->confirmOnboardingProfile($request->user());
 
+        if ($result === null) {
+            return response()->json([
+                'success' => false,
+                'message' => self::ONBOARDING_INCOMPLETE,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'profile' => $result['profile'],
+            'cityNotice' => $result['city_notice'],
+            'redirectTo' => route('dashboard'),
+        ]);
+    }
+
+    private const ONBOARDING_INCOMPLETE = 'Nu s-a putut genera profilul. Te rugăm să continui conversația.';
+
+    private const NO_CHANGES_DETECTED = 'Nu am putut detecta modificări. Continuă conversația.';
+
+    /**
+     * Generate, merge and store the profile from the onboarding chat.
+     *
+     * Null when the conversation does not yet yield a profile. Shared by the
+     * web page and the API so the two cannot drift on what "confirmed" means.
+     *
+     * @return array{profile: array<string, mixed>, city_notice: string|null}|null
+     */
+    private function confirmOnboardingProfile(User $user): ?array
+    {
         $profile = $this->profileGenerator->generateFromChat($user);
 
         if (empty($profile)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Nu s-a putut genera profilul. Te rugăm să continui conversația.',
-            ], 422);
+            return null;
         }
 
         // Merge with any existing profile data
@@ -119,7 +143,7 @@ class ChatController extends Controller
         // Extract non-score metadata
         $city = $this->resolveCity($user, $merged['city'] ?? null);
         $cityNotice = $this->cityNotice($merged['city'] ?? null);
-        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, 'onboarding');
+        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, ChatThread::CONTEXT_ONBOARDING);
         $this->warnOnMissingSummary($user, $summary, $merged['summary'] ?? null);
         unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times'], $merged['summary']);
 
@@ -127,10 +151,7 @@ class ChatController extends Controller
         // carrying nothing but a city passes the check above, then leaves an
         // empty score map behind a modal the user cannot dismiss.
         if ($merged === []) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Nu s-a putut genera profilul. Te rugăm să continui conversația.',
-            ], 422);
+            return null;
         }
 
         $user->update([
@@ -140,12 +161,7 @@ class ChatController extends Controller
             ...$this->summaryAttributes($user, $summary),
         ]);
 
-        return response()->json([
-            'success' => true,
-            'profile' => $merged,
-            'cityNotice' => $cityNotice,
-            'redirectTo' => route('dashboard'),
-        ]);
+        return ['profile' => $merged, 'city_notice' => $cityNotice];
     }
 
     /**
@@ -160,7 +176,7 @@ class ChatController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        return ChatMessageResource::collection($messages)->response();
+        return ApiResponse::collection(ChatMessageResource::collection($messages));
     }
 
     /**
@@ -168,21 +184,7 @@ class ChatController extends Controller
      */
     public function profileChat(Request $request): Response
     {
-        $user = $request->user();
-
-        $messages = $user->chatMessages()
-            ->where('context', 'profile_update')
-            ->orderBy('created_at')
-            ->get();
-
-        if ($messages->isEmpty()) {
-            $welcome = $user->chatMessages()->create([
-                'role' => 'assistant',
-                'content' => 'Salut! Spune-mi ce s-a schimbat — ce să adaug, să scot sau să ajustez în preferințele tale.',
-                'context' => 'profile_update',
-            ]);
-            $messages = collect([$welcome]);
-        }
+        $messages = $this->thread->messagesFor($request->user(), ChatThread::CONTEXT_PROFILE_UPDATE);
 
         return Inertia::render('Dashboard/ProfileChat', [
             'messages' => ChatMessageResource::collection($messages)->resolve(),
@@ -194,22 +196,7 @@ class ChatController extends Controller
      */
     public function profileChatStore(ChatRequest $request): JsonResponse
     {
-        $validated = $request->validated();
-        $user = $request->user();
-
-        $userMsg = $user->chatMessages()->create([
-            'role' => 'user',
-            'content' => $validated['message'],
-            'context' => 'profile_update',
-        ]);
-
-        $responseText = $this->profileUpdateAgent->respond($user, $validated['message']);
-
-        $assistantMsg = $user->chatMessages()->create([
-            'role' => 'assistant',
-            'content' => $responseText,
-            'context' => 'profile_update',
-        ]);
+        [$userMsg, $assistantMsg] = $this->profileExchange($request->user(), $request->validated()['message']);
 
         return response()->json([
             'userMessage' => new ChatMessageResource($userMsg),
@@ -218,19 +205,63 @@ class ChatController extends Controller
     }
 
     /**
+     * Save the user's profile-update message and the agent's reply.
+     *
+     * @return array{0: ChatMessage, 1: ChatMessage}
+     */
+    private function profileExchange(User $user, string $message): array
+    {
+        $userMsg = $user->chatMessages()->create([
+            'role' => 'user',
+            'content' => $message,
+            'context' => ChatThread::CONTEXT_PROFILE_UPDATE,
+        ]);
+
+        $responseText = $this->profileUpdateAgent->respond($user, $message);
+
+        $assistantMsg = $user->chatMessages()->create([
+            'role' => 'assistant',
+            'content' => $responseText,
+            'context' => ChatThread::CONTEXT_PROFILE_UPDATE,
+        ]);
+
+        return [$userMsg, $assistantMsg];
+    }
+
+    /**
      * Apply the profile changes inferred from the profile-update conversation.
      */
     public function applyProfileUpdate(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $result = $this->applyProfileChanges($request->user());
 
-        $changes = $this->profileGenerator->generateFromChat($user, 'profile_update');
-
-        if ($changes === []) {
+        if ($result === null) {
             return response()->json([
                 'success' => false,
-                'message' => 'Nu am putut detecta modificări. Continuă conversația.',
+                'message' => self::NO_CHANGES_DETECTED,
             ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'profile' => $result['profile'],
+            'cityNotice' => $result['city_notice'],
+            'redirectTo' => route('profile.show'),
+        ]);
+    }
+
+    /**
+     * Apply the changes inferred from the profile-update chat, or null when
+     * the conversation yields none. Shared by the web page and the API.
+     *
+     * @return array{profile: array<string, mixed>, city_notice: string|null}|null
+     */
+    private function applyProfileChanges(User $user): ?array
+    {
+        $changes = $this->profileGenerator->generateFromChat($user, ChatThread::CONTEXT_PROFILE_UPDATE);
+
+        if ($changes === []) {
+            return null;
         }
 
         $existingProfile = $user->interest_profile ?? [];
@@ -238,7 +269,7 @@ class ChatController extends Controller
 
         $city = $this->resolveCity($user, $merged['city'] ?? null);
         $cityNotice = $this->cityNotice($merged['city'] ?? null);
-        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, 'profile_update');
+        $summary = $this->resolveSummary($user, $merged['summary'] ?? null, ChatThread::CONTEXT_PROFILE_UPDATE);
         unset($merged['city'], $merged['price_sensitive'], $merged['preferred_times'], $merged['summary']);
 
         $user->update([
@@ -247,11 +278,94 @@ class ChatController extends Controller
             ...$this->summaryAttributes($user, $summary),
         ]);
 
-        return response()->json([
-            'success' => true,
-            'profile' => $merged,
-            'cityNotice' => $cityNotice,
-            'redirectTo' => route('profile.show'),
+        return ['profile' => $merged, 'city_notice' => $cityNotice];
+    }
+
+    // ---- API twins. Same work as the web methods above, one envelope.
+
+    /**
+     * The onboarding thread, seeded on first open like the web page.
+     */
+    public function apiOnboarding(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return ApiResponse::item([
+            'messages' => ChatMessageResource::collection(
+                $this->thread->messagesFor($user, ChatThread::CONTEXT_ONBOARDING),
+            )->resolve(),
+            'onboarding_complete' => $this->onboardingAgent->isOnboardingComplete($user),
+        ]);
+    }
+
+    public function apiStore(ChatRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        [$userMsg, $assistantMsg] = $this->onboardingExchange($user, $request->validated()['message']);
+
+        return ApiResponse::item([
+            'user_message' => (new ChatMessageResource($userMsg))->resolve(),
+            'assistant_message' => (new ChatMessageResource($assistantMsg))->resolve(),
+            'onboarding_complete' => $this->onboardingAgent->isOnboardingComplete($user),
+        ]);
+    }
+
+    /**
+     * Confirm the profile. No redirect target: the native router decides.
+     */
+    public function apiConfirmProfile(Request $request): JsonResponse
+    {
+        $result = $this->confirmOnboardingProfile($request->user());
+
+        if ($result === null) {
+            return ApiResponse::error(
+                ApiErrorCode::ValidationFailed,
+                self::ONBOARDING_INCOMPLETE,
+                422,
+                ['conversation' => [self::ONBOARDING_INCOMPLETE]],
+            );
+        }
+
+        return ApiResponse::item([
+            'profile' => $result['profile'],
+            'city_notice' => $result['city_notice'],
+        ]);
+    }
+
+    public function apiProfileChat(Request $request): JsonResponse
+    {
+        return ApiResponse::collection(ChatMessageResource::collection(
+            $this->thread->messagesFor($request->user(), ChatThread::CONTEXT_PROFILE_UPDATE),
+        ));
+    }
+
+    public function apiProfileChatStore(ChatRequest $request): JsonResponse
+    {
+        [$userMsg, $assistantMsg] = $this->profileExchange($request->user(), $request->validated()['message']);
+
+        return ApiResponse::item([
+            'user_message' => (new ChatMessageResource($userMsg))->resolve(),
+            'assistant_message' => (new ChatMessageResource($assistantMsg))->resolve(),
+        ]);
+    }
+
+    public function apiApplyProfileUpdate(Request $request): JsonResponse
+    {
+        $result = $this->applyProfileChanges($request->user());
+
+        if ($result === null) {
+            return ApiResponse::error(
+                ApiErrorCode::ValidationFailed,
+                self::NO_CHANGES_DETECTED,
+                422,
+                ['conversation' => [self::NO_CHANGES_DETECTED]],
+            );
+        }
+
+        return ApiResponse::item([
+            'profile' => $result['profile'],
+            'city_notice' => $result['city_notice'],
         ]);
     }
 

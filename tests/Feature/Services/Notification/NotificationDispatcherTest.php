@@ -2,18 +2,19 @@
 
 declare(strict_types=1);
 
+use App\DTOs\PushFanoutResult;
 use App\Enums\NotificationChannel;
 use App\Models\Notification;
 use App\Models\User;
 use App\Services\Activity\ActivityLogger;
 use App\Services\Notification\EmailRenderer;
 use App\Services\Notification\NotificationDispatcher;
-use App\Services\Notification\PushSender;
+use App\Services\Notification\PushFanout;
 use Illuminate\Support\Facades\Mail;
 
-function makeDispatcher(PushSender $pushSender): NotificationDispatcher
+function makeDispatcher(PushFanout $pushFanout): NotificationDispatcher
 {
-    return new NotificationDispatcher(new EmailRenderer, $pushSender, app(ActivityLogger::class));
+    return new NotificationDispatcher(new EmailRenderer, $pushFanout, app(ActivityLogger::class));
 }
 
 function makePendingNotification(User $user): Notification
@@ -32,7 +33,7 @@ it('emails for the email channel and does not push', function () {
     $user = User::factory()->create(['notification_channel' => NotificationChannel::Email]);
     $notification = makePendingNotification($user);
 
-    $push = Mockery::mock(PushSender::class);
+    $push = Mockery::mock(PushFanout::class);
     $push->shouldReceive('sendToUser')->never();
 
     makeDispatcher($push)->dispatch($notification);
@@ -47,8 +48,8 @@ it('pushes for the push channel and does not email', function () {
     $user = User::factory()->create(['notification_channel' => NotificationChannel::Push]);
     $notification = makePendingNotification($user);
 
-    $push = Mockery::mock(PushSender::class);
-    $push->shouldReceive('sendToUser')->once()->andReturn(1);
+    $push = Mockery::mock(PushFanout::class);
+    $push->shouldReceive('sendToUser')->once()->andReturn(new PushFanoutResult(web: 1, expo: 0, suppressed: 0));
 
     makeDispatcher($push)->dispatch($notification);
 
@@ -62,8 +63,8 @@ it('emails and pushes for the both channel', function () {
     $user = User::factory()->create(['notification_channel' => NotificationChannel::Both]);
     $notification = makePendingNotification($user);
 
-    $push = Mockery::mock(PushSender::class);
-    $push->shouldReceive('sendToUser')->once()->andReturn(1);
+    $push = Mockery::mock(PushFanout::class);
+    $push->shouldReceive('sendToUser')->once()->andReturn(new PushFanoutResult(web: 1, expo: 0, suppressed: 0));
 
     makeDispatcher($push)->dispatch($notification);
 
@@ -79,7 +80,7 @@ it('does not resend an already-sent notification', function () {
         'sent_at' => now(),
     ]);
 
-    $push = Mockery::mock(PushSender::class);
+    $push = Mockery::mock(PushFanout::class);
     $push->shouldReceive('sendToUser')->never();
 
     makeDispatcher($push)->dispatch($notification);

@@ -21,7 +21,9 @@ class RegisterRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users'],
-            'password' => ['required', 'min:8', 'confirmed'],
+            // `string` matters: without it a numeric JSON body compares by
+            // value, and `9` satisfies min:8.
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
         ];
     }
 }

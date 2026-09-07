@@ -44,6 +44,10 @@ class EventResource extends JsonResource
             // source_url rather than replacing it so API consumers that only
             // want the destination still have it.
             'click_url' => route('events.go', ['event' => $this->id]),
+            // The .ics download is a web affordance the app can hand to the
+            // OS; null when the event has no parseable start, which is when
+            // that route 404s.
+            'ics_url' => $this->starts_at === null ? null : route('events.calendar', ['event' => $this->id]),
             'sources_count' => $this->sources_count,
             // Deduplicated by URL: event_sources is unique on
             // (source, url_key, occurrence_key), and merging two occurrences of

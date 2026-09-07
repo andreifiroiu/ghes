@@ -1,10 +1,11 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Label } from '@/Components/ui/Label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/Components/ui/Card';
 
 export default function Login() {
+    const flash = usePage().props.flash || {};
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
@@ -40,6 +41,11 @@ export default function Login() {
                     </CardHeader>
                     <form onSubmit={handleSubmit}>
                         <CardContent className="space-y-4">
+                            {flash.success && (
+                                <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+                                    {flash.success}
+                                </p>
+                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="email">Email</Label>
                                 <Input
@@ -56,7 +62,16 @@ export default function Login() {
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="password">Parolă</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="password">Parolă</Label>
+                                    <Link
+                                        href="/forgot-password"
+                                        className="text-xs font-medium hover:underline"
+                                        style={{ color: '#FF5733' }}
+                                    >
+                                        Ai uitat parola?
+                                    </Link>
+                                </div>
                                 <Input
                                     id="password"
                                     type="password"

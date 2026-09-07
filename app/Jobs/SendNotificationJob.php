@@ -39,7 +39,18 @@ class SendNotificationJob implements ShouldQueue
             'attempt' => $this->attempts(),
         ]);
 
-        $notification = Notification::findOrFail($this->notificationId);
+        $notification = Notification::find($this->notificationId);
+
+        // The row cascades away when its user deletes their account between
+        // composing and sending. Expected, not a failure: retrying three
+        // times and landing in failed_jobs would only bury real failures.
+        if ($notification === null) {
+            Log::info('SendNotificationJob: notification no longer exists, skipping', [
+                'notification_id' => $this->notificationId,
+            ]);
+
+            return;
+        }
 
         $dispatcher->dispatch($notification);
 

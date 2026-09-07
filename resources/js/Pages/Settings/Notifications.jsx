@@ -63,13 +63,26 @@ export default function Notifications({ settings = {}, vapidPublicKey = null }) 
                 .querySelector('meta[name="csrf-token"]')
                 ?.getAttribute('content');
 
+            // A stable id for this browser install, shared with a native app
+            // on the same handset so the digest is not delivered twice to it.
+            let installId = null;
+            try {
+                installId = localStorage.getItem('ghes.install_id');
+                if (!installId) {
+                    installId = crypto.randomUUID();
+                    localStorage.setItem('ghes.install_id', installId);
+                }
+            } catch {
+                installId = null;
+            }
+
             await fetch('/push/subscribe', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
                 },
-                body: JSON.stringify(subscription.toJSON()),
+                body: JSON.stringify({ ...subscription.toJSON(), install_id: installId }),
             });
 
             alert('Notificările push au fost activate.');

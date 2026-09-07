@@ -10,6 +10,7 @@ use App\Http\Resources\AdminUserResource;
 use App\Models\DiscoveryLog;
 use App\Models\User;
 use App\Models\UserEventReaction;
+use App\Services\Account\AccountDeleter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,6 +18,10 @@ use Inertia\Response;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly AccountDeleter $deleter,
+    ) {}
+
     public function index(Request $request): Response
     {
         $query = User::query()->withCount('reactions')->orderBy('created_at', 'desc');
@@ -93,7 +98,7 @@ class UserController extends Controller
             return back()->with('error', 'You cannot delete your own account.');
         }
 
-        $user->delete();
+        $this->deleter->delete($user);
 
         return redirect()->route('admin.users.index')->with('success', 'User deleted.');
     }

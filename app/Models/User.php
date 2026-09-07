@@ -6,9 +6,12 @@ namespace App\Models;
 
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationFrequency;
+use App\Notifications\ResetPasswordNotification;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\City\CityCatalog;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -28,10 +31,40 @@ use Laravel\Sanctum\HasApiTokens;
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $created_at
  */
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements HasLocalePreference, MustVerifyEmail
 {
+    /**
+     * Notifications render in this locale. The app locale stays `en` (there is
+     * no `lang/en` tree, and switching it would change validation messages and
+     * Carbon everywhere); the framework's mail layout strings are translated
+     * in `lang/ro.json` and the product speaks Romanian, so every user gets
+     * Romanian mail regardless of the request that triggered it.
+     */
+    public function preferredLocale(): string
+    {
+        return 'ro';
+    }
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasUuids, Notifiable;
+
+    /**
+     * Send the verification mail. `$intent` names where the link should land
+     * after verifying: null for the web profile page,
+     * {@see VerifyEmailNotification::INTENT_MOBILE} to bounce back into the app.
+     */
+    public function sendEmailVerificationNotification(?string $intent = null): void
+    {
+        $this->notify(new VerifyEmailNotification($intent));
+    }
+
+    /**
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
+    }
 
     /**
      * Give every new account the covered city.
@@ -142,6 +175,22 @@ class User extends Authenticatable implements MustVerifyEmail
     public function discoveryLogs(): HasMany
     {
         return $this->hasMany(DiscoveryLog::class);
+    }
+
+    /**
+     * @return HasMany<SocialIdentity, $this>
+     */
+    public function socialIdentities(): HasMany
+    {
+        return $this->hasMany(SocialIdentity::class);
+    }
+
+    /**
+     * @return HasMany<Device, $this>
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class);
     }
 
     /**
