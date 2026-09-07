@@ -1,9 +1,12 @@
 <?php
 
+use App\Exceptions\ApiExceptionRenderer;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,6 +18,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             HandleInertiaRequests::class,
+        ]);
+
+        // Every /api route is limited by the named `api` limiter. Without this
+        // call the framework adds no throttle to the group at all, and every
+        // authenticated endpoint was unlimited. Sanctum's stateful/SPA mode is
+        // deliberately not enabled: nothing under /api needs cookie auth, and
+        // it would put CSRF in front of every mobile call.
+        $middleware->throttleApi();
+
+        // Sanctum's ability middleware is not auto-registered.
+        $middleware->alias([
+            'abilities' => CheckAbilities::class,
+            'ability' => CheckForAnyAbility::class,
         ]);
 
         // The signed email reaction links carry their own authentication in the
@@ -29,5 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Scoped to /api/v1 inside the renderer; everything else falls through
+        // to the framework's default rendering untouched.
+        $exceptions->render(new ApiExceptionRenderer);
     })->create();

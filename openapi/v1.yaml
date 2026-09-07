@@ -1,0 +1,1438 @@
+openapi: 3.1.0
+info:
+  title: Ghes API
+  version: "1.0"
+  description: |
+    Version 1 of the Ghes REST API, the contract the native client is built against.
+
+    **Hand-maintained.** `tests/Feature/Api/OpenApiContractTest.php` asserts that every
+    registered `api/v1` route (admin excluded) appears here and that every path here resolves
+    to a real route, so adding an endpoint without a spec entry fails the suite.
+
+    ## Envelope
+    Every success response has a top-level `data`:
+    - single resource → `{ "data": { … } }`
+    - plain list → `{ "data": [ … ] }`
+    - paginated list → `{ "data": [ … ], "links": { … }, "meta": { … } }`
+    - acknowledgement → `{ "data": { "message": "…" } }`
+
+    **Pagination trap.** `links` is an *object* (`first`, `last`, `prev`, `next`); the
+    page-number links are the *array* at `meta.links`. Read `links.next` and
+    `meta.last_page`; never iterate `links`.
+
+    ## Errors
+    Every failure is `{ "error": { "code", "message", "details" } }`. Switch on `code`
+    (`ErrorCode`), never on the message. A 429 also carries `error.retry_after` (seconds)
+    and a `Retry-After` header; so does the 503 `service_unavailable` raised during
+    planned maintenance — back off, do not treat it as a crash. A build below the minimum supported version receives 426
+    `upgrade_required`; any path under `/api` outside `/api/v1` receives 410
+    `upgrade_required`.
+
+    ## Auth
+    `POST /auth/register` and `POST /auth/login` return a **token pair** bound to a device:
+    a short-lived `access_token` (send as `Authorization: Bearer …` on every call) and a
+    long-lived `refresh_token` (valid only on `POST /auth/refresh`). Persist the returned
+    `device_id` and send it on the next sign-in so the old pair is replaced, not duplicated.
+    When a call answers 401 `token_expired`, refresh; the old pair is revoked the moment the
+    new one is issued. A replayed refresh token answers 401 `unauthenticated` — sign in again.
+    Full OAuth-style reuse detection (revoking the whole family on replay) is deliberately
+    out of Phase 1. `POST /auth/logout` revokes this device's pair; `/auth/logout-all` every
+    device.
+
+    ## Idempotency
+    `POST /feedback` and `POST /bookmarks` are upsert-backed and safe to retry blindly on a
+    network blip. `DELETE` on either is a no-op when nothing is there.
+
+    ## Search
+    `GET /events?search=` requires Meilisearch. When the index is unreachable the server falls
+    back to a database substring match, so results are still returned but relevance differs.
+
+    ## Headers
+    - `X-Ghes-App-Version: <semver>` — optional; enables the force-upgrade check.
+    - `X-Ghes-Client: mobile` — send on every request. Activity the app generates (impressions,
+      views, clicks) is then attributed to the per-screen surfaces `mobile_feed`,
+      `mobile_browse`, `mobile_event_detail`, `mobile_saved` by default instead of the
+      ambiguous `api`. A `from=<surface>` query or body parameter overrides the default —
+      send `from=push` when a screen was opened from a notification, as the web digest does.
+    - `X-Ghes-Live-Search: 1` — on `GET /events`, marks a keystroke-driven request so it is
+      not recorded as a settled search.
+    - Send a real `User-Agent`. A UA matching the server's bot denylist (words that identify
+      link previewers and scanners) has its activity recorded but flagged, and flagged rows
+      are excluded from rates, ranking and profile signals. React Native's defaults are fine.
+      On a JSON request, a `from` in the body takes precedence over one in the query string.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: meta
+  - name: auth
+  - name: events
+  - name: recommendations
+  - name: feedback
+  - name: profile
+  - name: notifications
+  - name: chat
+
+paths:
+  /meta:
+    get:
+      tags: [meta]
+      summary: Vocabularies and limits the client needs before its first screen
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Meta"
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Create an account and issue a token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [name, email, password]
+                  properties:
+                    name: { type: string, maxLength: 255 }
+                    email: { type: string, format: email, maxLength: 255 }
+                    password: { type: string, minLength: 8 }
+                    city:
+                      type: [string, "null"]
+                      description: One of `Meta.cities[].label`. Absent means the covered default city; an explicit null means no city.
+      responses:
+        "201":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange credentials for a token pair
+      description: Signing in again from the same `device_id` replaces that device's pair.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [email, password]
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: Wrong credentials are reported as a validation failure on `email`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/oauth/google:
+    post:
+      tags: [auth]
+      summary: Exchange a Google ID token for a token pair
+      description: |
+        The app runs PKCE against Google directly (`expo-auth-session`) and posts the resulting
+        `id_token`. The server verifies it with Google, requires a verified email, and links or
+        creates the account by address — the same rule as web sign-in. A new account starts with
+        onboarding pending.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [id_token]
+                  properties:
+                    id_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: The token failed verification; `details.id_token` says which check.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/oauth/apple:
+    post:
+      tags: [auth]
+      summary: Exchange an Apple ID token for a token pair
+      description: |
+        Sign in with Apple. The server verifies the token's signature against Apple's published
+        keys and checks issuer, audience and expiry. Apple includes the email on the **first**
+        sign-in only and may hand out a private relay address; accounts are linked by Apple's
+        stable subject, so later sign-ins without an email still find the account. The person's
+        name comes beside the token on first authorisation — forward it as `name`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DeviceFields"
+                - type: object
+                  required: [identity_token]
+                  properties:
+                    identity_token: { type: string }
+                    name: { type: [string, "null"], maxLength: 255 }
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "422":
+          description: The token failed verification, or the subject is unknown and no email was included; `details.identity_token` says which.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: Apple's key set could not be fetched; retry after `error.retry_after`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Send a password reset link
+      description: Always answers the same way, whether or not the address has an account. The link opens the web reset page; the app may intercept it and post the token to `/auth/password/reset`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Set a new password with the token from the reset link
+      description: On success every device's token pair is revoked; sign in again. A bad or used token is a 422 on `email` with the same message as an unknown address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/email/verification-notification:
+    post:
+      tags: [auth]
+      summary: Resend the email verification link
+      description: The link lands in the browser and, once verified, bounces back into the app via its URL scheme. Poll `GET /profile` for `email_verified_at` to confirm.
+      responses:
+        "200":
+          description: Sent, or already verified (`data.verified` says which)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [message, verified]
+                    properties:
+                      message: { type: string }
+                      verified: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the pair (send the refresh token as the bearer)
+      description: |
+        Authenticate with the **refresh** token. Both tokens of the old pair are revoked and a
+        new pair for the same device is returned. An access token here answers 403; a refresh
+        token that was already rotated answers 401.
+      responses:
+        "200":
+          $ref: "#/components/responses/TokenIssued"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The bearer is an access token, not a refresh token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Sign out this device (revokes its access and refresh tokens)
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /auth/logout-all:
+    post:
+      tags: [auth]
+      summary: Sign out every device
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /auth/sessions:
+    get:
+      tags: [auth]
+      summary: Devices holding a live pair, most recently active first
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events:
+    get:
+      tags: [events]
+      summary: Browse upcoming events
+      description: |
+        Same filters and the same exclusions as the web browse page: events the user marked
+        `not_interested` are omitted (that *is* the "hide" mechanism — there is no separate
+        hide endpoint). `search` requires Meilisearch. Page size is `Meta.page_size`.
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { $ref: "#/components/schemas/Category" } }
+        - { name: city, in: query, schema: { type: string }, description: A city label from `Meta.cities` }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: range, in: query, schema: { type: string, enum: [weekend] } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: venue, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/EventPage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events/saved:
+    get:
+      tags: [events]
+      summary: The user's bookmarked events, soonest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/EventPage"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /events/{event}:
+    get:
+      tags: [events]
+      summary: Event detail with related events
+      description: Records an event view. A merged duplicate resolves to its canonical event; a hidden event is 404.
+      parameters:
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/Event"
+                      - type: object
+                        required: [related_events]
+                        properties:
+                          related_events:
+                            type: array
+                            items: { $ref: "#/components/schemas/Event" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /events/{event}/click:
+    post:
+      tags: [events]
+      summary: Record an outbound click and get the URL to open
+      description: |
+        Use this instead of opening `Event.click_url`: that web redirect carries no bearer token,
+        so a click through it would be logged but would never train the recommender. The returned
+        `url` is always one of the event's own stored URLs; `source` only selects among the
+        providers listed in `Event.sources` and is ignored when it names none of them.
+      parameters:
+        - { name: event, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, description: "A provider key from `Event.sources[].source`" }
+                from: { type: string, description: "The screen the click came from: an activity surface value" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [url, source]
+                    properties:
+                      url: { type: string, format: uri }
+                      source: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /recommendations:
+    get:
+      tags: [recommendations]
+      summary: The personalised feed
+      description: Ranked recommendations plus the discovery slice, in the engine's order. Records impressions.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [recommendations, discovery, total_score]
+                    properties:
+                      recommendations:
+                        type: array
+                        items: { $ref: "#/components/schemas/Event" }
+                      discovery:
+                        type: array
+                        items: { $ref: "#/components/schemas/Event" }
+                      total_score: { type: number }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /recommendations/history:
+    get:
+      tags: [recommendations]
+      summary: Past digests and the events they carried, newest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/RecommendationBatch" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /feedback:
+    post:
+      tags: [feedback]
+      summary: React to an event (idempotent upsert)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_id, reaction]
+              properties:
+                event_id: { type: string, format: uuid }
+                reaction: { $ref: "#/components/schemas/Reaction" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [message, reaction]
+                    properties:
+                      message: { type: string }
+                      reaction: { $ref: "#/components/schemas/Reaction" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [feedback]
+      summary: Remove the user's reaction to an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /bookmarks:
+    post:
+      tags: [feedback]
+      summary: Save an event (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [feedback]
+      summary: Unsave an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventIdBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /profile:
+    get:
+      tags: [profile]
+      summary: The authenticated user
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    put:
+      tags: [profile]
+      summary: Update account fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email, maxLength: 255 }
+                timezone: { type: string, description: An IANA timezone name }
+                city: { type: string, description: One of `Meta.cities[].label` }
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /account:
+    delete:
+      tags: [profile]
+      summary: Delete the account, immediately and completely
+      description: |
+        Hard delete, no grace period. Requires re-authentication so a stolen access token cannot
+        do it: the current password, or — for accounts that sign in with a provider — a fresh
+        Google ID token or Apple identity token for the linked identity. Everything the account
+        owns goes with it; every device's tokens are revoked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: At least one of the three; the password is checked first when sent.
+              properties:
+                current_password: { type: string }
+                google_id_token: { type: string }
+                apple_identity_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /profile/stats:
+    get:
+      tags: [profile]
+      summary: Reaction counts and discovery hit-rate
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProfileStats"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: Notification history, newest first
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Paginated"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Notification" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /chat/history:
+    get:
+      tags: [chat]
+      summary: Chat messages for a context
+      parameters:
+        - name: context
+          in: query
+          schema: { type: string, enum: [onboarding, profile_update], default: onboarding }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /onboarding:
+    get:
+      tags: [chat]
+      summary: The onboarding thread, seeded with the welcome message on first open
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [messages, onboarding_complete]
+                    properties:
+                      messages:
+                        type: array
+                        items: { $ref: "#/components/schemas/ChatMessage" }
+                      onboarding_complete: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+
+  /onboarding/chat:
+    post:
+      tags: [chat]
+      summary: Send an onboarding message and get the assistant's reply
+      description: Costs an LLM call; limited per user per minute and per day.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user_message, assistant_message, onboarding_complete]
+                    properties:
+                      user_message: { $ref: "#/components/schemas/ChatMessage" }
+                      assistant_message: { $ref: "#/components/schemas/ChatMessage" }
+                      onboarding_complete: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /onboarding/confirm:
+    post:
+      tags: [chat]
+      summary: Generate and store the interest profile from the onboarding chat
+      description: 422 `validation_failed` with `details.conversation` when the chat does not yet yield a profile — keep chatting.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProfileApplied"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /profile/chat:
+    get:
+      tags: [chat]
+      summary: The profile-refinement thread, seeded on first open
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      tags: [chat]
+      summary: Send a profile-refinement message and get the assistant's reply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user_message, assistant_message]
+                    properties:
+                      user_message: { $ref: "#/components/schemas/ChatMessage" }
+                      assistant_message: { $ref: "#/components/schemas/ChatMessage" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /profile/chat/apply:
+    post:
+      tags: [chat]
+      summary: Apply the changes inferred from the profile-refinement chat
+      description: 422 `validation_failed` with `details.conversation` when no change can be inferred.
+      responses:
+        "200":
+          $ref: "#/components/responses/ProfileApplied"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /devices:
+    get:
+      tags: [profile]
+      summary: This account's native push registrations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Device" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    post:
+      tags: [profile]
+      summary: Register or refresh this install's push token (idempotent)
+      description: |
+        Call on every launch and whenever the token changes. Keyed on the token alone: signing in
+        with a second account on the same handset re-points the row to that account. Send the
+        same persisted `install_id` here and on a web push subscription from the same phone so
+        the digest is not delivered twice to it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [push_token, platform]
+              properties:
+                push_token: { type: string, maxLength: 255, description: "An Expo push token: ExponentPushToken[…]" }
+                platform: { type: string, enum: [ios, android, web] }
+                install_id: { type: [string, "null"], format: uuid }
+                device_name: { type: [string, "null"], maxLength: 100 }
+                app_version: { type: [string, "null"], maxLength: 32 }
+                os_version: { type: [string, "null"], maxLength: 32 }
+                locale: { type: [string, "null"], maxLength: 16 }
+                timezone: { type: [string, "null"], description: An IANA timezone name }
+      responses:
+        "200":
+          description: Refreshed an existing registration
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Device" }
+        "201":
+          description: Registered a new device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Device" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      tags: [profile]
+      summary: Forget this install's push token (call on sign-out)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [push_token]
+              properties:
+                push_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Acknowledged"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          description: No such device on this account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /settings/notifications:
+    get:
+      tags: [profile]
+      summary: Notification settings and the values they accept
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user, channels, frequencies]
+                    properties:
+                      user: { $ref: "#/components/schemas/User" }
+                      channels:
+                        type: array
+                        items: { type: string, enum: [email, push, both] }
+                      frequencies:
+                        type: array
+                        items: { type: string, enum: [daily, weekly, realtime] }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    put:
+      tags: [profile]
+      summary: Update notification settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, frequency]
+              properties:
+                channel: { type: string, enum: [email, push, both] }
+                frequency: { type: string, enum: [daily, weekly, realtime] }
+                discovery_openness: { type: number, minimum: 0, maximum: 1 }
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResource"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    TokenIssued:
+      description: A token pair bound to the device, and the user it belongs to
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                allOf:
+                  - $ref: "#/components/schemas/TokenPair"
+                  - type: object
+                    required: [user]
+                    properties:
+                      user: { $ref: "#/components/schemas/User" }
+    UserResource:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: "#/components/schemas/User" }
+    EventPage:
+      description: One page of events
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Paginated"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+    ProfileApplied:
+      description: The stored profile scores and, when the chat named a city Ghes does not cover, a notice
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [profile, city_notice]
+                properties:
+                  profile:
+                    type: object
+                    additionalProperties: { type: number }
+                  city_notice: { type: [string, "null"] }
+    Acknowledged:
+      description: Done; nothing worth returning
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [message]
+                properties:
+                  message: { type: string }
+    Unauthenticated:
+      description: Missing, revoked or invalid token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationFailed:
+      description: Field errors under `error.details`, keyed by field
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: Too many requests; `error.retry_after` is in seconds
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - validation_failed
+        - unauthenticated
+        - token_expired
+        - forbidden
+        - not_found
+        - rate_limited
+        - upgrade_required
+        - bad_request
+        - service_unavailable
+        - server_error
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            details:
+              type: [object, "null"]
+              description: Field errors for `validation_failed`; otherwise null or a small context object.
+            retry_after:
+              type: integer
+              description: Only on 429.
+
+    Paginated:
+      type: object
+      required: [data, links, meta]
+      properties:
+        data: { type: array, items: {} }
+        links:
+          type: object
+          description: An object, not a list.
+          required: [first, last, prev, next]
+          properties:
+            first: { type: [string, "null"] }
+            last: { type: [string, "null"] }
+            prev: { type: [string, "null"] }
+            next: { type: [string, "null"] }
+        meta:
+          type: object
+          required: [current_page, from, last_page, path, per_page, to, total, links]
+          properties:
+            current_page: { type: integer }
+            from: { type: [integer, "null"] }
+            last_page: { type: integer }
+            path: { type: string }
+            per_page: { type: integer }
+            to: { type: [integer, "null"] }
+            total: { type: integer }
+            links:
+              type: array
+              description: The page-number links.
+              items:
+                type: object
+                properties:
+                  url: { type: [string, "null"] }
+                  label: { type: string }
+                  active: { type: boolean }
+
+    Category:
+      type: string
+      description: Backing values of `EventCategory`; the live list is `Meta.categories`.
+      enum: [music, arts, sports, technology, food, nightlife, business, health, education, family, community, film, literature, other]
+
+    Reaction:
+      type: string
+      enum: [interested, not_interested]
+      description: '"Saved" is a bookmark, not a reaction. `not_interested` also hides the event from browse and the feed.'
+
+    EventIdBody:
+      type: object
+      required: [event_id]
+      properties:
+        event_id: { type: string, format: uuid }
+
+    DeviceFields:
+      type: object
+      description: The installed app a token pair is issued to.
+      required: [device_name, platform]
+      properties:
+        device_id:
+          type: [string, "null"]
+          format: uuid
+          description: Persisted by the client after the first sign-in. Omit on a fresh install; the server mints one.
+        device_name: { type: string, maxLength: 100, example: "iPhone 15 Pro" }
+        platform: { type: string, enum: [ios, android, web] }
+        app_version: { type: [string, "null"], maxLength: 32, example: "1.0.0" }
+
+    TokenPair:
+      type: object
+      required: [access_token, access_expires_at, refresh_token, refresh_expires_at, device_id]
+      properties:
+        access_token: { type: string, description: "Bearer for every call; ability api:access." }
+        access_expires_at: { type: string, format: date-time }
+        refresh_token: { type: string, description: "Bearer for POST /auth/refresh only; ability token:refresh." }
+        refresh_expires_at: { type: string, format: date-time }
+        device_id: { type: string, format: uuid }
+
+    Session:
+      type: object
+      required: [device_id, device_name, platform, app_version, signed_in_at, last_used_at, is_current]
+      properties:
+        device_id: { type: string, format: uuid }
+        device_name: { type: [string, "null"] }
+        platform: { type: [string, "null"], enum: [ios, android, web, null] }
+        app_version: { type: [string, "null"] }
+        signed_in_at: { type: [string, "null"], format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+        is_current: { type: boolean }
+
+    Event:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - category
+        - tags
+        - venue
+        - address
+        - city
+        - latitude
+        - longitude
+        - starts_at
+        - ends_at
+        - price_min
+        - price_max
+        - currency
+        - is_free
+        - image_url
+        - popularity_score
+        - source
+        - source_url
+        - click_url
+        - ics_url
+        - sources_count
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        category: { $ref: "#/components/schemas/Category" }
+        tags: { type: array, items: { type: string } }
+        venue: { type: [string, "null"] }
+        address: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        latitude: { type: [number, "null"] }
+        longitude: { type: [number, "null"] }
+        starts_at: { type: [string, "null"], format: date-time }
+        ends_at: { type: [string, "null"], format: date-time }
+        price_min: { type: [number, "null"] }
+        price_max: { type: [number, "null"] }
+        currency: { type: [string, "null"] }
+        is_free: { type: boolean }
+        image_url: { type: [string, "null"] }
+        popularity_score: { type: [number, "null"] }
+        source: { type: string, description: The adapter key the canonical row was scraped under }
+        source_url: { type: string }
+        click_url:
+          type: string
+          description: The web redirect that records a click. Not for native use — it carries no bearer token, so the click would not train the recommender.
+        ics_url:
+          type: [string, "null"]
+          description: The event as an iCalendar file, for handing to the OS calendar. Null when the event has no parseable start.
+        sources_count: { type: integer }
+        sources:
+          type: array
+          description: Only on the detail endpoint.
+          items:
+            type: object
+            required: [source, source_url]
+            properties:
+              source: { type: string }
+              source_url: { type: string }
+        current_reaction:
+          oneOf:
+            - $ref: "#/components/schemas/Reaction"
+            - type: "null"
+          description: Present when the request is authenticated.
+        is_saved:
+          type: boolean
+          description: Present when the request is authenticated.
+
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - email_verified_at
+        - interest_profile
+        - profile_summary
+        - profile_summary_updated_at
+        - discovery_openness
+        - notification_channel
+        - notification_frequency
+        - timezone
+        - city
+        - onboarding_completed
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        email_verified_at: { type: [string, "null"], format: date-time }
+        interest_profile:
+          type: [object, "null"]
+          additionalProperties: { type: number }
+          description: Category or tag → score in [0, 1].
+        profile_summary: { type: [string, "null"] }
+        profile_summary_updated_at: { type: [string, "null"], format: date-time }
+        discovery_openness: { type: [number, "null"], minimum: 0, maximum: 1 }
+        notification_channel: { type: [string, "null"], enum: [email, push, both, null] }
+        notification_frequency: { type: [string, "null"], enum: [daily, weekly, realtime, null] }
+        timezone: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        onboarding_completed: { type: boolean }
+
+    ProfileStats:
+      type: object
+      required: [reactions, discovery]
+      properties:
+        reactions:
+          type: object
+          required: [total, by_type, saved]
+          properties:
+            total: { type: integer }
+            by_type:
+              type: object
+              additionalProperties: { type: integer }
+            saved: { type: integer }
+        discovery:
+          type: object
+          required: [openness, surfaced, resolved, hits, hit_rate]
+          properties:
+            openness: { type: number }
+            surfaced: { type: integer }
+            resolved: { type: integer }
+            hits: { type: integer }
+            hit_rate: { type: number }
+
+    Notification:
+      type: object
+      required: [id, channel, frequency, subject, event_ids, discovery_event_ids, sent_at, opened_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        channel: { type: string, enum: [email, push, both] }
+        frequency: { type: string, enum: [daily, weekly, realtime] }
+        subject: { type: [string, "null"] }
+        event_ids: { type: array, items: { type: string, format: uuid } }
+        discovery_event_ids: { type: array, items: { type: string, format: uuid } }
+        sent_at: { type: [string, "null"], format: date-time }
+        opened_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+
+    RecommendationBatch:
+      type: object
+      required: [notification_id, sent_at, discovery_event_ids, events]
+      properties:
+        notification_id: { type: string, format: uuid }
+        sent_at: { type: [string, "null"], format: date-time }
+        discovery_event_ids: { type: array, items: { type: string, format: uuid } }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+
+    Device:
+      type: object
+      required: [id, platform, push_token, install_id, device_name, app_version, os_version, locale, timezone, last_seen_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        platform: { type: string, enum: [ios, android, web] }
+        push_token: { type: string }
+        install_id: { type: [string, "null"], format: uuid }
+        device_name: { type: [string, "null"] }
+        app_version: { type: [string, "null"] }
+        os_version: { type: [string, "null"] }
+        locale: { type: [string, "null"] }
+        timezone: { type: [string, "null"] }
+        last_seen_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+
+    ChatMessageBody:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, maxLength: 2000 }
+
+    ChatMessage:
+      type: object
+      required: [id, role, content, context, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        context: { type: string, enum: [onboarding, profile_update] }
+        created_at: { type: [string, "null"], format: date-time }
+
+    Meta:
+      type: object
+      required:
+        - categories
+        - cities
+        - default_city
+        - reactions
+        - ranges
+        - notification_channels
+        - notification_frequencies
+        - page_size
+        - min_supported_app_version
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+        cities:
+          type: array
+          items:
+            type: object
+            required: [key, label, timezone]
+            properties:
+              key: { type: string }
+              label: { type: string, description: The value `users.city` stores and the profile endpoints accept }
+              timezone: { type: string }
+        default_city: { type: string }
+        reactions:
+          type: array
+          items: { $ref: "#/components/schemas/Reaction" }
+        ranges:
+          type: array
+          items: { type: string, enum: [weekend] }
+        notification_channels:
+          type: array
+          items: { type: string, enum: [email, push, both] }
+        notification_frequencies:
+          type: array
+          items: { type: string, enum: [daily, weekly, realtime] }
+        page_size:
+          type: integer
+          description: Rows per page on every event list. Read it; do not hardcode 20.
+        min_supported_app_version:
+          type: [string, "null"]
+          description: Builds below this receive 426 on every request.

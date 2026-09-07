@@ -11,12 +11,21 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
+ * @property string $id
+ * @property string $user_id
  * @property NotificationChannel $channel
  * @property NotificationFrequency $frequency
  * @property array<int, string> $event_ids
  * @property array<int, string> $discovery_event_ids
+ * @property string|null $subject
+ * @property Carbon|null $sent_at
+ * @property Carbon|null $opened_at
+ * @property Carbon|null $decay_applied_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class Notification extends Model
 {

@@ -2,45 +2,26 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\Api\AdminStatsController;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\BookmarkController;
-use App\Http\Controllers\ChatController;
-use App\Http\Controllers\EventController;
-use App\Http\Controllers\FeedbackController;
-use App\Http\Controllers\RecommendationController;
+use App\Http\Controllers\Api\V1\ApiVersionGoneController;
+use App\Http\Middleware\EnforceMinimumAppVersion;
+use App\Http\Middleware\ResolveClientSurface;
 use Illuminate\Support\Facades\Route;
 
-// Public API auth (token issuance)
-Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:10,1')->name('api.auth.register');
-Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:5,1')->name('api.auth.login');
+// The API is versioned by path, with no unversioned alias: a second mount
+// would double the surface the throttle and ability middleware must cover,
+// and a forgotten alias is exactly how hardening gets bypassed. Each version
+// lives in its own file under routes/api/.
+Route::prefix('v1')
+    ->name('api.v1.')
+    ->middleware([EnforceMinimumAppVersion::class, ResolveClientSurface::class])
+    ->group(base_path('routes/api/v1.php'));
 
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('auth/logout', [AuthController::class, 'logout'])->name('api.auth.logout');
-
-    Route::get('events', [EventController::class, 'apiIndex'])->name('api.events.index');
-    Route::get('events/saved', [BookmarkController::class, 'apiIndex'])->name('api.events.saved');
-    Route::get('events/{event}', [EventController::class, 'apiShow'])->name('api.events.show');
-
-    Route::get('recommendations', [RecommendationController::class, 'apiIndex'])->name('api.recommendations');
-    Route::get('recommendations/history', [RecommendationController::class, 'apiHistory'])->name('api.recommendations.history');
-
-    Route::post('feedback', [FeedbackController::class, 'store'])->name('api.feedback.store');
-    Route::delete('feedback', [FeedbackController::class, 'destroy'])->name('api.feedback.destroy');
-    Route::post('bookmarks', [BookmarkController::class, 'store'])->name('api.bookmarks.store');
-    Route::delete('bookmarks', [BookmarkController::class, 'destroy'])->name('api.bookmarks.destroy');
-
-    Route::get('profile', [ProfileController::class, 'show'])->name('api.profile.show');
-    Route::put('profile', [ProfileController::class, 'update'])->name('api.profile.update');
-    Route::get('profile/stats', [ProfileController::class, 'stats'])->name('api.profile.stats');
-
-    Route::get('notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
-    Route::get('chat/history', [ChatController::class, 'apiHistory'])->name('api.chat.history');
-
-    Route::prefix('admin')->name('api.admin.')->middleware('can:access-admin')->group(function () {
-        Route::get('events/stats', [AdminStatsController::class, 'eventStats'])->name('events.stats');
-        Route::get('activity/stats', [AdminStatsController::class, 'activityStats'])->name('activity.stats');
-    });
-});
+// Anything else under /api is a version this server does not serve — in
+// practice an old build still calling the pre-versioning paths. Answer
+// "upgrade", not "server broken". The pattern excludes `v1/…` so an
+// unknown *v1* path still 404s through the error envelope instead of being
+// misreported as a retired version. Inside the `api` prefix, so it cannot
+// shadow `/up`, Horizon or the log viewer.
+Route::any('{path}', ApiVersionGoneController::class)
+    ->where('path', '^(?!v1(?:/|$)).*$')
+    ->name('api.version-gone');

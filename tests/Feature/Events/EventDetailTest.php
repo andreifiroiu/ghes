@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventSource;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia;
+use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -156,11 +157,13 @@ it('returns related events from the API detail endpoint too', function () {
         'starts_at' => now()->addDays(4),
     ]);
 
-    $response = $this->actingAs($user)->getJson("/api/events/{$event->id}");
+    Sanctum::actingAs($user, ['*']);
+
+    $response = $this->getJson("/api/v1/events/{$event->id}");
 
     $response->assertOk()
         ->assertJsonPath('data.id', $event->id)
-        ->assertJsonPath('relatedEvents.0.id', $related->id);
+        ->assertJsonPath('data.related_events.0.id', $related->id);
 });
 
 describe('calendar download', function () {

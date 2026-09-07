@@ -185,6 +185,19 @@ return [
             'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
             'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
         ],
+        // Native push through the Expo Push Service (see App\Contracts\PushChannel).
+        'expo' => [
+            'enabled' => (bool) env('EXPO_PUSH_ENABLED', false),
+            'endpoint' => env('EXPO_PUSH_ENDPOINT', 'https://exp.host/--/api/v2/push/send'),
+            'receipts_endpoint' => env('EXPO_PUSH_RECEIPTS_ENDPOINT', 'https://exp.host/--/api/v2/push/getReceipts'),
+            'access_token' => env('EXPO_ACCESS_TOKEN'),
+            'batch_size' => 100,
+            'timeout_seconds' => 10,
+            // Receipts are available a few minutes after the tickets.
+            'receipt_delay_minutes' => 20,
+            // A device that has not checked in for this long is forgotten.
+            'stale_device_days' => 120,
+        ],
     ],
     'dedup' => [
         'enabled' => (bool) env('EVENTPULSE_DEDUP_ENABLED', true),
@@ -355,6 +368,46 @@ return [
     ],
 
     'default_city' => env('EVENTPULSE_DEFAULT_CITY', 'timisoara'),
+    'api' => [
+        'throttle' => [
+            // Requests per minute per user (or per IP before sign-in) across
+            // the whole /api group. Named limiter `api` in AppServiceProvider.
+            // Blank and 0 both mean the default — 0 is not "unlimited", it
+            // would be one request per minute.
+            'per_minute' => (int) (env('EVENTPULSE_API_RATE_LIMIT') ?: 120),
+            // Sign-in attempts per minute per email+IP, registrations per
+            // hour per IP, token refreshes per minute per device.
+            'auth_per_minute' => 5,
+            // Sign-in attempts per minute per IP across every address, so
+            // cycling addresses (credential stuffing) is bounded too.
+            'auth_per_minute_per_ip' => 20,
+            'register_per_hour' => 10,
+            'refresh_per_minute' => 30,
+            // Chat POSTs each cost a Claude call: a minute cap for bursts and
+            // a daily cap so one account cannot run up the bill.
+            'chat_per_minute' => 20,
+            'chat_per_day' => 200,
+            // Device registrations per minute per user.
+            'devices_per_minute' => 30,
+            // Verification mails per minute per user.
+            'verify_per_minute' => 6,
+        ],
+        'tokens' => [
+            // Access tokens are short-lived and cannot mint new ones; refresh
+            // tokens are long-lived and can do nothing else. Enforced per token
+            // via expires_at — config/sanctum.php `expiration` must stay null.
+            'access_ttl_minutes' => 60,
+            'refresh_ttl_days' => 60,
+        ],
+    ],
+    'mobile' => [
+        // Builds reporting a lower `X-Ghes-App-Version` are answered 426.
+        // Null means no floor; the header is optional either way.
+        'min_supported_version' => env('EVENTPULSE_MOBILE_MIN_VERSION'),
+        // URL scheme the native app registers; the verification link bounces
+        // back through it when the mail was requested from the app.
+        'scheme' => env('EVENTPULSE_MOBILE_SCHEME', 'ghes'),
+    ],
     'eventbrite_api_key' => env('EVENTBRITE_API_KEY'),
     'serpapi_api_key' => env('SERPAPI_API_KEY'),
     'apify_api_token' => env('APIFY_API_TOKEN'),
@@ -401,6 +454,8 @@ return [
     'pagination' => [
         // Rows per page for each paginated listing.
         'events' => 18,
+        // API notification history and past recommendation batches.
+        'notifications' => 20,
         'admin_events' => 20,
         'admin_users' => 20,
         'admin_scraper_runs' => 25,

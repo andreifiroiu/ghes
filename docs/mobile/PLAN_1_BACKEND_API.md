@@ -56,9 +56,10 @@ with `route:list --json`: `GET api/events` carries only `api, Authenticate:sanct
 authenticated API route is currently unlimited.** Only `auth/register` (`throttle:10,1`) and
 `auth/login` (`throttle:5,1`) have inline limits.
 
-Related: the only `RateLimiter::for` in the app is `anthropic-api`
-(`app/Providers/AppServiceProvider.php:52`) and **nothing references it**. Wire it or delete it —
-an unreferenced limiter sitting next to live ones is how the next person assumes it works.
+Related: before Wave 0 the only `RateLimiter::for` in the app was `anthropic-api`
+(`app/Providers/AppServiceProvider.php`). It **is** referenced — `ClassifyEventJob` applies it
+through the `RateLimited` job middleware — so it stays. (An earlier draft of this plan said nothing
+used it; that was wrong.)
 
 **2. `route('verification.verify')` does not exist — two web paths 500 today.**
 `User` implements `MustVerifyEmail`, and `app/Http/Controllers/ProfileController.php:37,46` calls

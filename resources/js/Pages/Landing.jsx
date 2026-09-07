@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { Menu, X } from 'lucide-react';
 import { CATEGORIES } from '@/lib/categories';
 
@@ -237,11 +237,21 @@ export default function Landing({ events = [], stats = {}, city = 'Timișoara' }
         { label: 'Toate datele', href: '/events' },
     ];
 
+    const flash = usePage().props.flash || {};
+
     return (
         <>
             <Head title="Ghes — Orașul îți dă ghes. Tu ce faci diseară?" />
 
             <div className="landing-root font-sans antialiased">
+                {flash.success && (
+                    <p
+                        role="status"
+                        className="mx-auto w-full max-w-[1200px] px-5 pt-4 text-sm text-green-800 sm:px-8"
+                    >
+                        <span className="inline-block rounded-md bg-green-50 px-3 py-2">{flash.success}</span>
+                    </p>
+                )}
                 {/* ── NAV ──────────────────────────────────────────────── */}
                 <nav className="mx-auto flex w-full max-w-[1200px] items-center justify-between gap-6 px-5 py-5 sm:px-8">
                     <Link href="/" className="flex items-center gap-3 hover:text-persimmon">

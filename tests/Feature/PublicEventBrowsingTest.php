@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
+use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -154,7 +155,9 @@ it('paginates the events api at the configured page size', function () {
     config(['eventpulse.pagination.events' => 2]);
     Event::factory()->count(3)->create(['starts_at' => now()->addDay()]);
 
-    $this->actingAs(User::factory()->create())->getJson('/api/events')
+    Sanctum::actingAs(User::factory()->create(), ['*']);
+
+    $this->getJson('/api/v1/events')
         ->assertStatus(200)
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('meta.per_page', 2);

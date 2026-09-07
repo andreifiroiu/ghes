@@ -146,7 +146,9 @@ it('records the applied filters alongside a discarded one', function () {
 });
 
 it('logs nothing for a live-search request', function () {
-    Event::factory()->count(3)->create(['starts_at' => now()->addWeek()]);
+    // Titles pinned: the factory's random titles include a jazz concert, and
+    // a match would legitimately log an impression for the event rendered.
+    Event::factory()->count(3)->create(['title' => 'Târg de carte', 'starts_at' => now()->addWeek()]);
 
     $this->withHeaders(['X-Ghes-Live-Search' => '1'])
         ->get('/events?search=jazz')

@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Resources\UserResource;
+use App\Http\Responses\ApiResponse;
 use App\Models\DiscoveryLog;
 use App\Models\UserEventReaction;
 use Illuminate\Http\JsonResponse;
@@ -16,7 +17,7 @@ class ProfileController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        return (new UserResource($request->user()))->response();
+        return ApiResponse::item(new UserResource($request->user()));
     }
 
     public function update(ProfileUpdateRequest $request): JsonResponse
@@ -24,7 +25,7 @@ class ProfileController extends Controller
         $user = $request->user();
         $user->update($request->validated());
 
-        return (new UserResource($user->fresh()))->response();
+        return ApiResponse::item(new UserResource($user->fresh()));
     }
 
     /**
@@ -46,7 +47,7 @@ class ProfileController extends Controller
         $resolvedCount = $resolvedDiscovery->count();
         $discoveryHits = $resolvedDiscovery->whereIn('outcome', DiscoveryLog::POSITIVE_OUTCOMES)->count();
 
-        return response()->json([
+        return ApiResponse::item([
             'reactions' => [
                 'total' => $user->reactions()->count(),
                 'by_type' => $reactionCounts,

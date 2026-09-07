@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\ScraperRunStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Responses\ApiResponse;
 use App\Models\Event;
 use App\Models\ScraperRun;
 use App\Services\Activity\ActivityReporter;
@@ -23,7 +24,7 @@ class AdminStatsController extends Controller
      */
     public function eventStats(): JsonResponse
     {
-        return response()->json([
+        return ApiResponse::item([
             'events' => [
                 'total' => Event::count(),
                 'classified' => Event::where('is_classified', true)->count(),
@@ -49,7 +50,7 @@ class AdminStatsController extends Controller
     {
         $window = (int) $request->integer('window', 30);
 
-        return response()->json(
+        return ApiResponse::item(
             $this->reporter->summary(in_array($window, [7, 30, 90], true) ? $window : 30),
         );
     }
