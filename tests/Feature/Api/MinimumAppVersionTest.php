@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 use App\Http\Middleware\EnforceMinimumAppVersion;
 
+beforeEach(function () {
+    // One case below hits a web route, which renders an Inertia page and so
+    // reads the Vite manifest. Without this the suite passes only on a
+    // machine that happens to have built the assets.
+    $this->withoutVite();
+});
+
 it('passes a request that sends no version header', function () {
     config(['eventpulse.mobile.min_supported_version' => '2.0.0']);
 

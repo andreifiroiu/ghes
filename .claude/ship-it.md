@@ -12,8 +12,12 @@ a silently empty event list.
 shadcn-style primitives in `resources/js/Components/ui/`) · PostgreSQL + Redis/Horizon ·
 Meilisearch via Scout · Pest 4 · Sanctum for the versioned `/api/v1` (see `openapi/v1.yaml`).
 
-**CI: there is no CI on this repo.** `.github/` holds only skill definitions, no
-workflows. The local gates below are the only gates.
+**CI runs on every PR** (`.github/workflows/ci.yml`). Four jobs, **all blocking**:
+Pint on the branch's changed files plus PHPStan at zero errors; Pest on sqlite;
+`npm run build`; and Pest again against PostgreSQL 16. That last one is the real answer
+to the sqlite/production split below — a query or a swallowed error that only
+misbehaves on Postgres now fails the build instead of reaching production. The local
+gates are still the fast loop; CI is the backstop, and `gh pr checks` reports.
 
 ## Branch and PR policy
 
@@ -45,10 +49,11 @@ the three DTOs, `ProfileScorer`). `--dirty` is the only way to get a meaningful 
   crashed because it reached configured PHP memory limit: 128M"* and prints
   `[ERROR] Found 1 error`. That line is a crash, not a result.
 - Level 6, larastan, `paths: app/` only — `tests/` and `database/` are not analysed.
-- No baseline file, but **4 pre-existing errors**: `RunScraperJob.php:72`,
-  `OnboardingAgent.php:136,138,147`. The bar is "still 4", not
-  zero. Diff the error *sets*, not the count — a scratch worktree off `origin/main`
-  with `vendor/` symlinked in runs PHPStan against the base without stashing.
+- **The bar is zero errors.** The 4 pre-existing ones (`RunScraperJob.php:72`,
+  `OnboardingAgent.php:136,138,147`) live in `phpstan-baseline.neon`, which
+  `phpstan.neon` includes. Regenerate that file only when the underlying code is
+  genuinely fixed — never to silence a fresh error, which is exactly what CI is there
+  to catch.
 - Frontend: no ESLint, Prettier, or TypeScript. `npm run build` (Vite) is the only gate.
 
 ## Tests
@@ -69,9 +74,20 @@ dev Postgres database (`bf_ghes`). Safe, but it is the source of the first trap 
   `tests/Feature/Admin/AdminEventTest.php` for an admin-gated test (it shows the
   `config(['eventpulse.admin_emails' => [$admin->email]])` idiom) or
   `tests/Feature/Api/EventsIndexTest.php` for Inertia prop assertions.
-- Any test rendering an Inertia page needs `$this->withoutVite()` in `beforeEach`.
-- Project-wide gate: none. `composer test` is `config:clear` + `artisan test`; there is
-  no `composer ci:check`.
+- Project-wide gate: none locally. `composer test` is `config:clear` + `artisan test`;
+  there is no `composer ci:check`. CI is the closest thing.
+- **A test that deliberately provokes a database error must wrap it in
+  `DB::transaction(...)`.** That is a SAVEPOINT inside the one `RefreshDatabase` holds,
+  so the rollback is scoped to the failing statement. Without it the constraint fires as
+  intended and then *every later statement in the test* dies with `25P02` on Postgres —
+  sqlite carries on regardless, so it reads as unnecessary until CI runs it.
+  `ReminderComposerTest` "rejects a duplicate reminder" is the worked example. The same
+  hazard applies in `app/`: swallowing a `QueryException` does not undo the abort, which
+  is why `ActivityLogger` wraps its writes the same way.
+- **A test that renders an Inertia page needs `$this->withoutVite()`, or it passes only
+  on a machine with `public/build` present.** `MinimumAppVersionTest` shipped without it
+  and was invisible locally for exactly that reason; CI has no build directory, so this
+  now fails loudly there instead.
 
 ## Records
 
@@ -167,5 +183,5 @@ internal-only writes nothing, which is a valid outcome.
 
 - `config/eventpulse.php` and every `eventpulse.*` key keep the old product name. The
   product is now Ghes; the keys are read in dozens of places and in tests. Not cleanup.
-- The 4 PHPStan errors and 13 Pint-dirty files above — fixing them inflates every diff
+- The 4 baselined PHPStan errors and 13 Pint-dirty files above — fixing them inflates every diff
   and hides the real change.

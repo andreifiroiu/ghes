@@ -102,7 +102,10 @@ class OnboardingAgent
         $lastAssistant = $user->chatMessages()
             ->where('context', 'onboarding')
             ->where('role', 'assistant')
-            ->latest()
+            // chat_messages carries timestamp(0), so messages seconds apart can
+            // share a created_at. UUIDv7 ids break the tie in write order.
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->first();
 
         return $lastAssistant !== null
@@ -124,7 +127,10 @@ class OnboardingAgent
     {
         return $user->chatMessages()
             ->where('context', 'onboarding')
+            // chat_messages carries timestamp(0), so messages seconds apart can
+            // share a created_at. UUIDv7 ids break the tie in write order.
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get();
     }
 

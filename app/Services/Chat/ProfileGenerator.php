@@ -28,7 +28,10 @@ class ProfileGenerator
     {
         $messages = $user->chatMessages()
             ->where('context', $context)
+            // chat_messages carries timestamp(0), so messages seconds apart can
+            // share a created_at. UUIDv7 ids break the tie in write order.
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get();
 
         if ($messages->isEmpty()) {
