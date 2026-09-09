@@ -262,8 +262,15 @@ it('rejects a duplicate reminder at the database level but not a second digest',
 
     Notification::factory()->reminder($event, 180)->create(['user_id' => $user->id]);
 
-    expect(fn () => Notification::factory()->reminder($event, 180)->create(['user_id' => $user->id]))
-        ->toThrow(QueryException::class);
+    // The duplicate has to be provoked inside its own transaction, which is a
+    // SAVEPOINT within the one RefreshDatabase already holds. PostgreSQL aborts
+    // a transaction the moment a statement in it fails, so without this the
+    // constraint fires as intended and then every later statement in the test
+    // dies with 25P02 instead. sqlite carries on regardless, which is why this
+    // reads as unnecessary until the suite runs on Postgres.
+    expect(fn () => DB::transaction(
+        fn () => Notification::factory()->reminder($event, 180)->create(['user_id' => $user->id])
+    ))->toThrow(QueryException::class);
 
     // Same tier, different event, and the same event at a different tier are
     // both legitimate rows.

@@ -76,6 +76,14 @@ dev Postgres database (`bf_ghes`). Safe, but it is the source of the first trap 
   `tests/Feature/Api/EventsIndexTest.php` for Inertia prop assertions.
 - Project-wide gate: none locally. `composer test` is `config:clear` + `artisan test`;
   there is no `composer ci:check`. CI is the closest thing.
+- **A test that deliberately provokes a database error must wrap it in
+  `DB::transaction(...)`.** That is a SAVEPOINT inside the one `RefreshDatabase` holds,
+  so the rollback is scoped to the failing statement. Without it the constraint fires as
+  intended and then *every later statement in the test* dies with `25P02` on Postgres —
+  sqlite carries on regardless, so it reads as unnecessary until CI runs it.
+  `ReminderComposerTest` "rejects a duplicate reminder" is the worked example. The same
+  hazard applies in `app/`: swallowing a `QueryException` does not undo the abort, which
+  is why `ActivityLogger` wraps its writes the same way.
 - **A test that renders an Inertia page needs `$this->withoutVite()`, or it passes only
   on a machine with `public/build` present.** `MinimumAppVersionTest` shipped without it
   and was invisible locally for exactly that reason; CI has no build directory, so this
