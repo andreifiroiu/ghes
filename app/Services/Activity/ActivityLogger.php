@@ -8,6 +8,7 @@ use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Models\User;
 use App\Models\UserActivityLog;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -34,9 +35,18 @@ class ActivityLogger
     /**
      * Record one action.
      *
-     * Never throws. Analytics is the least important thing happening in any
-     * request that reaches here — a logging failure must not cost the user
-     * their redirect, their page, or their reaction.
+     * Never throws, and never damages the caller. Analytics is the least
+     * important thing happening in any request that reaches here — a logging
+     * failure must not cost the user their redirect, their page, or their
+     * reaction.
+     *
+     * Swallowing the exception is not enough to keep that promise on
+     * PostgreSQL, where a failed statement poisons the whole transaction and
+     * every later one fails with 25P02. The write therefore runs in its own
+     * transaction, which is a SAVEPOINT when a caller already has one open, so
+     * a failure rolls back to just before this insert and leaves the caller's
+     * work intact. sqlite does not poison a transaction this way, which is why
+     * the suite never showed it.
      *
      * @param  array<string, mixed>  $context
      */
@@ -51,7 +61,7 @@ class ActivityLogger
         try {
             $botReason = $this->fingerprint->botReason();
 
-            return UserActivityLog::create([
+            return DB::transaction(fn (): UserActivityLog => UserActivityLog::create([
                 'user_id' => $user?->id,
                 'event_id' => $eventId,
                 'notification_id' => $notificationId,
@@ -60,7 +70,7 @@ class ActivityLogger
                 'session_key' => $this->fingerprint->sessionKey(),
                 'is_bot' => $botReason !== null,
                 'context' => $botReason === null ? $context : [...$context, 'bot_reason' => $botReason],
-            ]);
+            ]));
         } catch (\Throwable $e) {
             $this->reportFailure($type, $e);
 
@@ -125,7 +135,12 @@ class ActivityLogger
                 'updated_at' => $now,
             ], array_values(array_unique($eventIds)));
 
-            UserActivityLog::insert($rows);
+            // Own transaction, or a savepoint inside the caller's — see log().
+            // A digest batch carries event ids the caller has not re-checked,
+            // so a foreign key violation here is reachable, and on PostgreSQL
+            // it would otherwise abort the dispatcher's whole transaction
+            // after `sent_at` had already been written.
+            DB::transaction(fn () => UserActivityLog::insert($rows));
 
             return count($rows);
         } catch (\Throwable $e) {
