@@ -118,10 +118,21 @@ class TokenIssuer
 
     /**
      * Revoke every token the user has, on every device.
+     *
+     * "Every device" has to include the browser: web login can mint a
+     * long-lived "remember me" recaller cookie, and deleting Sanctum rows
+     * leaves it working. Rotating the token is what actually kills it —
+     * without this, "sign out everywhere" would leave a stolen laptop
+     * signed in for the cookie's full life. Returns the token count, which
+     * is what callers report.
      */
     public function revokeAll(User $user): int
     {
-        return $user->tokens()->delete();
+        $revoked = $user->tokens()->delete();
+
+        $user->forceFill(['remember_token' => Str::random(60)])->save();
+
+        return $revoked;
     }
 
     /**

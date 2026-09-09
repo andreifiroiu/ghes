@@ -21,10 +21,7 @@ class LoginController extends Controller
 
     public function store(LoginRequest $request): RedirectResponse
     {
-        /** @var array{email: string, password: string} $validated */
-        $validated = $request->validated();
-
-        if (! Auth::attempt($validated, remember: false)) {
+        if (! Auth::attempt($request->credentials(), remember: $request->shouldRemember())) {
             return back()->withErrors([
                 'email' => __('auth.failed'),
             ])->onlyInput('email');
