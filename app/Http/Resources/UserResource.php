@@ -29,6 +29,11 @@ class UserResource extends JsonResource
             'discovery_openness' => $this->discovery_openness,
             'notification_channel' => $this->notification_channel?->value,
             'notification_frequency' => $this->notification_frequency?->value,
+            'event_reminders_enabled' => $this->event_reminders_enabled,
+            // Resolved, not raw: the column is null for anyone who has never
+            // opened the setting, and a client showing "none selected" there
+            // would be describing the opposite of what actually happens.
+            'reminder_lead_minutes' => $this->reminderLeadMinutes(),
             'timezone' => $this->timezone,
             'city' => $this->city,
             'onboarding_completed' => $this->onboarding_completed,

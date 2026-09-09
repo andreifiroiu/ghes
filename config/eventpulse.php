@@ -476,6 +476,45 @@ return [
         'max_events_per_digest' => 10,
         'max_discovery_events' => 3,
     ],
+
+    // Reminders about events the user bookmarked or marked interested, sent a
+    // fixed interval before the event starts. Unlike the digest these are
+    // triggered by the event's clock, not the user's cadence.
+    'reminders' => [
+        'enabled' => (bool) env('EVENTPULSE_REMINDERS_ENABLED', true),
+
+        // The lead times a user may choose from, in minutes before the start.
+        // Anything not listed here stops firing even for accounts that had
+        // already picked it, so removing an option is a real removal.
+        'lead_options' => [1440, 360, 180, 60],
+
+        // What a user who has never opened the setting gets: one the day
+        // before, to plan around, and one close enough to actually leave the
+        // house for.
+        'default_lead_minutes' => [1440, 180],
+
+        // How wide a slice of the future each run looks at. Deliberately wider
+        // than the 15-minute scheduler tick: consecutive runs then overlap, the
+        // unique index absorbs the overlap for free, and one missed tick is
+        // covered instead of leaving a permanent gap. Do not narrow it to the
+        // tick — that trades the safety net for nothing.
+        'window_minutes' => 30,
+
+        // A user who saved five things for Saturday should not receive five
+        // separate emails in one run. Beyond this, the rest simply go unsent:
+        // silence is a better failure than a mailbox full of Ghes.
+        'max_per_user_per_run' => 3,
+
+        // Ceiling on one run, so a mis-parsed batch of events with the same
+        // start time cannot turn into an unbounded send.
+        'max_per_run' => 5000,
+
+        // Local hours (in the event's city timezone) during which a reminder
+        // will not *push*. The email still goes out — an inbox can wait, a
+        // lock screen at 3am cannot. A 24h lead on a 01:00 after-party is the
+        // case this exists for.
+        'quiet_hours' => ['from' => 22, 'to' => 8],
+    ],
     'profile' => [
         'decay_rate' => 0.05,
         'decay_interval_days' => 7,

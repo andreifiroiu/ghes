@@ -10,9 +10,9 @@ use App\Models\Notification;
 use App\Models\PushSubscription;
 use App\Models\User;
 use App\Services\Activity\ActivityLogger;
-use App\Services\Notification\EmailRenderer;
 use App\Services\Notification\ExpoPushSender;
 use App\Services\Notification\NotificationDispatcher;
+use App\Services\Notification\Presenters\NotificationPresenters;
 use App\Services\Notification\PushFanout;
 use App\Services\Notification\PushPayload;
 use App\Services\Notification\PushSender;
@@ -231,7 +231,7 @@ it('neither throws nor blocks sent_at when expo is down', function () {
     $excluded = [];
 
     $dispatcher = new NotificationDispatcher(
-        app(EmailRenderer::class),
+        app(NotificationPresenters::class),
         new PushFanout(fakeWebPush(0, $excluded)),
         app(ActivityLogger::class),
     );

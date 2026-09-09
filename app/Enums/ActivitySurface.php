@@ -18,6 +18,12 @@ enum ActivitySurface: string
     case EventsIndex = 'events_index';
     case EventDetail = 'event_detail';
     case Digest = 'digest';
+    /**
+     * A reminder about one saved event. Separate from the digest so the
+     * digest's click-through rate is not computed against an audience that had
+     * already committed to the event.
+     */
+    case Reminder = 'reminder';
     case Push = 'push';
     /** An API caller that did not identify a screen. */
     case Api = 'api';

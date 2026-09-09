@@ -40,8 +40,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // routinely drop or partition the session cookie issued by the GET, and
         // the POST would then 419 with a bare English error page after the user
         // has already been told what is about to happen.
+        // The unsubscribe link is the same shape: signed, opened from a mail
+        // client, and a 419 there would leave someone unable to stop mail they
+        // have explicitly asked to stop.
         $middleware->preventRequestForgery(except: [
             'reactions/*',
+            'unsubscribe/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

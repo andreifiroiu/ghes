@@ -20,6 +20,13 @@ class NotificationResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            // History holds digests and reminders. A client that shows them the
+            // same way would label "Diseară: X" as a recommendation batch, so
+            // the discriminator travels with the row rather than being inferred
+            // from whether event_ids happens to hold exactly one id.
+            'type' => $this->type->value,
+            'event_id' => $this->event_id,
+            'lead_minutes' => $this->lead_minutes,
             'channel' => $this->channel->value,
             'frequency' => $this->frequency->value,
             'subject' => $this->subject,

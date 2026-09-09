@@ -111,6 +111,23 @@ class EventFactory extends Factory
     }
 
     /**
+     * Place the event a fixed distance in the future.
+     *
+     * Reminder tests select on `starts_at` falling inside a narrow window, so
+     * they need an exact offset rather than the definition's random +0..30
+     * days — which straddles every window and makes such a test flake.
+     */
+    public function startingIn(int $minutes): static
+    {
+        $startsAt = now()->addMinutes($minutes);
+
+        return $this->state(fn (array $attributes) => [
+            'starts_at' => $startsAt,
+            'ends_at' => $startsAt->copy()->addHours(2),
+        ]);
+    }
+
+    /**
      * Indicate that the event is in the past.
      */
     public function past(): static

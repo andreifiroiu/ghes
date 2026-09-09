@@ -12,6 +12,7 @@ use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\EventSource;
+use App\Models\Notification;
 use App\Models\UserActivityLog;
 use App\Models\UserEventReaction;
 use Carbon\CarbonImmutable;
@@ -194,6 +195,7 @@ class EventMerger
 
             $this->moveReactions($canonical, $duplicate);
             $this->moveBookmarks($canonical, $duplicate);
+            $this->moveReminders($canonical, $duplicate);
 
             Event::withoutSyncingToSearch(function () use ($canonical, $duplicate): void {
                 $duplicate->forceFill(['merged_into_id' => $canonical->id])->save();
@@ -300,6 +302,58 @@ class EventMerger
      * is what lets un-saving reverse it correctly even though the canonical
      * event's tags may differ from the ones the delta was applied to.
      */
+    /**
+     * Repoint reminder rows at the surviving event.
+     *
+     * Without this, a merge silently re-arms the reminder: the bookmark moves
+     * to the canonical event (above), the reminder row stays on the duplicate,
+     * and the next composer run finds no reminder for (user, canonical, tier)
+     * and sends a second one for the same real-world show.
+     *
+     * Where the canonical event already has a reminder at the same tier, the
+     * duplicate's row is dropped rather than moved — the unique index would
+     * refuse it anyway, and a merge must never abort over bookkeeping. A row
+     * that was already sent wins, so the history keeps the send that happened.
+     */
+    private function moveReminders(Event $canonical, Event $duplicate): void
+    {
+        $reminders = Notification::query()
+            ->reminders()
+            ->where('event_id', $duplicate->id)
+            ->cursor();
+
+        foreach ($reminders as $reminder) {
+            $existing = Notification::query()
+                ->reminders()
+                ->where('user_id', $reminder->user_id)
+                ->where('event_id', $canonical->id)
+                ->where('lead_minutes', $reminder->lead_minutes)
+                ->first();
+
+            if ($existing === null) {
+                $reminder->forceFill([
+                    'event_id' => $canonical->id,
+                    'event_ids' => [$canonical->id],
+                ])->save();
+
+                continue;
+            }
+
+            if ($existing->sent_at === null && $reminder->sent_at !== null) {
+                $existing->delete();
+
+                $reminder->forceFill([
+                    'event_id' => $canonical->id,
+                    'event_ids' => [$canonical->id],
+                ])->save();
+
+                continue;
+            }
+
+            $reminder->delete();
+        }
+    }
+
     private function moveBookmarks(Event $canonical, Event $duplicate): void
     {
         foreach ($duplicate->bookmarks()->cursor() as $bookmark) {

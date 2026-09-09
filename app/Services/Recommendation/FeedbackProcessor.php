@@ -386,6 +386,12 @@ class FeedbackProcessor
      * that haven't been decayed yet, applies the "ignored" delta to each
      * un-reacted event's category, and marks the batch processed.
      *
+     * Digests only. A reminder is sent precisely because the user bookmarked or
+     * marked the event interested, so "shown but never reacted to" does not
+     * describe it: un-saving inside the 72h window would otherwise be read as
+     * having ignored a recommendation and decay the very interest the user had
+     * stated explicitly.
+     *
      * @return int Number of (user, event) pairs decayed.
      */
     public function applyPassiveDecay(): int
@@ -396,6 +402,7 @@ class FeedbackProcessor
         $decayed = 0;
 
         Notification::query()
+            ->digests()
             ->whereNull('decay_applied_at')
             ->whereNotNull('sent_at')
             ->where('sent_at', '<', $cutoff)

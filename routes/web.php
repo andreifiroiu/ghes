@@ -24,6 +24,7 @@ use App\Http\Controllers\EventSuggestionController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\NotificationSettingsController;
+use App\Http\Controllers\NotificationUnsubscribeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RecommendationController;
@@ -40,6 +41,16 @@ Route::get('reactions/{user}/{event}/{reaction}', [EmailReactionController::clas
     ->middleware('signed');
 Route::post('reactions/{user}/{event}/{reaction}', [EmailReactionController::class, 'store'])
     ->name('reactions.email.confirm')
+    ->middleware('signed');
+
+// Signed unsubscribe for event reminders. Same GET-renders / POST-writes split
+// as the reaction links, and for the same reason: the settings page is behind
+// auth, and a mail webview usually has no session to reach it with.
+Route::get('unsubscribe/reminders/{user}', [NotificationUnsubscribeController::class, 'show'])
+    ->name('unsubscribe.reminders')
+    ->middleware('signed');
+Route::post('unsubscribe/reminders/{user}', [NotificationUnsubscribeController::class, 'store'])
+    ->name('unsubscribe.reminders.confirm')
     ->middleware('signed');
 
 // Outbound click tracking. Public and unauthenticated because digest links and

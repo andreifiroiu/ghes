@@ -19,16 +19,47 @@ const frequencyOptions = [
 ];
 
 /**
- * @param {Object} props
- * @param {Object} props.settings
- * @param {string} props.settings.channel
- * @param {string} props.settings.frequency
+ * Romanian labels for the lead times the server offers, keyed by minutes.
+ * Anything the server sends that is not listed here still renders, as a plain
+ * minute count, so adding an option to config is never a blank checkbox.
  */
-export default function Notifications({ settings = {}, vapidPublicKey = null }) {
+const leadLabels = {
+    1440: 'Cu o zi înainte',
+    360: 'Cu 6 ore înainte',
+    180: 'Cu 3 ore înainte',
+    60: 'Cu o oră înainte',
+};
+
+const leadLabel = (minutes) =>
+    leadLabels[minutes] ?? `Cu ${minutes} de minute înainte`;
+
+/**
+ * @param {Object} props
+ * @param {Object} props.user - The UserResource the controller renders; the
+ *   stored preferences live on it as notification_channel / notification_frequency.
+ * @param {number[]} props.reminderLeadOptions - Lead times the server accepts.
+ * @param {string|null} props.vapidPublicKey
+ */
+export default function Notifications({
+    user = {},
+    reminderLeadOptions = [],
+    vapidPublicKey = null,
+}) {
     const { data, setData, put, processing, recentlySuccessful } = useForm({
-        channel: settings.channel || 'email',
-        frequency: settings.frequency || 'daily',
+        channel: user.notification_channel || 'email',
+        frequency: user.notification_frequency || 'daily',
+        event_reminders: user.event_reminders_enabled ?? true,
+        reminder_lead_minutes: user.reminder_lead_minutes ?? [],
     });
+
+    const toggleLead = (minutes) => {
+        setData(
+            'reminder_lead_minutes',
+            data.reminder_lead_minutes.includes(minutes)
+                ? data.reminder_lead_minutes.filter((m) => m !== minutes)
+                : [...data.reminder_lead_minutes, minutes]
+        );
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -165,6 +196,54 @@ export default function Notifications({ settings = {}, vapidPublicKey = null }) 
                                         </option>
                                     ))}
                                 </Select>
+                            </div>
+
+                            {/* Event reminders */}
+                            <div className="space-y-3 border-t border-gray-100 pt-4">
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.event_reminders}
+                                        onChange={(e) =>
+                                            setData('event_reminders', e.target.checked)
+                                        }
+                                        className="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span>
+                                        <span className="block text-base font-medium text-gray-900">
+                                            Memento pentru evenimentele salvate
+                                        </span>
+                                        <span className="block text-sm text-gray-500">
+                                            Îți dăm ghes înainte să înceapă un eveniment
+                                            pe care l-ai salvat sau ai spus că te
+                                            interesează. Dacă îl salvezi mai târziu de
+                                            atât, nu mai primești memento.
+                                        </span>
+                                    </span>
+                                </label>
+
+                                {data.event_reminders && (
+                                    <div className="space-y-2 pl-7">
+                                        {reminderLeadOptions.map((minutes) => (
+                                            <label
+                                                key={minutes}
+                                                className="flex items-center gap-3 cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={data.reminder_lead_minutes.includes(
+                                                        minutes
+                                                    )}
+                                                    onChange={() => toggleLead(minutes)}
+                                                    className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-sm text-gray-900">
+                                                    {leadLabel(minutes)}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Web push */}

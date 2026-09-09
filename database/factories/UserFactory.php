@@ -45,6 +45,11 @@ class UserFactory extends Factory
             'discovery_openness' => fake()->randomFloat(2, 0.1, 0.9),
             'notification_channel' => fake()->randomElement(NotificationChannel::cases()),
             'notification_frequency' => fake()->randomElement(NotificationFrequency::cases()),
+            // Deliberately not randomised, unlike the two above: an unpinned
+            // opt-out flag would make every reminder test that forgot to set it
+            // fail half the time, for a reason that looks nothing like the bug.
+            'event_reminders_enabled' => true,
+            'reminder_lead_minutes' => null,
             'timezone' => fake()->randomElement(['Europe/Bucharest', 'Europe/London', 'America/New_York', 'Europe/Berlin']),
             'city' => 'Bucharest',
             'onboarding_completed' => true,

@@ -25,6 +25,14 @@ Schedule::command('eventpulse:send-notifications')
     ->dailyAt(sprintf('%02d:00', config('eventpulse.notifications.hour', 8)))
     ->withoutOverlapping();
 
+// Reminders are triggered by the event's clock, not the user's cadence, so they
+// cannot ride the daily digest slot. The 15-minute tick is narrower than the
+// 30-minute compose window on purpose: consecutive runs overlap, and the
+// reminder unique index turns the overlap into a no-op rather than a duplicate.
+Schedule::command('eventpulse:send-reminders')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
 Schedule::command('eventpulse:decay-profiles')
     ->weekly()
     ->withoutOverlapping();

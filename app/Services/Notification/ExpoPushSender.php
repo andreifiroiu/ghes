@@ -59,7 +59,7 @@ class ExpoPushSender implements PushChannel
             'title' => $payload->title,
             'body' => $payload->body,
             'sound' => 'default',
-            'channelId' => $payload->type->value,
+            'channelId' => $payload->type->androidChannel(),
             'priority' => 'normal',
             'data' => $payload->data(),
         ])->all();

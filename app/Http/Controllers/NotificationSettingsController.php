@@ -23,13 +23,14 @@ class NotificationSettingsController extends Controller
             'user' => new UserResource($request->user()),
             'channels' => array_column(NotificationChannel::cases(), 'value'),
             'frequencies' => array_column(NotificationFrequency::cases(), 'value'),
+            'reminderLeadOptions' => self::reminderLeadOptions(),
             'vapidPublicKey' => config('eventpulse.push.vapid.public_key'),
         ]);
     }
 
     public function update(NotificationSettingsRequest $request): RedirectResponse
     {
-        /** @var array{channel: string, frequency: string, discovery_openness?: float} $validated */
+        /** @var array{channel: string, frequency: string, discovery_openness?: float, event_reminders?: bool, reminder_lead_minutes?: list<int>} $validated */
         $validated = $request->validated();
 
         $request->user()->update($this->attributesFrom($validated));
@@ -47,6 +48,7 @@ class NotificationSettingsController extends Controller
             'user' => (new UserResource($request->user()))->resolve(),
             'channels' => array_column(NotificationChannel::cases(), 'value'),
             'frequencies' => array_column(NotificationFrequency::cases(), 'value'),
+            'reminder_lead_options' => self::reminderLeadOptions(),
         ]);
     }
 
@@ -55,7 +57,7 @@ class NotificationSettingsController extends Controller
      */
     public function apiUpdate(NotificationSettingsRequest $request): JsonResponse
     {
-        /** @var array{channel: string, frequency: string, discovery_openness?: float} $validated */
+        /** @var array{channel: string, frequency: string, discovery_openness?: float, event_reminders?: bool, reminder_lead_minutes?: list<int>} $validated */
         $validated = $request->validated();
 
         $user = $request->user();
@@ -67,7 +69,7 @@ class NotificationSettingsController extends Controller
     /**
      * Shared by both update paths so a new setting cannot land on one only.
      *
-     * @param  array{channel: string, frequency: string, discovery_openness?: float}  $validated
+     * @param  array{channel: string, frequency: string, discovery_openness?: float, event_reminders?: bool, reminder_lead_minutes?: list<int>}  $validated
      * @return array<string, mixed>
      */
     private function attributesFrom(array $validated): array
@@ -83,6 +85,27 @@ class NotificationSettingsController extends Controller
             $attributes['discovery_openness'] = (float) $validated['discovery_openness'];
         }
 
+        if (array_key_exists('event_reminders', $validated)) {
+            $attributes['event_reminders_enabled'] = (bool) $validated['event_reminders'];
+        }
+
+        if (array_key_exists('reminder_lead_minutes', $validated)) {
+            $attributes['reminder_lead_minutes'] = array_values(array_unique(
+                array_map(intval(...), $validated['reminder_lead_minutes']),
+            ));
+        }
+
         return $attributes;
+    }
+
+    /**
+     * The lead times a user may pick from, so both clients render the same
+     * choices rather than hardcoding minutes that config could change.
+     *
+     * @return list<int>
+     */
+    private static function reminderLeadOptions(): array
+    {
+        return array_map(intval(...), (array) config('eventpulse.reminders.lead_options', []));
     }
 }

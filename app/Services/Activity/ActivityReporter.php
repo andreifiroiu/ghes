@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Activity;
 
+use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Enums\NotificationChannel;
 use App\Models\Event;
@@ -88,11 +89,17 @@ class ActivityReporter
      * email to put a pixel in, so including them would make the rate read
      * permanently depressed for a reason that has nothing to do with the email.
      *
+     * Scoped to digests for the same reason. `event_notifications` also holds
+     * reminders, which are single-event mail to someone who already saved the
+     * event — their open rate is far higher, and counting them here would
+     * inflate this number until it no longer means what its label says.
+     *
      * @return array{sent: int, opened: int, open_rate: float, clicks: int}
      */
     private function digestStats(Carbon $since): array
     {
         $emailable = Notification::query()
+            ->digests()
             ->whereNotNull('sent_at')
             ->where('sent_at', '>=', $since)
             ->whereIn('channel', [NotificationChannel::Email->value, NotificationChannel::Both->value]);
@@ -100,9 +107,14 @@ class ActivityReporter
         $sent = (clone $emailable)->count();
         $opened = (clone $emailable)->whereNotNull('opened_at')->count();
 
+        // Surface, not merely "has a notification id": reminders also carry one
+        // now, and a click from a reminder does not belong in the digest's
+        // click-through rate. Digest links have always sent `from=digest`, so
+        // this filter does not change the historical number.
         $clicks = UserActivityLog::query()
             ->human()
             ->ofType([ActivityType::EmailClick, ActivityType::EventClick])
+            ->where('surface', ActivitySurface::Digest)
             ->whereNotNull('notification_id')
             ->where('created_at', '>=', $since)
             ->count();
