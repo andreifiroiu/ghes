@@ -1,0 +1,159 @@
+name: CI
+
+# The gates that used to live only on a developer's machine. Ghes has no
+# staging environment, so this is the only thing between a branch and
+# production.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PHP_VERSION: '8.4'
+  NODE_VERSION: '22'
+
+jobs:
+  static:
+    name: Pint and PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pint needs the base branch to work out which files the branch
+          # actually touched.
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, libxml, mbstring, fileinfo, pdo_sqlite, sqlite3
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+
+      # Repo-wide Pint fails on 13 files that predate the convention, so the
+      # check is scoped to what this branch changed. `--diff-filter=ACMR`
+      # drops deletions, which Pint cannot read.
+      - name: Pint (changed files only)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          FILES=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.php')
+          if [ -z "$FILES" ]; then
+            echo "No PHP files changed."
+            exit 0
+          fi
+          echo "$FILES"
+          # Unquoted on purpose: Pint takes the list as separate arguments.
+          # shellcheck disable=SC2086
+          vendor/bin/pint --test $FILES
+
+      # --memory-limit is not optional. At PHP's default 128M the parallel
+      # worker is killed and PHPStan reports "Found 1 error", which is a crash
+      # wearing a result's clothes.
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress --error-format=github
+
+  tests:
+    name: Pest on sqlite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, libxml, mbstring, fileinfo, pdo_sqlite, sqlite3
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+
+      # phpunit.xml pins the connection to sqlite :memory: and the cache,
+      # queue, session and mailer to their fake drivers, so no service
+      # container is needed. APP_KEY is the one thing it does not supply.
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Pest
+        run: php artisan test --parallel
+
+  frontend:
+    name: Vite build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # There is no ESLint, Prettier or TypeScript in this project. A build
+      # that resolves every import is the whole frontend gate.
+      - run: npm run build
+
+  tests-postgres:
+    name: Pest on PostgreSQL (advisory)
+    runs-on: ubuntu-latest
+    # Production runs PostgreSQL while the suite runs sqlite, and that gap has
+    # already shipped real bugs: json predicates and uuid comparisons that
+    # sqlite accepts and Postgres rejects. This job is the canary for that
+    # class. It is advisory because it is currently red on a known failure
+    # (PushFanoutTest, "neither throws nor blocks sent_at when expo is down"),
+    # which is a genuine Postgres-only bug in the digest path rather than a
+    # flaw in this job. Make it blocking once that is fixed.
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ghes
+          POSTGRES_PASSWORD: ghes
+          POSTGRES_DB: ghes_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, libxml, mbstring, fileinfo, pdo_pgsql, pgsql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # phpunit.xml's <env> entries carry no force="true", so a variable
+      # already present in the environment wins and the suite really does run
+      # on this connection.
+      - name: Pest
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: ghes_test
+          DB_USERNAME: ghes
+          DB_PASSWORD: ghes
+        run: php artisan test

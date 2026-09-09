@@ -1,5 +1,11 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    # Four pre-existing errors, frozen rather than fixed so CI has a zero-error
+    # bar and any NEW error fails the build. Regenerate with
+    # `vendor/bin/phpstan analyse --memory-limit=1G --generate-baseline=phpstan-baseline.neon`
+    # only when the underlying code is genuinely fixed, never to silence a
+    # fresh error.
+    - phpstan-baseline.neon
 
 parameters:
     paths:
