@@ -105,16 +105,12 @@ jobs:
       - run: npm run build
 
   tests-postgres:
-    name: Pest on PostgreSQL (advisory)
+    name: Pest on PostgreSQL
     runs-on: ubuntu-latest
     # Production runs PostgreSQL while the suite runs sqlite, and that gap has
-    # already shipped real bugs: json predicates and uuid comparisons that
-    # sqlite accepts and Postgres rejects. This job is the canary for that
-    # class. It is advisory because it is currently red on a known failure
-    # (PushFanoutTest, "neither throws nor blocks sent_at when expo is down"),
-    # which is a genuine Postgres-only bug in the digest path rather than a
-    # flaw in this job. Make it blocking once that is fixed.
-    continue-on-error: true
+    # already shipped real bugs: json predicates, uuid comparisons and swallowed
+    # errors that sqlite tolerates and Postgres does not. Blocking, so the
+    # divergence cannot reach production again.
     services:
       postgres:
         image: postgres:16

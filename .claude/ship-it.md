@@ -12,11 +12,12 @@ a silently empty event list.
 shadcn-style primitives in `resources/js/Components/ui/`) · PostgreSQL + Redis/Horizon ·
 Meilisearch via Scout · Pest 4 · Sanctum for the versioned `/api/v1` (see `openapi/v1.yaml`).
 
-**CI runs on every PR** (`.github/workflows/ci.yml`): Pint on the branch's changed
-files, PHPStan at zero errors, Pest on sqlite, and `npm run build`. A fifth job runs
-Pest against PostgreSQL and is **advisory** — it is red on a known Postgres-only bug in
-the digest path, and becomes blocking once that is fixed. The local gates below are
-still the fast loop; CI is the backstop, and `gh pr checks` now reports.
+**CI runs on every PR** (`.github/workflows/ci.yml`). Four jobs, **all blocking**:
+Pint on the branch's changed files plus PHPStan at zero errors; Pest on sqlite;
+`npm run build`; and Pest again against PostgreSQL 16. That last one is the real answer
+to the sqlite/production split below — a query or a swallowed error that only
+misbehaves on Postgres now fails the build instead of reaching production. The local
+gates are still the fast loop; CI is the backstop, and `gh pr checks` reports.
 
 ## Branch and PR policy
 
