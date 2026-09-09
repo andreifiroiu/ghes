@@ -21,7 +21,10 @@ class ProfileUpdateAgent
     {
         $history = $user->chatMessages()
             ->where('context', 'profile_update')
+            // chat_messages carries timestamp(0), so messages seconds apart can
+            // share a created_at. UUIDv7 ids break the tie in write order.
             ->orderBy('created_at')
+            ->orderBy('id')
             ->limit(20)
             ->get();
 

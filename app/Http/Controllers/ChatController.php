@@ -173,7 +173,10 @@ class ChatController extends Controller
 
         $messages = $request->user()->chatMessages()
             ->where('context', $context)
+            // chat_messages carries timestamp(0), so messages seconds apart can
+            // share a created_at. UUIDv7 ids break the tie in write order.
             ->orderBy('created_at')
+            ->orderBy('id')
             ->get();
 
         return ApiResponse::collection(ChatMessageResource::collection($messages));
