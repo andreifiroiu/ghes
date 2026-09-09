@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->json('interest_profile')->default('{}');
+            $table->json('interest_profile')->default(DB::raw("('{}')"));
             $table->float('discovery_openness')->default(0.3);
             $table->string('notification_channel')->default('email');
             $table->string('notification_frequency')->default('daily');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -28,7 +29,7 @@ return new class extends Migration
             // canonical values on the events row.
             $table->string('title')->nullable();
             $table->timestamp('starts_at')->nullable();
-            $table->jsonb('payload')->default('{}');
+            $table->jsonb('payload')->default(DB::raw("('{}')"));
 
             $table->timestamp('first_seen_at');
             $table->timestamp('last_seen_at');

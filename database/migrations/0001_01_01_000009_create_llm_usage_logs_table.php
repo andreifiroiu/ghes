@@ -18,7 +18,7 @@ return new class extends Migration
             $table->integer('input_tokens');
             $table->integer('output_tokens');
             $table->decimal('cost_usd', 10, 6)->default(0);
-            $table->json('metadata')->default('{}');
+            $table->json('metadata')->default(DB::raw("('{}')"));
             $table->timestamps();
 
             $table->index(['operation', 'created_at']);
