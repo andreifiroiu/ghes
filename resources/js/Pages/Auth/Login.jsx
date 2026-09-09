@@ -1,6 +1,7 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
+import { Checkbox } from '@/Components/ui/Checkbox';
 import { Label } from '@/Components/ui/Label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/Components/ui/Card';
 
@@ -9,6 +10,7 @@ export default function Login() {
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
+        remember: false,
     });
 
     const handleSubmit = (e) => {
@@ -86,6 +88,17 @@ export default function Login() {
                                         {errors.password}
                                     </p>
                                 )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="remember"
+                                    name="remember"
+                                    checked={data.remember}
+                                    onChange={(e) => setData('remember', e.target.checked)}
+                                />
+                                <Label htmlFor="remember" className="font-normal text-gray-600">
+                                    Ține-mă minte
+                                </Label>
                             </div>
                         </CardContent>
                         <CardFooter className="flex flex-col gap-4">
