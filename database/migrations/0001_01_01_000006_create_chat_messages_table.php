@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('role'); // 'user' or 'assistant'
             $table->text('content');
             $table->string('context')->default('onboarding'); // 'onboarding' or 'profile_update'
-            $table->json('metadata')->default('{}');
+            $table->json('metadata')->default(DB::raw("('{}')"));
             $table->timestamps();
 
             $table->index(['user_id', 'context', 'created_at']);

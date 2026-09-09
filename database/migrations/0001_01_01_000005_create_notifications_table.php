@@ -16,8 +16,8 @@ return new class extends Migration
             $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
             $table->string('channel');
             $table->string('frequency');
-            $table->json('event_ids')->default('[]');
-            $table->json('discovery_event_ids')->default('[]');
+            $table->json('event_ids')->default(DB::raw("('[]')"));
+            $table->json('discovery_event_ids')->default(DB::raw("('[]')"));
             $table->text('subject')->nullable();
             $table->text('body_html')->nullable();
             $table->timestamp('sent_at')->nullable();

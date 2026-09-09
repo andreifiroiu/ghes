@@ -36,7 +36,7 @@ return new class extends Migration
             // flagged so CTR and the ranking aggregate can exclude them.
             $table->boolean('is_bot')->default(false);
 
-            $table->jsonb('context')->default('{}');
+            $table->jsonb('context')->default(DB::raw("('{}')"));
             $table->timestamps();
 
             $table->index(['user_id', 'type', 'created_at']);

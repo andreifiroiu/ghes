@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('source_id')->nullable();
             $table->string('fingerprint')->unique();
             $table->string('category');
-            $table->jsonb('tags')->default('[]');
+            $table->jsonb('tags')->default(DB::raw("('[]')"));
             $table->string('venue')->nullable();
             $table->string('address')->nullable();
             $table->string('city')->nullable();
@@ -33,7 +33,7 @@ return new class extends Migration
             $table->string('currency', 3)->default('RON');
             $table->boolean('is_free')->default(false);
             $table->string('image_url')->nullable();
-            $table->jsonb('metadata')->default('{}');
+            $table->jsonb('metadata')->default(DB::raw("('{}')"));
             $table->integer('popularity_score')->default(0);
             $table->boolean('is_classified')->default(false);
             $table->boolean('is_geocoded')->default(false);

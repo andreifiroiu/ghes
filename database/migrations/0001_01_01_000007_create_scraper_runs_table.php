@@ -20,7 +20,7 @@ return new class extends Migration
             $table->integer('events_updated')->default(0);
             $table->integer('events_skipped')->default(0);
             $table->integer('errors_count')->default(0);
-            $table->json('error_log')->default('[]');
+            $table->json('error_log')->default(DB::raw("('[]')"));
             $table->timestamp('started_at');
             $table->timestamp('finished_at')->nullable();
             $table->timestamps();
