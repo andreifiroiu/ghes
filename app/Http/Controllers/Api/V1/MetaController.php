@@ -49,6 +49,9 @@ class MetaController extends Controller
             'ranges' => ['weekend'],
             'notification_channels' => array_column(NotificationChannel::cases(), 'value'),
             'notification_frequencies' => array_column(NotificationFrequency::cases(), 'value'),
+            // Minutes before an event starts. The client renders one checkbox
+            // per entry rather than hardcoding a list that config can change.
+            'reminder_lead_options' => array_map(intval(...), (array) config('eventpulse.reminders.lead_options', [])),
             'page_size' => (int) config('eventpulse.pagination.events'),
             'min_supported_app_version' => config('eventpulse.mobile.min_supported_version'),
         ]);

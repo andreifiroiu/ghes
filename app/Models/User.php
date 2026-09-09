@@ -27,6 +27,8 @@ use Laravel\Sanctum\HasApiTokens;
  * @property ?string $experiment_variant
  * @property ?NotificationChannel $notification_channel
  * @property ?NotificationFrequency $notification_frequency
+ * @property bool $event_reminders_enabled
+ * @property ?list<int> $reminder_lead_minutes
  * @property ?string $city
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $created_at
@@ -103,6 +105,8 @@ class User extends Authenticatable implements HasLocalePreference, MustVerifyEma
         'experiment_variant',
         'notification_channel',
         'notification_frequency',
+        'event_reminders_enabled',
+        'reminder_lead_minutes',
         'timezone',
         'city',
         'onboarding_completed',
@@ -132,9 +136,37 @@ class User extends Authenticatable implements HasLocalePreference, MustVerifyEma
             'profile_summary_updated_at' => 'datetime',
             'discovery_openness' => 'float',
             'onboarding_completed' => 'boolean',
+            'event_reminders_enabled' => 'boolean',
+            'reminder_lead_minutes' => 'array',
             'notification_channel' => NotificationChannel::class,
             'notification_frequency' => NotificationFrequency::class,
         ];
+    }
+
+    /**
+     * The lead times this user wants an event reminder at, in minutes before
+     * the event starts.
+     *
+     * A null column means "whatever the product default is", not "none", so a
+     * later change to eventpulse.reminders.default_lead_minutes still reaches
+     * everyone who never opened the setting. Values are intersected with the
+     * configured catalogue on the way out as well as validated on the way in:
+     * dropping a tier from config must stop it firing for the accounts that
+     * had already chosen it.
+     *
+     * @return list<int>
+     */
+    public function reminderLeadMinutes(): array
+    {
+        /** @var list<int> $options */
+        $options = array_map(intval(...), (array) config('eventpulse.reminders.lead_options', []));
+
+        /** @var list<int> $chosen */
+        $chosen = $this->reminder_lead_minutes === null
+            ? array_map(intval(...), (array) config('eventpulse.reminders.default_lead_minutes', []))
+            : array_map(intval(...), $this->reminder_lead_minutes);
+
+        return array_values(array_intersect($chosen, $options));
     }
 
     /**

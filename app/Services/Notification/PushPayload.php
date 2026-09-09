@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Notification;
 
 use App\Enums\PushPayloadType;
+use App\Models\Event;
 use App\Models\Notification;
 
 /**
@@ -34,6 +35,31 @@ final readonly class PushPayload
             url: route('dashboard'),
             deepLink: self::deepLink('digest/'.$notification->id),
             notificationId: $notification->id,
+        );
+    }
+
+    /**
+     * A reminder about one event.
+     *
+     * The deep link points at the event rather than at the notification: a
+     * reminder is only ever about one thing, and `ghes://events/{id}` is a
+     * route the shipped client already handles from cold start, background and
+     * foreground.
+     */
+    public static function reminder(Notification $notification, Event $event, string $title): self
+    {
+        $startsAt = $event->starts_at;
+
+        return new self(
+            type: PushPayloadType::Reminder,
+            title: $title,
+            body: $startsAt === null
+                ? ($event->venue ?? 'Vezi detaliile evenimentului.')
+                : trim($startsAt->format('H:i').($event->venue === null ? '' : ' · '.$event->venue)),
+            url: route('events.show', ['event' => $event->id, 'from' => 'reminder', 'n' => $notification->id]),
+            deepLink: self::deepLink('events/'.$event->id),
+            notificationId: $notification->id,
+            eventId: $event->id,
         );
     }
 

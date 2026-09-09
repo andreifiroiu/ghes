@@ -9,6 +9,7 @@ use App\Models\DiscoveryLog;
 use App\Models\Event;
 use App\Models\EventBookmark;
 use App\Models\EventSource;
+use App\Models\Notification;
 use App\Models\User;
 use App\Models\UserEventReaction;
 use App\Services\Processing\EventMerger;
@@ -278,4 +279,92 @@ it('does not dispatch a reversal for a dropped row with no ledger', function () 
     $this->merger->mergeInto($canonical, $duplicate);
 
     Queue::assertNotPushed(ReverseProfileDeltaJob::class);
+});
+
+/**
+ * Reminders have to move with the bookmark that caused them.
+ *
+ * Left behind, the merge silently re-arms: the bookmark moves to the canonical
+ * event, the reminder row stays on the duplicate, and the next composer run
+ * finds no reminder for (user, canonical, tier) and sends a second one for the
+ * same show.
+ */
+it('repoints an unsent reminder onto the canonical event', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $reminder = Notification::factory()->reminder($duplicate, 180)->create([
+        'user_id' => $user->id,
+        'sent_at' => null,
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    $reminder->refresh();
+
+    expect($reminder->event_id)->toBe($canonical->id)
+        ->and($reminder->event_ids)->toBe([$canonical->id]);
+});
+
+it('drops the duplicate reminder when the canonical already has one at that tier', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $kept = Notification::factory()->reminder($canonical, 180)->create([
+        'user_id' => $user->id,
+        'sent_at' => now(),
+    ]);
+    $dropped = Notification::factory()->reminder($duplicate, 180)->create([
+        'user_id' => $user->id,
+        'sent_at' => null,
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect(Notification::find($kept->id))->not->toBeNull()
+        ->and(Notification::find($dropped->id))->toBeNull();
+});
+
+/**
+ * A send that happened is history; an unsent row is not. When both exist the
+ * merge keeps the one that actually reached someone.
+ */
+it('keeps the sent reminder when the canonical only has an unsent one', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $unsent = Notification::factory()->reminder($canonical, 180)->create([
+        'user_id' => $user->id,
+        'sent_at' => null,
+    ]);
+    $sent = Notification::factory()->reminder($duplicate, 180)->create([
+        'user_id' => $user->id,
+        'sent_at' => now(),
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect(Notification::find($unsent->id))->toBeNull()
+        ->and($sent->fresh()->event_id)->toBe($canonical->id);
+});
+
+it('leaves a digest alone when its events are merged', function () {
+    $user = User::factory()->create();
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    $digest = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$duplicate->id],
+    ]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    // Digest links resolve through resolveCanonical() at click time; rewriting
+    // a sent digest's JSON would rewrite history for no gain.
+    expect($digest->fresh()->event_ids)->toBe([$duplicate->id])
+        ->and($digest->fresh()->event_id)->toBeNull();
 });

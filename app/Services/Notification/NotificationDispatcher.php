@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Notification;
 
-use App\Enums\ActivitySurface;
 use App\Enums\ActivityType;
 use App\Enums\NotificationChannel;
 use App\Models\Notification;
 use App\Services\Activity\ActivityLogger;
+use App\Services\Notification\Presenters\NotificationPresenters;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -17,13 +17,18 @@ use Throwable;
 class NotificationDispatcher
 {
     public function __construct(
-        private readonly EmailRenderer $emailRenderer,
+        private readonly NotificationPresenters $presenters,
         private readonly PushFanout $pushFanout,
         private readonly ActivityLogger $activity,
     ) {}
 
     /**
      * Render, send, and record a single notification across the user's channel(s).
+     *
+     * What is said depends on the notification's type and comes from a
+     * presenter; the *order* below does not, and must not be duplicated per
+     * type — it is the only thing standing between a failed push and a
+     * duplicate email.
      */
     public function dispatch(Notification $notification): void
     {
@@ -36,17 +41,40 @@ class NotificationDispatcher
 
         $notification->loadMissing('user');
         $user = $notification->user;
-        $channel = $user->notification_channel ?? NotificationChannel::Email;
+        $presenter = $this->presenters->for($notification);
 
-        $subject = $notification->subject ?? 'Digestul tău Ghes';
+        // Freshness is checked here rather than at compose time, because a
+        // queue backlog is exactly the case where the world moves underneath a
+        // composed row. sent_at deliberately stays null: the row then reads as
+        // composed-but-never-delivered, and the reminder unique index stops a
+        // later run from composing it again.
+        if (! $presenter->isStillRelevant($notification)) {
+            Log::info("Notification {$notification->id} is no longer relevant, not sending");
+
+            return;
+        }
+
+        $channel = $user->notification_channel ?? NotificationChannel::Email;
+        $subject = $notification->subject ?? $presenter->subject($notification);
 
         if (in_array($channel, [NotificationChannel::Email, NotificationChannel::Both], true)) {
-            $html = $this->emailRenderer->render($notification);
-            $notification->update(['body_html' => $html]);
+            $html = $presenter->renderEmail($notification);
+            $notification->update(['subject' => $subject, 'body_html' => $html]);
+
+            $unsubscribeUrl = $presenter->unsubscribeUrl($notification);
 
             try {
-                Mail::html($html, function ($message) use ($user, $subject): void {
+                Mail::html($html, function ($message) use ($user, $subject, $unsubscribeUrl): void {
                     $message->to($user->email)->subject($subject);
+
+                    // Bulk-sender rules at Gmail and Yahoo expect a machine
+                    // -readable opt-out; without one the provider's own
+                    // "unsubscribe" button turns into a spam report instead.
+                    if ($unsubscribeUrl !== null) {
+                        $headers = $message->getHeaders();
+                        $headers->addTextHeader('List-Unsubscribe', '<'.$unsubscribeUrl.'>');
+                        $headers->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+                    }
                 });
             } catch (Throwable $e) {
                 Log::error("Notification {$notification->id} mail send failed", ['error' => $e->getMessage()]);
@@ -55,28 +83,32 @@ class NotificationDispatcher
         }
 
         if (in_array($channel, [NotificationChannel::Push, NotificationChannel::Both], true)) {
-            $eventCount = count($notification->event_ids ?? []) + count($notification->discovery_event_ids ?? []);
+            $payload = $presenter->pushPayload($notification, $subject);
 
-            // Never throws — sent_at is set right after this, and an escaping
-            // push failure would re-send the email on retry.
-            $push = $this->pushFanout->sendToUser($user, PushPayload::digest($notification, $subject, $eventCount));
+            if ($payload !== null) {
+                // Never throws — sent_at is set right after this, and an escaping
+                // push failure would re-send the email on retry.
+                $push = $this->pushFanout->sendToUser($user, $payload);
 
-            Log::info("Notification {$notification->id} push fan-out", [
-                'web' => $push->web,
-                'expo' => $push->expo,
-                'suppressed' => $push->suppressed,
-            ]);
+                Log::info("Notification {$notification->id} push fan-out", [
+                    'web' => $push->web,
+                    'expo' => $push->expo,
+                    'suppressed' => $push->suppressed,
+                ]);
+            }
         }
 
-        $notification->update(['sent_at' => now()]);
+        $notification->update(['subject' => $subject, 'sent_at' => now()]);
 
-        // One impression per event the digest actually put in front of someone.
-        // Without this the digest contributes clicks (its links resolve through
-        // events.go) but no impressions, so the click-through rate divides
-        // email clicks by web impressions and can exceed 100%.
+        // One impression per event the notification actually put in front of
+        // someone. Without this the digest contributes clicks (its links
+        // resolve through events.go) but no impressions, so the click-through
+        // rate divides email clicks by web impressions and can exceed 100%.
+        // The surface comes from the presenter so reminder views are never
+        // counted into the digest's rate.
         $this->activity->logMany(
             ActivityType::EventImpression,
-            ActivitySurface::Digest,
+            $presenter->surface(),
             [...($notification->event_ids ?? []), ...($notification->discovery_event_ids ?? [])],
             $user,
             $notification->id,
