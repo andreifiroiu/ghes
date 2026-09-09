@@ -2,6 +2,13 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-09 — Nou — „Ține-mă minte" la autentificare (#43)
+
+Pe pagina de autentificare ai acum o bifă „Ține-mă minte". Dacă o bifezi, rămâi conectat și
+după ce închizi browserul, așa că nu mai trebuie să scrii parola de fiecare dată. Las-o nebifată
+pe un calculator folosit și de alții. Dacă îți schimbi parola, sesiunile ținute minte se închid
+automat.
+
 ## 2026-09-06 — Nou — Îți poți șterge contul din pagina de profil (#35)
 
 La finalul paginii de profil ai acum o secțiune „Șterge contul". Îți confirmi parola și contul
