@@ -18,6 +18,12 @@
         </include>
     </source>
     <php>
+        <!-- Pest runs the whole suite in one process, so memory is cumulative
+             and PHP's 128M default is a ceiling the suite grows into rather
+             than a per-test budget. It was reached in Sept 2026; raising it is
+             the same accommodation PHPStan already needs on its own command
+             line, not a symptom of a leaking test. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
