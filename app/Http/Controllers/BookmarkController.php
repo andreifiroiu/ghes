@@ -61,13 +61,16 @@ class BookmarkController extends Controller
         );
 
         // The saved screen is a surface of its own; without this the app's
-        // funnel would have no `mobile_saved` rows to read.
-        $this->activity->logMany(
-            ActivityType::EventImpression,
-            ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileSaved),
-            array_column($events->items(), 'id'),
-            $request->user(),
-        );
+        // funnel would have no `mobile_saved` rows to read — unless the app
+        // measures impressions itself and reports them via POST /activity.
+        if (! ResolveClientSurface::clientRecordsImpressions($request)) {
+            $this->activity->logMany(
+                ActivityType::EventImpression,
+                ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileSaved),
+                array_column($events->items(), 'id'),
+                $request->user(),
+            );
+        }
 
         return ApiResponse::paginated(EventResource::collection($events));
     }

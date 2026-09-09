@@ -166,12 +166,15 @@ class RecommendationController extends Controller
             $batch->discoveryEventIds,
         );
 
-        $this->activity->logMany(
-            ActivityType::EventImpression,
-            ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileFeed),
-            [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
-            $user,
-        );
+        // Skipped when the app measures impressions itself (POST /activity).
+        if (! ResolveClientSurface::clientRecordsImpressions($request)) {
+            $this->activity->logMany(
+                ActivityType::EventImpression,
+                ResolveClientSurface::surfaceFor($request, ActivitySurface::MobileFeed),
+                [...$recommendations->pluck('id'), ...$discoveryEvents->pluck('id')],
+                $user,
+            );
+        }
 
         return ApiResponse::item([
             'recommendations' => EventResource::collection($recommendations)->resolve(),

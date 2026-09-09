@@ -389,6 +389,11 @@ return [
             'chat_per_day' => 200,
             // Device registrations per minute per user.
             'devices_per_minute' => 30,
+            // Activity batches (POST /activity) per minute per user. The app
+            // flushes at most every 30 seconds; the headroom is for replaying
+            // an offline buffer. Each batch is up to 100 rows, so this is also
+            // the cap on how fast one account can grow the activity table.
+            'activity_per_minute' => 10,
             // Verification mails per minute per user.
             'verify_per_minute' => 6,
         ],
@@ -493,6 +498,13 @@ return [
         // saturates rather than letting one runaway event flatten every other
         // score toward zero.
         'engagement_ceiling' => (int) env('EVENTPULSE_ENGAGEMENT_CEILING', 50),
+
+        // How long a client-reported impression keeps the app's
+        // `X-Ghes-Impressions: client` opt-out honoured. A tracker that stops
+        // reporting hands impression counting back to the server when this
+        // lapses, rather than leaving the mobile click-through rate with no
+        // denominator.
+        'client_impressions_trust_hours' => 24,
 
         // Substrings matched case-insensitively against the User-Agent to flag
         // a hit as automated. Mail scanners and link prefetchers fetch every
