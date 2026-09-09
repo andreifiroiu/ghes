@@ -7,6 +7,7 @@ use App\Enums\TokenAbility;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Services\Auth\TokenIssuer;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * @return array<string, string>
@@ -301,6 +302,35 @@ describe('signing out', function () {
         $this->withToken($tablet['access_token'])->postJson('/api/v1/auth/logout-all')->assertOk();
 
         expect($user->tokens()->count())->toBe(0);
+    });
+
+    it('logging out everywhere also kills the browser remember cookie', function () {
+        $user = User::factory()->create();
+
+        // The web half: a browser that ticked "remember me".
+        $login = test()->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+            'remember' => true,
+        ]);
+        $recaller = $login->getCookie(Auth::guard('web')->getRecallerName())?->getValue();
+        expect($recaller)->not->toBeNull();
+
+        app('auth')->forgetGuards();
+        $phone = signIn($user, '22222222-2222-4222-8222-222222222222');
+
+        app('auth')->forgetGuards();
+        test()->withToken($phone['access_token'])->postJson('/api/v1/auth/logout-all')->assertOk();
+
+        // "Everywhere" has to mean the laptop too. Deleting Sanctum rows alone
+        // would leave this cookie signing the user in for its full 400 days —
+        // exactly the device the user reached for this endpoint to cut off.
+        test()->flushSession();
+        app('auth')->forgetGuards();
+
+        test()->withCookie(Auth::guard('web')->getRecallerName(), $recaller)
+            ->get('/dashboard')
+            ->assertRedirect(route('login'));
     });
 
     it('lists the signed-in devices with the current one flagged', function () {
