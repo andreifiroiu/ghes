@@ -29,8 +29,9 @@ const MIN_LIVE_SEARCH_LENGTH = 2;
  * @param {string} [props.filters.search]
  * @param {string} [props.filters.category]
  * @param {string} [props.filters.date]
+ * @param {string} [props.city] - Display label for the active city, used in the h1
  */
-export default function Index({ events = {}, filters = {} }) {
+export default function Index({ events = {}, filters = {}, city = '' }) {
     const { auth } = usePage().props;
     const isGuest = !auth?.user;
     const eventData = events.data || events;
@@ -44,6 +45,9 @@ export default function Index({ events = {}, filters = {} }) {
     // local state to decide whether a debounced reload is still needed, so
     // arriving back on the page does not immediately re-request what it holds.
     const appliedSearch = filters.search || '';
+
+    // Kept identical to the server-rendered <title> and the ItemList name.
+    const heading = city ? `Evenimente în ${city}` : 'Evenimente';
 
     /**
      * Reload the list.
@@ -204,8 +208,8 @@ export default function Index({ events = {}, filters = {} }) {
     };
 
     return (
-        <AppLayout title="Evenimente">
-            <Head title="Evenimente" />
+        <AppLayout title={heading}>
+            <Head title={heading} />
 
             {/* Guests see the same list read-only — nudge them toward a profile */}
             {isGuest && (

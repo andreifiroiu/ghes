@@ -605,6 +605,181 @@ PROMPT,
         'min_exchanges' => 4,
         'welcome_message' => 'Salut! Sunt Ghes — te ajut să descoperi evenimente locale. Pentru început, spune-mi: ce tipuri de activități și evenimente îți plac cel mai mult?',
     ],
+    /*
+    |--------------------------------------------------------------------------
+    | SEO / AEO
+    |--------------------------------------------------------------------------
+    |
+    | Everything the public site tells search engines and AI answer engines
+    | about itself: the crawler policy served as /robots.txt, the paths that
+    | must never be indexed, the metadata defaults, and the identity stamped
+    | into the Organization node of every page's JSON-LD.
+    |
+    | Private paths are *noindexed* rather than Disallowed in robots.txt where
+    | their URL can be shared: a Disallow stops the crawler before it can read
+    | the noindex, so a URL linked from an email can still be indexed from the
+    | link alone. Surfaces nobody links to are cheaper to keep out of the crawl
+    | budget with a Disallow.
+    |
+    */
+    'seo' => [
+
+        'robots' => [
+            /*
+             * The only hosts that publish the site. Anything else — a staging
+             * box, a Herd .test domain, a lookalike — gets `Disallow: /`. An
+             * allow-list rather than a prefix match, so `ghes-preview.example`
+             * cannot open the crawl by accident.
+             */
+            'public_hosts' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('GHES_PUBLIC_HOSTS', 'ghes.ro,www.ghes.ro')),
+            ))),
+
+            /*
+             * Withdrawn from every crawler on the public host. Admin surfaces,
+             * the account area and the tracking endpoints have nothing to rank
+             * for. `go/` and `e/o/` especially: they write an activity row on
+             * GET, and a crawler walking them would feed the ranking signals.
+             */
+            'disallow' => [
+                '/admin/',
+                '/horizon/',
+                '/log-viewer',
+                '/go/',
+                '/e/o/',
+                '/reactions/',
+                '/unsubscribe/',
+                '/api/',
+            ],
+
+            /*
+             * AI crawlers, by intent. The `allow` group are answer and search
+             * engines that cite their sources and send readers back — for a
+             * free event guide that is exactly the distribution Ghes wants, so
+             * they get the same access as Googlebot. The `block` group only
+             * collects training data and returns nothing.
+             */
+            'ai_crawlers' => [
+                'allow' => [
+                    'GPTBot',
+                    'ChatGPT-User',
+                    'OAI-SearchBot',
+                    'ClaudeBot',
+                    'Claude-User',
+                    'Claude-SearchBot',
+                    'PerplexityBot',
+                    'Perplexity-User',
+                ],
+                'block' => [
+                    'Google-Extended',
+                    'Applebot-Extended',
+                    'CCBot',
+                    'Bytespider',
+                    'meta-externalagent',
+                ],
+            ],
+        ],
+
+        /*
+         * Request patterns (Illuminate\Http\Request::is() syntax) that get
+         * <meta name="robots" content="noindex,nofollow"> and an X-Robots-Tag
+         * header. Everything behind auth, plus the signed mail links, which are
+         * public URLs that only make sense to the person who received them.
+         */
+        'noindex' => [
+            'dashboard',
+            'onboarding',
+            'onboarding/*',
+            'profile',
+            'profile/*',
+            'settings/*',
+            'admin',
+            'admin/*',
+            'events/saved',
+            'login',
+            'register',
+            'forgot-password',
+            'reset-password/*',
+            'verify-email/*',
+            'reactions/*',
+            'unsubscribe/*',
+            'go/*',
+            'e/o/*',
+            'horizon',
+            'horizon/*',
+            'log-viewer',
+            'log-viewer/*',
+            'up',
+        ],
+
+        /*
+         * Fallbacks for any page that does not set its own. The description is
+         * what a SERP shows for the home page and what an answer engine quotes
+         * when it has nothing better.
+         */
+        'defaults' => [
+            'title' => 'Ghes — evenimente în Timișoara',
+            'title_suffix' => ' · Ghes',
+            'description' => 'Ghes adună evenimentele din Timișoara într-un singur loc: concerte, teatru, expoziții, sport și viață de noapte. Fără reclame, fără postări promovate.',
+            /*
+             * The logo stands in until a purpose-built 1200x630 card exists.
+             * It is the wrong aspect ratio for a large summary card, so a
+             * shared link crops it — worth replacing, but a wrong-shaped image
+             * still beats no og:image, which is what every link had before.
+             */
+            'image' => 'images/logo-light.png',
+            /*
+             * Hard-coded rather than read from app()->getLocale(): .env sets
+             * APP_LOCALE=ro while config/app.php defaults to en, so the two
+             * disagree depending on the host, and og:locale is not a thing to
+             * let drift.
+             */
+            'locale' => 'ro_RO',
+            'language' => 'ro-RO',
+            'twitter_card' => 'summary_large_image',
+        ],
+
+        'sitemap' => [
+            /*
+             * Public URLs served by code, with a change-frequency hint. Event
+             * detail pages are added from the database.
+             */
+            'static' => [
+                '/' => 'daily',
+                'events' => 'hourly',
+            ],
+            /*
+             * One hour tracks the scraper cadence (the busiest source runs
+             * every four hours) without rebuilding the document per crawl.
+             */
+            'cache_seconds' => 3600,
+            /*
+             * The protocol caps a sitemap at 50,000 URLs. Ghes is far below
+             * that, but an unbounded query against a growing table is how a
+             * sitemap silently becomes a timeout.
+             */
+            'max_events' => 20000,
+        ],
+
+        /*
+         * Who is behind the site, for the Organization node. Ghes is a personal
+         * project rather than a company; `legal_name` stays null until that
+         * changes, and the node then omits it rather than inventing one.
+         */
+        'organization' => [
+            'legal_name' => env('GHES_LEGAL_NAME'),
+            'email' => env('GHES_CONTACT_EMAIL', 'contact@ghes.ro'),
+            'logo' => 'images/logo-light.png',
+            'city' => 'Timișoara',
+            'country' => 'RO',
+            'same_as' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('GHES_SOCIAL_PROFILES', '')),
+            ))),
+        ],
+    ],
+
     'city' => env('EVENTPULSE_CITY', 'Bucharest'),
     'categories' => ['Music', 'Arts', 'Sports', 'Technology', 'Food', 'Nightlife', 'Business', 'Health', 'Education', 'Family', 'Community', 'Film', 'Literature', 'Other'],
 ];
