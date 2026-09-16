@@ -19,8 +19,11 @@ use App\Services\Activity\ActivityLogger;
 use App\Services\Events\EventSearcher;
 use App\Services\Events\IcsGenerator;
 use App\Services\Recommendation\RelatedEventFinder;
+use App\Services\Seo\SeoManager;
+use App\Services\Seo\StructuredData;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -51,6 +54,8 @@ class EventController extends Controller
         private readonly IcsGenerator $icsGenerator,
         private readonly ActivityLogger $activity,
         private readonly EventSearcher $searcher,
+        private readonly SeoManager $seo,
+        private readonly StructuredData $structuredData,
     ) {}
 
     public function index(Request $request): Response
@@ -59,16 +64,30 @@ class EventController extends Controller
 
         $this->recordBrowse($request, $events->pluck('id')->all(), ActivitySurface::EventsIndex);
 
+        $this->applyBrowseSeo($request, $events->getCollection());
+
         return Inertia::render('Events/Index', [
             'events' => EventResource::collection($events),
             'filters' => $request->only(self::FILTER_KEYS),
+            // The page's <h1>. Named here rather than hard-coded in the
+            // component so it stays the same string as the title tag and the
+            // ItemList name, which is the whole point of putting the city in
+            // it: an h1 that says less than the <title> is a mismatch a
+            // crawler notices.
+            'city' => $this->cityLabel(),
         ]);
     }
 
     public function show(Request $request, Event $event): Response
     {
+        $props = $this->detailProps($request, $event, ActivitySurface::EventDetail);
+
+        // detailProps() resolved the canonical event and 404'd a hidden one, so
+        // whatever it returned is the row this URL really represents.
+        $this->applyDetailSeo($props['event']->resource);
+
         return Inertia::render('Events/Show', [
-            ...$this->detailProps($request, $event, ActivitySurface::EventDetail),
+            ...$props,
             // Set only when a digest reaction redirected here, and read from
             // the query string rather than a session flash: the reader is
             // arriving from a mail webview, where the session cookie may never
@@ -117,6 +136,90 @@ class EventController extends Controller
             'Content-Type' => 'text/calendar; charset=utf-8',
             'Content-Disposition' => 'attachment; filename="'.$this->icsGenerator->filename($event).'"',
         ]);
+    }
+
+    /**
+     * Metadata for the browse page.
+     *
+     * A filtered browse canonicalises to the unfiltered page. Every
+     * combination of `?category=`, `?tag=`, `?venue=` and `?date=` is a
+     * different URL over largely the same events, and left alone they compete
+     * with each other and with the detail pages for the same terms. Only the
+     * bare /events is offered for indexing; a filtered view is `noindex,
+     * follow`, which still lets a crawler reach the event pages through it.
+     *
+     * @param  EloquentCollection<int, Event>  $events
+     */
+    private function applyBrowseSeo(Request $request, EloquentCollection $events): void
+    {
+        $city = $this->cityLabel();
+        $filtered = $this->appliedFilters !== [] || $request->filled('page');
+
+        $this->seo
+            ->title("Evenimente în {$city}")
+            ->description("Toate evenimentele din {$city}: concerte, teatru, expoziții, sport și viață de noapte, adunate din zeci de surse și actualizate zilnic.")
+            ->canonical(route('events.index'))
+            ->jsonLd('breadcrumbs', $this->structuredData->breadcrumbs([
+                ['name' => 'Acasă', 'url' => route('home')],
+                ['name' => 'Evenimente'],
+            ]));
+
+        if ($filtered) {
+            $this->seo->robots(['noindex', 'follow']);
+
+            return;
+        }
+
+        $this->seo->jsonLd('itemList', $this->structuredData->eventList($events, "Evenimente în {$city}"));
+    }
+
+    /**
+     * Metadata for one event.
+     *
+     * The description falls back to a sentence built from the columns when the
+     * scraped one is missing or useless. A detail page with no meta description
+     * is one Google writes itself from whatever text it finds, and for an event
+     * page that is usually the navigation.
+     */
+    private function applyDetailSeo(Event $event): void
+    {
+        $this->seo
+            ->title($event->title)
+            ->description($event->description ?? $this->fallbackDescription($event))
+            ->canonical(route('events.show', $event))
+            ->image($event->image_url)
+            ->type('article')
+            ->jsonLd('event', $this->structuredData->event($event))
+            ->jsonLd('breadcrumbs', $this->structuredData->breadcrumbs([
+                ['name' => 'Acasă', 'url' => route('home')],
+                ['name' => 'Evenimente', 'url' => route('events.index')],
+                ['name' => $event->title],
+            ]));
+    }
+
+    /**
+     * A description assembled from what the scraper did capture.
+     *
+     * Roughly a third of scraped events arrive with no description at all —
+     * a ticket listing is often just a title, a date and a venue.
+     */
+    private function fallbackDescription(Event $event): string
+    {
+        $parts = [$event->title];
+
+        if ($event->starts_at !== null) {
+            $parts[] = $event->starts_at
+                ->timezone($this->cityTimezone())
+                ->translatedFormat('j F Y, H:i');
+        }
+
+        $where = $event->venue ?? $event->city;
+
+        if ($where !== null && $where !== '') {
+            $parts[] = $where;
+        }
+
+        return implode(' · ', $parts).'. Detalii și bilete pe Ghes.';
     }
 
     /**
