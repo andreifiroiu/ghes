@@ -195,6 +195,26 @@ it('sends the click to the provider the reader picked', function () {
     expect(UserActivityLog::sole()->context['source'])->toBe('allevents');
 });
 
+it('sends the click to the URL the provider most recently listed', function () {
+    $event = Event::factory()->create(['source_url' => 'https://iabilet.ro/canonical']);
+    EventSource::factory()->forSource('allevents')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://allevents.in/stale',
+        'last_seen_at' => now()->subDays(2),
+    ]);
+    EventSource::factory()->forSource('allevents')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://allevents.in/fresh',
+        'last_seen_at' => now(),
+    ]);
+
+    // The detail page shows one button per provider, linked to the freshest
+    // URL; the redirect must land on that same URL, not an arbitrary row.
+    $this->withHeaders(browserHeaders())
+        ->get("/go/{$event->id}?s=allevents")
+        ->assertRedirect('https://allevents.in/fresh');
+});
+
 it('ignores a provider the event was never listed by', function () {
     $event = Event::factory()->create(['source_url' => 'https://iabilet.ro/canonical']);
     EventSource::factory()->forSource('allevents')->create([

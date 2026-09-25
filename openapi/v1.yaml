@@ -1361,10 +1361,15 @@ components:
         ics_url:
           type: [string, "null"]
           description: The event as an iCalendar file, for handing to the OS calendar. Null when the event has no parseable start.
-        sources_count: { type: integer }
+        sources_count:
+          type: integer
+          description: How many distinct providers listed the event.
         sources:
           type: array
-          description: Only on the detail endpoint.
+          description: |
+            Only on the detail endpoint. One entry per provider, carrying the URL that provider
+            most recently listed the event under. `POST /events/{event}/click` with that `source`
+            resolves to the same URL.
           items:
             type: object
             required: [source, source_url]

@@ -23,13 +23,30 @@ it('moves attached sources onto the canonical event', function () {
     $canonical = Event::factory()->create();
     $duplicate = Event::factory()->create();
 
-    EventSource::factory()->count(2)->create(['event_id' => $duplicate->id]);
+    EventSource::factory()->count(2)->sequence(
+        ['source' => 'iabilet'],
+        ['source' => 'zilesinopti'],
+    )->create(['event_id' => $duplicate->id]);
 
     $this->merger->mergeInto($canonical, $duplicate);
 
     expect(EventSource::where('event_id', $canonical->id)->count())->toBe(2)
         ->and(EventSource::where('event_id', $duplicate->id)->count())->toBe(0)
         ->and($canonical->fresh()->sources_count)->toBe(2);
+});
+
+it('counts providers, not provenance rows, after a merge', function () {
+    $canonical = Event::factory()->create();
+    $duplicate = Event::factory()->create();
+
+    // The same provider listed the event twice, under two URLs.
+    EventSource::factory()->forSource('iabilet')->create(['event_id' => $canonical->id]);
+    EventSource::factory()->forSource('iabilet')->create(['event_id' => $duplicate->id]);
+
+    $this->merger->mergeInto($canonical, $duplicate);
+
+    expect(EventSource::where('event_id', $canonical->id)->count())->toBe(2)
+        ->and($canonical->fresh()->sources_count)->toBe(1);
 });
 
 it('marks the duplicate as merged instead of deleting it', function () {
