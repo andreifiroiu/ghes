@@ -14,7 +14,7 @@
 @if(count($tags) > 0)
     <div class="event-tags" style="margin:0 0 10px;">
         @foreach($tags as $tag)
-            <span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;border-radius:9999px;font-size:11px;background:#f4f4f5;color:#52525b;">#{{ $tag }}</span>
+            <span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;border-radius:9999px;font-size:11px;background:#f4f4f5;color:#52525b;">{{ $tag }}</span>
         @endforeach
     </div>
 @endif

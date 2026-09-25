@@ -5,7 +5,7 @@ Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 ## 2026-09-25 — Îmbunătățit — Etichetele evenimentelor apar și în e-mailuri (#48)
 
 În e-mailurile cu recomandări și în mementourile pentru evenimentele salvate, fiecare eveniment
-își arată acum etichetele, de exemplu #jazz sau #în-aer-liber, chiar sub dată și locație. Uită-te
+își arată acum etichetele, de exemplu „jazz" sau „în aer liber", chiar sub dată și locație. Uită-te
 la ele ca să-ți dai seama dintr-o privire dacă un eveniment e pe gustul tău. În e-mail apar cel mult
 cinci etichete, iar lista completă o găsești pe pagina evenimentului.
 
