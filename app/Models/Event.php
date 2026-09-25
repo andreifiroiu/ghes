@@ -8,6 +8,7 @@ use App\Enums\EventCategory;
 use App\Services\Processing\EventTextNormalizer;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -208,6 +209,27 @@ class Event extends Model
         }
 
         return $this->source !== '' ? [$this->source] : [];
+    }
+
+    /**
+     * One provenance row per provider: the URL it most recently listed this
+     * event under, ordered by provider.
+     *
+     * A provider can hold several rows for one event — a recurring listing's
+     * occurrences, a mobile and a desktop URL, a renamed slug, or two of its
+     * listings merged together. Anything that names providers to a reader
+     * wants one entry each. The freshest URL wins because it is the one the
+     * provider is still serving; ClickDestinationResolver picks the same row.
+     *
+     * @return Collection<int, EventSource>
+     */
+    public function latestSourcePerProvider(): Collection
+    {
+        return ($this->relationLoaded('sources') ? $this->sources : $this->sources()->get())
+            ->sortBy([['last_seen_at', 'desc'], ['id', 'desc']])
+            ->unique('source')
+            ->sortBy('source')
+            ->values();
     }
 
     /**
