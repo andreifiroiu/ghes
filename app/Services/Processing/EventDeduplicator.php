@@ -18,7 +18,9 @@ use Throwable;
  *   1. Same source, same URL/id, same occurrence — a re-scrape.
  *   2. A different source whose blocking key matches exactly.
  *   3. A different source scoring above threshold against a same-city,
- *      same-window candidate.
+ *      same-window candidate. A candidate on the same day, starting within
+ *      minutes, at the same venue may instead match on the distinctive words
+ *      of its title alone, against a lower floor.
  *
  * Everything is keyed on the *local calendar date in the city's timezone*
  * rather than on an exact timestamp, because providers disagree on the time
@@ -133,13 +135,26 @@ class EventDeduplicator
      * Returns 0.0 when the title similarity alone fails to clear the floor, so
      * that agreement on venue and date can never merge two different acts
      * playing the same club on the same night.
+     *
+     * One exception: when the place and time anchor holds (same local date,
+     * real start times within minutes, same venue), a title that misses the
+     * floor still matches if its *distinctive* words — the title minus generic
+     * event words like "concert" or "spectacol" — clear a lower floor.
+     * Providers reword one event's title far more often than one venue starts
+     * two different things at the same minute, but a cinema or a multi-stage
+     * venue does exactly that, and "Concert Byron" / "Concert Subcarpati" only
+     * look alike through the generic word. Such a match scores exactly
+     * `min_score`: enough to merge, never enough to outrank a candidate that
+     * matched on its title.
      */
     public function score(RawEvent $event, Event $candidate, string $timezone): float
     {
         $titleScore = $this->titleScore($event->title, $candidate->title);
 
         if ($titleScore < (float) config('eventpulse.dedup.min_title_similarity', 0.60)) {
-            return 0.0;
+            return $this->matchesOnPlaceAndTime($event, $candidate, $timezone)
+                ? (float) config('eventpulse.dedup.min_score', 0.75)
+                : 0.0;
         }
 
         /** @var array{title: float, venue: float, time: float} $weights */
@@ -156,6 +171,50 @@ class EventDeduplicator
             + $this->timeScore($event, $candidate, $timezone) * (float) $weights['time'];
 
         return $weighted / $total;
+    }
+
+    /**
+     * The relaxed match: the place and time anchor holds and the distinctive
+     * words of the two titles clear `anchored_min_title_similarity`.
+     */
+    private function matchesOnPlaceAndTime(RawEvent $event, Event $candidate, string $timezone): bool
+    {
+        return $this->isPlaceAndTimeAnchored($event, $candidate, $timezone)
+            && $this->distinctiveTitleScore($event->title, $candidate->title)
+                >= (float) config('eventpulse.dedup.anchored_min_title_similarity', 0.35);
+    }
+
+    /**
+     * Whether two reports agree on where and when exactly: the same local
+     * date, real start times within `anchor_max_minutes_apart` of each other,
+     * and the same venue (equal, or one naming the other plus a city).
+     *
+     * A date-only listing (local midnight) or an unknown venue never anchors:
+     * the anchor stands in for missing title agreement, so it has to be
+     * positive evidence on both sides, not the absence of a contradiction.
+     */
+    private function isPlaceAndTimeAnchored(RawEvent $event, Event $candidate, string $timezone): bool
+    {
+        // venueScore() is a neutral 0.5 when either venue is unknown.
+        if ($this->venueScore($event->venue, $candidate->venue) < 0.9) {
+            return false;
+        }
+
+        $rawTime = $this->localTime($event->startsAt, $timezone);
+        $candidateTime = $candidate->starts_at === null
+            ? null
+            : $this->localTime($candidate->starts_at->toDateTimeString(), $timezone);
+
+        if ($rawTime === null || $candidateTime === null) {
+            return false;
+        }
+
+        if ($rawTime->toDateString() !== $candidateTime->toDateString()) {
+            return false;
+        }
+
+        return abs($rawTime->diffInMinutes($candidateTime))
+            <= (int) config('eventpulse.dedup.anchor_max_minutes_apart', 15);
     }
 
     /**
@@ -221,6 +280,28 @@ class EventDeduplicator
         similar_text($keyA, $keyB, $percent);
 
         return max($jaccard, $percent / 100);
+    }
+
+    /**
+     * Title similarity in [0, 1] over the distinctive words only: the title
+     * tokens minus `generic_title_words`. Zero when either title is nothing
+     * but generic words, since then there is nothing left to identify it by.
+     */
+    private function distinctiveTitleScore(string $a, string $b): float
+    {
+        /** @var list<string> $generic */
+        $generic = config('eventpulse.dedup.generic_title_words', []);
+
+        $tokensA = array_values(array_diff(EventTextNormalizer::titleTokens($a), $generic));
+        $tokensB = array_values(array_diff(EventTextNormalizer::titleTokens($b), $generic));
+
+        if ($tokensA === [] || $tokensB === []) {
+            return 0.0;
+        }
+
+        similar_text(implode('-', $tokensA), implode('-', $tokensB), $percent);
+
+        return max($this->jaccard($tokensA, $tokensB), $percent / 100);
     }
 
     /**
