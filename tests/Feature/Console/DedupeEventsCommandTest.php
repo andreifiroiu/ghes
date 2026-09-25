@@ -117,6 +117,19 @@ it('merges near-miss titles only on the fuzzy pass', function () {
     expect(Event::canonical()->count())->toBe(1);
 });
 
+it('merges a reworded title at the same place and time on the fuzzy pass', function () {
+    legacyEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']);
+    legacyEvent([
+        'title' => 'Hamlet',
+        'source' => 'iabilet',
+        'source_url' => 'https://m.iabilet.ro/bilete/hamlet/',
+    ]);
+
+    $this->artisan('eventpulse:dedupe-events', ['--fuzzy' => true])->assertSuccessful();
+
+    expect(Event::canonical()->count())->toBe(1);
+});
+
 it('is idempotent when run twice', function () {
     legacyEvent(['source' => 'allevents', 'source_url' => 'https://allevents.in/x/1']);
     legacyEvent(['source' => 'iabilet', 'source_url' => 'https://m.iabilet.ro/x/']);
