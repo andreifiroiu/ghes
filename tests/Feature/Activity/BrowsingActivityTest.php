@@ -25,6 +25,17 @@ it('logs an impression for every event the browse page rendered', function () {
         ->and($impressions->first()->surface)->toBe(ActivitySurface::EventsIndex);
 });
 
+it('logs impressions for each batch the load-more button fetches', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    $events = Event::factory()->count(3)->create(['starts_at' => now()->addWeek()]);
+
+    $cursor = $this->get('/events')->assertOk()->viewData('page')['scrollProps']['events']['nextPage'];
+    $this->get('/events?cursor='.$cursor)->assertOk();
+
+    expect(UserActivityLog::ofType(ActivityType::EventImpression)->pluck('event_id')->sort()->values()->all())
+        ->toBe($events->pluck('id')->sort()->values()->all());
+});
+
 it('logs a view when an event detail page is opened', function () {
     $event = Event::factory()->create();
 

@@ -55,12 +55,27 @@ class EventController extends Controller
 
     public function index(Request $request): Response
     {
-        $events = $this->browseQuery($request)->paginate((int) config('eventpulse.pagination.events', 20))->withQueryString();
+        $query = $this->browseQuery($request);
+
+        // Keyset, not offset: "load more" stacks batches on one screen, so the
+        // offset drifting between clicks shows as a silent gap. It drifts
+        // whenever the result set shifts under the reader — an event marked
+        // not-interested, one that just started and left upcoming(), one the
+        // pipeline just added — and a cursor on (starts_at, id) does not care.
+        $events = $query->clone()
+            ->cursorPaginate((int) config('eventpulse.pagination.events', 20))
+            ->withQueryString();
 
         $this->recordBrowse($request, $events->pluck('id')->all(), ActivitySurface::EventsIndex);
 
         return Inertia::render('Events/Index', [
-            'events' => EventResource::collection($events),
+            // A scroll prop: "load more" requests append `data` to what the
+            // page already holds instead of replacing it. A cursor paginator
+            // has no total, so it is counted separately for the "N rămase"
+            // label, and refreshed with every batch.
+            'events' => Inertia::scroll(
+                EventResource::collection($events)->additional(['meta' => ['total' => $query->count()]]),
+            ),
             'filters' => $request->only(self::FILTER_KEYS),
         ]);
     }
@@ -283,7 +298,12 @@ class EventController extends Controller
         $query = Event::upcoming()
             ->visible()
             ->canonical()
-            ->orderBy('starts_at', 'asc');
+            ->orderBy('starts_at', 'asc')
+            // Tie-breaker: gigs often share a start time. The web list's cursor
+            // needs a unique sort key to resume from, and without one Postgres
+            // may order tied rows differently per request, so the API's offset
+            // pages would repeat some events and skip others.
+            ->orderBy('id');
 
         // Guests browse the same list read-only. `withUserContext()` takes a
         // non-nullable User, and a guest has no reaction or bookmark state to
