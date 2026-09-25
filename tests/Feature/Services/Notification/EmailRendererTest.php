@@ -135,3 +135,88 @@ it('shows event pricing information', function () {
     expect($html)->toContain('RON');
     expect($html)->toContain('50');
 });
+
+it('shows the tags of recommended and discovery events', function () {
+    $user = User::factory()->create();
+
+    $recommended = Event::factory()->create(['tags' => ['live-music', 'outdoor']]);
+    $discovery = Event::factory()->create(['tags' => ['pottery-workshop']]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$recommended->id],
+        'discovery_event_ids' => [$discovery->id],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->toContain('#live-music');
+    expect($html)->toContain('#outdoor');
+    expect($html)->toContain('#pottery-workshop');
+});
+
+it('caps the tags shown per event at the configured limit', function () {
+    config(['eventpulse.notifications.max_tags_per_event' => 2]);
+
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['tags' => ['first-tag', 'second-tag', 'third-tag']]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->toContain('#first-tag');
+    expect($html)->toContain('#second-tag');
+    expect($html)->not->toContain('#third-tag');
+});
+
+it('renders no tag row for an event without tags', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['tags' => []]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->not->toContain('event-tags');
+});
+
+it('escapes tag text', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['tags' => ['<b>bold</b>']]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->toContain('#&lt;b&gt;bold&lt;/b&gt;');
+    expect($html)->not->toContain('<b>bold</b>');
+});
+
+it('skips blank tags instead of rendering an empty pill', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['tags' => ['  ', '', ' jazz ']]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->toContain('#jazz</span>');
+    expect(substr_count($html, 'border-radius:9999px;font-size:11px;background:#f4f4f5'))->toBe(1);
+});

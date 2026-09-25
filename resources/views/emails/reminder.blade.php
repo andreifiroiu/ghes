@@ -64,6 +64,8 @@
                 @endif
             </div>
 
+            @include('emails.partials.tags', ['event' => $event])
+
             @if($event->description)
                 <div class="event-description">{{ Str::limit($event->description, 180) }}</div>
             @endif
