@@ -2,6 +2,13 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-25 — Îmbunătățit — Mai puține evenimente listate de două ori (#52)
+
+Când două site-uri anunță același eveniment în același loc, în aceeași zi și la aceeași oră, dar cu
+titluri formulate diferit (de exemplu „Hamlet" și „Spectacol Hamlet - regia Radu Afrim"), îl vezi
+acum o singură dată în lista de evenimente și în recomandările tale. Evenimentele diferite care au loc
+în aceeași sală, la aceeași oră, rămân separate.
+
 ## 2026-09-25 — Îmbunătățit — Etichetele evenimentelor apar și în e-mailuri (#48)
 
 În e-mailurile cu recomandări și în mementourile pentru evenimentele salvate, fiecare eveniment
