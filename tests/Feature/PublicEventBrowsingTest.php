@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 use App\Enums\Reaction;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Event;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -149,6 +152,118 @@ it('paginates the events list at the configured page size', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('events.data', 2)
             ->where('events.meta.per_page', 2));
+});
+
+/**
+ * Load the events list the way the "load more" button does: follow the scroll
+ * prop's next cursor until it runs out.
+ *
+ * @return array<int, array<int, array<string, mixed>>> each batch's events
+ */
+function loadAllBatches(TestCase $test, ?Closure $betweenBatches = null): array
+{
+    $batches = [];
+    $page = $test->get('/events')->assertOk()->viewData('page');
+
+    while (true) {
+        $batches[] = $page['props']['events']['data'];
+        $cursor = $page['scrollProps']['events']['nextPage'];
+
+        if ($cursor === null || count($batches) > 10) {
+            return $batches;
+        }
+
+        if ($betweenBatches !== null) {
+            $betweenBatches($batches);
+        }
+
+        $pageName = $page['scrollProps']['events']['pageName'];
+        $page = $test->get("/events?{$pageName}={$cursor}")->assertOk()->viewData('page');
+    }
+}
+
+it('exposes the events list as an infinite-scroll prop with a running total', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    Event::factory()->count(3)->create(['starts_at' => now()->addDay()]);
+
+    $page = $this->get('/events')->assertOk()->viewData('page');
+
+    expect($page['scrollProps']['events'])->toMatchArray([
+        'pageName' => 'cursor',
+        'previousPage' => null,
+        'currentPage' => 1,
+        'reset' => false,
+    ])->and($page['scrollProps']['events']['nextPage'])->toBeString()
+        ->and($page['mergeProps'])->toContain('events.data')
+        ->and($page['props']['events']['meta']['total'])->toBe(3);
+});
+
+it('reports no next cursor on the last batch', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    Event::factory()->count(3)->create(['starts_at' => now()->addDay()]);
+
+    $batches = loadAllBatches($this);
+
+    expect($batches)->toHaveCount(2)
+        ->and($batches[1])->toHaveCount(1);
+});
+
+it('skips no event when one is dismissed between batches', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    $user = User::factory()->create();
+    $events = collect(range(1, 5))->map(
+        fn (int $day) => Event::factory()->create(['starts_at' => now()->addDays($day)]),
+    );
+
+    $this->actingAs($user);
+
+    // Marking a card not-interested does not reload the list, so the reader
+    // taps "load more" with the dismissed card still on screen. Under offset
+    // pagination that shifted every later event up one slot and the next
+    // batch silently started one event too late.
+    $dismissed = [];
+    $batches = loadAllBatches($this, function (array $batches) use ($user, &$dismissed) {
+        if (count($batches) === 1) {
+            $dismissed[] = $batches[0][0]['id'];
+            $user->reactions()->create(['event_id' => $batches[0][0]['id'], 'reaction' => Reaction::NotInterested]);
+        }
+    });
+
+    expect(collect($batches)->flatten(1)->pluck('id')->all())
+        ->toBe($events->pluck('id')->all())
+        ->and($dismissed)->toHaveCount(1);
+});
+
+it('replaces rather than appends the events list when a filter reload asks for a reset', function () {
+    Event::factory()->create(['starts_at' => now()->addDay()]);
+
+    $version = app(HandleInertiaRequests::class)->version(request());
+
+    $page = $this->withHeaders([
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => (string) $version,
+        'X-Inertia-Partial-Component' => 'Events/Index',
+        'X-Inertia-Partial-Data' => 'events,filters',
+        'X-Inertia-Reset' => 'events',
+    ])->get('/events?category=music')->assertOk()->json();
+
+    expect($page['scrollProps']['events']['reset'])->toBeTrue()
+        ->and($page['mergeProps'] ?? [])->not->toContain('events.data');
+});
+
+it('orders events sharing a start time by id so batches never overlap', function () {
+    config(['eventpulse.pagination.events' => 2]);
+    $startsAt = now()->addDay()->setTime(20, 0);
+    // Inserted in descending id order, so scan order and id order disagree and
+    // only an explicit tie-breaker yields the ascending ids asserted below.
+    $ids = collect(range(1, 5))->map(fn () => (string) Str::uuid())->sort()->values();
+    $events = $ids->reverse()->map(
+        fn (string $id) => Event::factory()->create(['id' => $id, 'starts_at' => $startsAt]),
+    );
+
+    $loaded = collect(loadAllBatches($this))->flatten(1)->pluck('id');
+
+    expect($loaded->all())->toBe($events->pluck('id')->sort()->values()->all());
 });
 
 it('paginates the events api at the configured page size', function () {
