@@ -475,6 +475,9 @@ return [
         'hour' => (int) env('EVENTPULSE_NOTIFICATION_HOUR', 8),
         'max_events_per_digest' => 10,
         'max_discovery_events' => 3,
+        // Tags shown per event card in digest and reminder emails; the event
+        // page lists them all.
+        'max_tags_per_event' => 5,
     ],
 
     // Reminders about events the user bookmarked or marked interested, sent a

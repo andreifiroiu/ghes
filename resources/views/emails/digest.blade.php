@@ -73,6 +73,7 @@
                         &middot; {{ $event->currency }} {{ number_format($event->price_min, 0) }}@if($event->price_max && $event->price_max != $event->price_min)–{{ number_format($event->price_max, 0) }}@endif
                     @endif
                 </div>
+                @include('emails.partials.tags', ['event' => $event])
                 @if($event->description)
                     <div class="event-description">{{ Str::limit($event->description, 150) }}</div>
                 @endif
@@ -108,6 +109,7 @@
                         &middot; {{ $event->venue }}
                     @endif
                 </div>
+                @include('emails.partials.tags', ['event' => $event])
                 @if($event->description)
                     <div class="event-description">{{ Str::limit($event->description, 120) }}</div>
                 @endif
