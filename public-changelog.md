@@ -2,6 +2,13 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-25 — Îmbunătățit — Lista de evenimente se încarcă pe loc, fără pagini (#51)
+
+Pe pagina Evenimente nu mai treci de la o pagină la alta cu „Înapoi" și „Înainte". Apasă „Arată mai multe" la
+finalul listei și următoarele evenimente apar sub cele pe care le vezi deja; butonul îți arată și câte au mai
+rămas. Când alegi altă categorie, altă dată sau cauți altceva, lista pornește din nou de la început. Iar dacă
+deschizi un eveniment și revii, găsești lista exact cum ai lăsat-o.
+
 ## 2026-09-25 — Îmbunătățit — Etichetele evenimentelor apar și în e-mailuri (#48)
 
 În e-mailurile cu recomandări și în mementourile pentru evenimentele salvate, fiecare eveniment
