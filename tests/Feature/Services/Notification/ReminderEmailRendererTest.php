@@ -12,8 +12,8 @@ it('shows the tags of the reminded event', function () {
 
     $html = (new ReminderEmailRenderer)->render($reminder, $event);
 
-    expect($html)->toContain('#jazz');
-    expect($html)->toContain('#outdoor');
+    expect($html)->toContain('>jazz</span>');
+    expect($html)->toContain('>outdoor</span>');
 });
 
 it('renders no tag row when the reminded event has no tags', function () {

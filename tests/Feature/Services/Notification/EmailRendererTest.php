@@ -150,9 +150,9 @@ it('shows the tags of recommended and discovery events', function () {
 
     $html = $this->renderer->render($notification);
 
-    expect($html)->toContain('#live-music');
-    expect($html)->toContain('#outdoor');
-    expect($html)->toContain('#pottery-workshop');
+    expect($html)->toContain('>live-music</span>');
+    expect($html)->toContain('>outdoor</span>');
+    expect($html)->toContain('>pottery-workshop</span>');
 });
 
 it('caps the tags shown per event at the configured limit', function () {
@@ -169,9 +169,9 @@ it('caps the tags shown per event at the configured limit', function () {
 
     $html = $this->renderer->render($notification);
 
-    expect($html)->toContain('#first-tag');
-    expect($html)->toContain('#second-tag');
-    expect($html)->not->toContain('#third-tag');
+    expect($html)->toContain('>first-tag</span>');
+    expect($html)->toContain('>second-tag</span>');
+    expect($html)->not->toContain('>third-tag</span>');
 });
 
 it('renders no tag row for an event without tags', function () {
@@ -201,7 +201,7 @@ it('escapes tag text', function () {
 
     $html = $this->renderer->render($notification);
 
-    expect($html)->toContain('#&lt;b&gt;bold&lt;/b&gt;');
+    expect($html)->toContain('>&lt;b&gt;bold&lt;/b&gt;</span>');
     expect($html)->not->toContain('<b>bold</b>');
 });
 
@@ -217,6 +217,22 @@ it('skips blank tags instead of rendering an empty pill', function () {
 
     $html = $this->renderer->render($notification);
 
-    expect($html)->toContain('#jazz</span>');
+    expect($html)->toContain('>jazz</span>');
     expect(substr_count($html, 'border-radius:9999px;font-size:11px;background:#f4f4f5'))->toBe(1);
+});
+
+it('shows tags without a hash prefix, as the event page does', function () {
+    $user = User::factory()->create();
+    $event = Event::factory()->create(['tags' => ['jazz']]);
+
+    $notification = Notification::factory()->create([
+        'user_id' => $user->id,
+        'event_ids' => [$event->id],
+        'discovery_event_ids' => [],
+    ]);
+
+    $html = $this->renderer->render($notification);
+
+    expect($html)->toContain('>jazz</span>');
+    expect($html)->not->toContain('#jazz');
 });

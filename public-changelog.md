@@ -8,11 +8,24 @@ Pe pagina unui eveniment, butoanele „Vezi pe …" și lista de surse numesc ac
 singură dată, chiar dacă același site a publicat evenimentul la două adrese diferite. Butonul te duce
 la cea mai recentă pagină a evenimentului de pe acel site. Numărul de surse de pe cardurile
 evenimentelor numără acum site-urile, nu adresele.
+## 2026-09-25 — Îmbunătățit — Mai puține evenimente listate de două ori (#52)
+
+Când două site-uri anunță același eveniment în același loc, în aceeași zi și la aceeași oră, dar cu
+titluri formulate diferit (de exemplu „Hamlet" și „Spectacol Hamlet - regia Radu Afrim"), îl vezi
+acum o singură dată în lista de evenimente și în recomandările tale. Evenimentele diferite care au loc
+în aceeași sală, la aceeași oră, rămân separate.
+
+## 2026-09-25 — Îmbunătățit — Lista de evenimente se încarcă pe loc, fără pagini (#51)
+
+Pe pagina Evenimente nu mai treci de la o pagină la alta cu „Înapoi" și „Înainte". Apasă „Arată mai multe" la
+finalul listei și următoarele evenimente apar sub cele pe care le vezi deja; butonul îți arată și câte au mai
+rămas. Când alegi altă categorie, altă dată sau cauți altceva, lista pornește din nou de la început. Iar dacă
+deschizi un eveniment și revii, găsești lista exact cum ai lăsat-o.
 
 ## 2026-09-25 — Îmbunătățit — Etichetele evenimentelor apar și în e-mailuri (#48)
 
 În e-mailurile cu recomandări și în mementourile pentru evenimentele salvate, fiecare eveniment
-își arată acum etichetele, de exemplu #jazz sau #în-aer-liber, chiar sub dată și locație. Uită-te
+își arată acum etichetele, de exemplu „jazz" sau „în aer liber", chiar sub dată și locație. Uită-te
 la ele ca să-ți dai seama dintr-o privire dacă un eveniment e pe gustul tău. În e-mail apar cel mult
 cinci etichete, iar lista completă o găsești pe pagina evenimentului.
 

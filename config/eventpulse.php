@@ -219,6 +219,28 @@ return [
         // must go through the scored path instead.
         'min_title_tokens_for_key_match' => 2,
 
+        // A title that misses `min_title_similarity` can still match when the
+        // place and time anchor holds (same local date, real start times within
+        // `anchor_max_minutes_apart`, same venue) and its distinctive words —
+        // the title minus `generic_title_words` — clear this lower floor.
+        // Providers reword titles; one venue rarely starts two different
+        // things at the same minute. Cinemas and multi-stage venues do, which
+        // is why the generic words are stripped: "Concert Byron" and "Concert
+        // Subcarpati" only look alike through "concert".
+        'anchored_min_title_similarity' => 0.35,
+        'anchor_max_minutes_apart' => 15,
+
+        // Event-type words that say what kind of event it is, not which one.
+        // Matched against normalised tokens: lowercase, no diacritics.
+        'generic_title_words' => [
+            'concert', 'concerte', 'spectacol', 'spectacole', 'recital', 'festival',
+            'gala', 'show', 'stand', 'up', 'standup', 'comedy', 'teatru', 'piesa',
+            'film', 'proiectie', 'opera', 'operei', 'balet', 'expozitie', 'vernisaj',
+            'lansare', 'carte', 'atelier', 'workshop', 'curs', 'conferinta', 'targ',
+            'petrecere', 'party', 'seara', 'noapte', 'night', 'tribute', 'tur',
+            'turneu', 'aniversar', 'aniversare', 'editia', 'editie', 'nou', 'noua',
+        ],
+
         'weights' => [
             'title' => 0.60,
             'venue' => 0.25,

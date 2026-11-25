@@ -148,3 +148,119 @@ it('honours a lowered title floor from config', function () {
 
     expect($score)->toBeGreaterThan(0.0);
 });
+
+// ---------------------------------------------------------------------------
+// Place-and-time anchor: same local date, start within 15 minutes, same venue
+// ---------------------------------------------------------------------------
+
+it('merges a reworded title when date, start time and venue all agree', function () {
+    // Full-title similarity is ~0.31, below the 0.60 floor; the distinctive
+    // words ("hamlet" against "hamlet radu afrim regia") reach ~0.41.
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']),
+        $this->timezone,
+    );
+
+    expect($score)->toBeGreaterThanOrEqual(config('eventpulse.dedup.min_score'));
+});
+
+it('does not merge that reworded title without the anchor', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'venue' => 'Filarmonica Banatul']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('accepts a venue with the city appended as the same place', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'venue' => 'Casa Tineretului, Timisoara']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']),
+        $this->timezone,
+    );
+
+    expect($score)->toBeGreaterThanOrEqual(config('eventpulse.dedup.min_score'));
+});
+
+it('anchors start times up to 15 minutes apart, and no further', function (string $rawStartsAt, bool $merges) {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'starts_at' => $rawStartsAt]),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim', 'starts_at' => '2026-05-10 17:00:00']),
+        $this->timezone,
+    );
+
+    expect($score >= config('eventpulse.dedup.min_score'))->toBe($merges);
+})->with([
+    'same minute' => ['2026-05-10 17:00:00', true],
+    '15 minutes later' => ['2026-05-10 17:15:00', true],
+    '30 minutes later' => ['2026-05-10 17:30:00', false],
+]);
+
+it('keeps unrelated titles apart at the same venue and time', function () {
+    // A cinema, or a multi-stage venue, runs different things in one slot.
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Dune: Partea a doua']),
+        scoringEvent(['title' => 'Oppenheimer']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('keeps two acts apart when only a generic word makes them look alike', function () {
+    // "Concert Byron" / "Concert Subcarpati" score ~0.45 on the full title,
+    // all of it from "concert"; their distinctive words share nothing.
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Concert Byron']),
+        scoringEvent(['title' => 'Concert Subcarpati']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('scores a relaxed match at exactly the merge threshold', function () {
+    // Enough to merge, never enough to outrank a candidate that matched on
+    // its title in findFuzzyDuplicate().
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe((float) config('eventpulse.dedup.min_score'));
+});
+
+it('does not anchor on a date-only listing', function () {
+    // 21:00 UTC is local midnight in May, which our adapters use for "no time".
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'starts_at' => '2026-05-09 21:00:00']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim', 'starts_at' => '2026-05-09 21:00:00']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('does not anchor when either side has no venue', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'venue' => null]),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});
+
+it('does not anchor on the adjacent day the candidate window allows', function () {
+    $score = $this->deduplicator->score(
+        scoringRawEvent(['title' => 'Hamlet', 'starts_at' => '2026-05-11 17:00:00']),
+        scoringEvent(['title' => 'Spectacol Hamlet - regia Radu Afrim', 'starts_at' => '2026-05-10 17:00:00']),
+        $this->timezone,
+    );
+
+    expect($score)->toBe(0.0);
+});

@@ -139,6 +139,14 @@ it('keeps a recurring event that reuses one URL as separate occurrences', functi
 // Cross-provider merging
 // ---------------------------------------------------------------------------
 
+it('merges two providers that word the title differently at the same place and time', function () {
+    $this->pipeline->process(providerEvent('zilesinopti', ['title' => 'Spectacol Hamlet - regia Radu Afrim']), 'timisoara');
+    $this->pipeline->process(providerEvent('allevents', ['title' => 'Hamlet']), 'timisoara');
+
+    expect(Event::count())->toBe(1)
+        ->and(EventSource::count())->toBe(2);
+});
+
 it('stores one event when three providers report the same concert', function () {
     $this->pipeline->process(providerEvent('iabilet'), 'timisoara');
     $this->pipeline->process(providerEvent('zilesinopti'), 'timisoara');

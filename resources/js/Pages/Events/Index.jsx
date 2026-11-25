@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, InfiniteScroll, Link, router, usePage } from '@inertiajs/react';
 import { X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
+import EventCard from '@/Components/Events/EventCard';
 import EventList from '@/Components/Events/EventList';
 import SearchAutocomplete from '@/Components/Events/SearchAutocomplete';
 import { Input } from '@/Components/ui/Input';
@@ -22,10 +23,10 @@ const MIN_LIVE_SEARCH_LENGTH = 2;
 
 /**
  * @param {Object} props
- * @param {Object} props.events - Paginated events object
- * @param {Array<Object>} props.events.data
- * @param {Object} props.events.links - { first, last, prev, next }
- * @param {Object} props.events.meta - { current_page, last_page, total, ... }
+ * @param {Object} props.events - Infinite-scroll prop: each "load more"
+ *   appends the next batch to `data`, while `meta` describes the latest batch
+ * @param {Array<Object>} props.events.data - Every event loaded so far
+ * @param {Object} props.events.meta - { per_page, next_cursor, prev_cursor, total, ... }
  * @param {string} [props.filters.search]
  * @param {string} [props.filters.category]
  * @param {string} [props.filters.date]
@@ -33,7 +34,12 @@ const MIN_LIVE_SEARCH_LENGTH = 2;
 export default function Index({ events = {}, filters = {} }) {
     const { auth } = usePage().props;
     const isGuest = !auth?.user;
-    const eventData = events.data || events;
+    const eventData = Array.isArray(events.data) ? events.data : [];
+    const hasEvents = eventData.length > 0;
+    // Events after the last one on screen. `meta.total` is counted afresh with
+    // every batch. Exact only while the list starts at the first event (not a
+    // hand-edited `?cursor=`); the "load more" label drops the count otherwise.
+    const remaining = Math.max(0, (events.meta?.total ?? 0) - eventData.length);
     const [search, setSearch] = useState(filters.search || '');
     const [searching, setSearching] = useState(false);
     const activeCategory = filters.category || null;
@@ -59,6 +65,12 @@ export default function Index({ events = {}, filters = {} }) {
      */
     const applyFilters = useCallback(
         (overrides, { live = false } = {}) => {
+            // A "load more" still in flight belongs to the old filters. Left
+            // running, it would land after the reset and append the old
+            // list's next batch to the new one. It is an async reload on the
+            // same page, so the visit below would not cancel it by itself.
+            router.cancelAll({ sync: false, prefetch: false });
+
             const params = {
                 // Mirrors EventController::FILTER_KEYS — every filter the
                 // server understands has to be carried, or interacting with one
@@ -92,6 +104,9 @@ export default function Index({ events = {}, filters = {} }) {
                     // the alphabet; a committed search is a real navigation and
                     // keeps its entry.
                     replace: live,
+                    // `events` is a scroll prop, which appends by default. A
+                    // new filter is a new list, not more of the old one.
+                    reset: ['events'],
                     // A header rather than a query param: `withQueryString()`
                     // would copy `live=1` onto the paginator links, silencing
                     // the logging for every pagination click that followed.
@@ -196,12 +211,6 @@ export default function Index({ events = {}, filters = {} }) {
         },
         [applyFilters]
     );
-
-    const handlePageChange = (url) => {
-        if (url) {
-            router.get(url, {}, { preserveState: true, preserveScroll: true });
-        }
-    };
 
     return (
         <AppLayout title="Evenimente">
@@ -325,39 +334,54 @@ export default function Index({ events = {}, filters = {} }) {
                 className={cn('transition-opacity', searching && 'opacity-50')}
                 aria-busy={searching}
             >
-                <EventList
-                    events={Array.isArray(eventData) ? eventData : []}
-                    emptyMessage="Niciun eveniment nu corespunde căutării. Încearcă alte cuvinte cheie sau filtre."
-                    showReactions={!isGuest}
-                />
+                {/* `preserveUrl` keeps the address bar on the filtered list
+                    rather than a cursor: a cursor is an opaque position that
+                    is useless to share, and the page-tagging that drives the
+                    URL sync is not redone on a filter reset, so it would write
+                    the old list's position onto the new one. Back still
+                    returns every loaded batch — that comes from history state,
+                    not the URL. */}
+                <InfiniteScroll
+                    data="events"
+                    manual
+                    onlyNext
+                    preserveUrl
+                    className={cn(
+                        hasEvents && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
+                    )}
+                    next={({ hasMore, hasPrevious, loading, fetch }) =>
+                        hasMore && (
+                            <div className="mt-8 flex justify-center">
+                                <Button
+                                    variant="outline"
+                                    className="min-h-11 sm:min-h-0"
+                                    // A filter reload in flight is replacing
+                                    // the list this batch would extend.
+                                    disabled={loading || searching}
+                                    onClick={fetch}
+                                >
+                                    {loading
+                                        ? 'Se încarcă…'
+                                        : !hasPrevious && remaining > 0
+                                          ? `Arată mai multe (${remaining} rămase)`
+                                          : 'Arată mai multe'}
+                                </Button>
+                            </div>
+                        )
+                    }
+                >
+                    {hasEvents ? (
+                        eventData.map((event) => (
+                            <EventCard key={event.id} event={event} showReactions={!isGuest} />
+                        ))
+                    ) : (
+                        <EventList
+                            events={[]}
+                            emptyMessage="Niciun eveniment nu corespunde căutării. Încearcă alte cuvinte cheie sau filtre."
+                        />
+                    )}
+                </InfiniteScroll>
             </div>
-
-            {/* Pagination */}
-            {events.meta?.last_page > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-8">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11 sm:min-h-0"
-                        disabled={!events.links?.prev}
-                        onClick={() => handlePageChange(events.links?.prev)}
-                    >
-                        Înapoi
-                    </Button>
-                    <span className="text-sm text-gray-500">
-                        Pagina {events.meta.current_page} din {events.meta.last_page}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11 sm:min-h-0"
-                        disabled={!events.links?.next}
-                        onClick={() => handlePageChange(events.links?.next)}
-                    >
-                        Înainte
-                    </Button>
-                </div>
-            )}
         </AppLayout>
     );
 }
