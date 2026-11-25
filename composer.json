@@ -17,7 +17,7 @@
         "laravel/socialite": "^5.28",
         "laravel/tinker": "^3.0",
         "meilisearch/meilisearch-php": "^1.16",
-        "minishlink/web-push": "^8.0",
+        "minishlink/web-push": "^10.0",
         "opcodesio/log-viewer": "^3.24",
         "spatie/browsershot": "^5.2",
         "spatie/laravel-ray": "^1.43",

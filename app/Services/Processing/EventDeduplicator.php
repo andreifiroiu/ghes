@@ -355,9 +355,7 @@ class EventDeduplicator
         $dayScore = $rawDate === $candidateDate ? 1.0 : 0.4;
 
         $rawTime = $this->localTime($event->startsAt, $timezone);
-        $candidateTime = $candidate->starts_at === null
-            ? null
-            : $this->localTime($candidate->starts_at->toDateTimeString(), $timezone);
+        $candidateTime = $this->localTime($candidate->starts_at->toDateTimeString(), $timezone);
 
         // Midnight means "date only" for most of our adapters — not a real time.
         if ($rawTime === null || $candidateTime === null) {
