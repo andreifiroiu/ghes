@@ -2,6 +2,12 @@
 
 Ce s-a schimbat în Ghes, pentru cei care caută evenimente în Timișoara.
 
+## 2026-09-25 — Rezolvat — Fiecare sursă apare o singură dată pe pagina unui eveniment (#50)
+
+Pe pagina unui eveniment, butoanele „Vezi pe …" și lista de surse numesc acum fiecare site o
+singură dată, chiar dacă același site a publicat evenimentul la două adrese diferite. Butonul te duce
+la cea mai recentă pagină a evenimentului de pe acel site. Numărul de surse de pe cardurile
+evenimentelor numără acum site-urile, nu adresele.
 ## 2026-09-25 — Îmbunătățit — Mai puține evenimente listate de două ori (#52)
 
 Când două site-uri anunță același eveniment în același loc, în aceeași zi și la aceeași oră, dar cu

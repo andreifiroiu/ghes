@@ -201,7 +201,7 @@ class EventMerger
                 $duplicate->forceFill(['merged_into_id' => $canonical->id])->save();
 
                 $canonical->forceFill([
-                    'sources_count' => $canonical->sources()->count(),
+                    'sources_count' => $this->providerCount($canonical),
                 ])->save();
             });
 
@@ -235,8 +235,17 @@ class EventMerger
     public function recountSources(Event $event): void
     {
         Event::withoutSyncingToSearch(function () use ($event): void {
-            $event->forceFill(['sources_count' => max(1, $event->sources()->count())])->save();
+            $event->forceFill(['sources_count' => max(1, $this->providerCount($event))])->save();
         });
+    }
+
+    /**
+     * How many distinct providers reported an event. One provider listing an
+     * event under two URLs is still one source to the reader.
+     */
+    public function providerCount(Event $event): int
+    {
+        return $event->sources()->distinct()->count('source');
     }
 
     /**

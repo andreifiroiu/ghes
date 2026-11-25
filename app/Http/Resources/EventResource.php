@@ -49,13 +49,10 @@ class EventResource extends JsonResource
             // that route 404s.
             'ics_url' => $this->starts_at === null ? null : route('events.calendar', ['event' => $this->id]),
             'sources_count' => $this->sources_count,
-            // Deduplicated by URL: event_sources is unique on
-            // (source, url_key, occurrence_key), and merging two occurrences of
-            // one listing repoints both rows onto the survivor — which would
-            // otherwise render the same vendor button twice, under a duplicate
-            // React key.
-            'sources' => $this->whenLoaded('sources', fn () => $this->sources
-                ->unique('source_url')
+            // One entry per provider: the page renders a "Vezi pe <provider>"
+            // button for each, and a provider may hold several rows for one
+            // event (see Event::latestSourcePerProvider).
+            'sources' => $this->whenLoaded('sources', fn () => $this->latestSourcePerProvider()
                 ->map(fn ($source): array => [
                     'source' => $source->source,
                     'source_url' => $source->source_url,

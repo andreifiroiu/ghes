@@ -124,6 +124,37 @@ it('deduplicates providers that contributed the same URL twice', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page->has('event.sources', 1));
 });
 
+it('offers one link per provider when a provider listed the event under two URLs', function () {
+    $event = Event::factory()->create(['starts_at' => now()->addDays(3)]);
+
+    // One provider can report a single event under two different URLs — a
+    // mobile and a desktop host, a tracking query, a renamed slug, or two of
+    // its listings merged together. Both rows are real provenance, but the
+    // page names providers, so the second reads as the same button twice.
+    EventSource::factory()->forSource('iabilet')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://m.iabilet.ro/old-slug',
+        'last_seen_at' => now()->subDays(2),
+    ]);
+    EventSource::factory()->forSource('iabilet')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://www.iabilet.ro/new-slug',
+        'last_seen_at' => now(),
+    ]);
+    EventSource::factory()->forSource('zilesinopti')->create([
+        'event_id' => $event->id,
+        'source_url' => 'https://zilesinopti.ro/b',
+    ]);
+
+    $this->get("/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('event.sources', 2)
+            ->where('event.sources.0.source', 'iabilet')
+            ->where('event.sources.0.source_url', 'https://www.iabilet.ro/new-slug')
+            ->where('event.sources.1.source', 'zilesinopti')
+        );
+});
+
 it('does not leak reaction state into a guest related list', function () {
     $event = Event::factory()->create([
         'category' => EventCategory::Music,

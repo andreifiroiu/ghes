@@ -26,6 +26,9 @@ class ClickDestinationResolver
             $match = $event->sources()
                 ->where('source', $requestedSource)
                 ->whereNotNull('source_url')
+                // The same row Event::latestSourcePerProvider shows the reader.
+                ->orderByDesc('last_seen_at')
+                ->orderByDesc('id')
                 ->first();
 
             if ($match !== null && $match->source_url !== '') {
