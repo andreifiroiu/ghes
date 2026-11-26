@@ -28,10 +28,19 @@ use App\Http\Controllers\NotificationUnsubscribeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RecommendationController;
+use App\Http\Controllers\SeoController;
 use Illuminate\Support\Facades\Route;
 
 // Public landing page — guests see the landing, authenticated users are redirected to dashboard
 Route::get('/', [LandingController::class, 'index'])->name('home');
+
+// Crawler documents. /robots.txt is a fallback only: on a deployed host nginx
+// serves public/robots.txt, written by `seo:publish-robots`, and never reaches
+// Laravel. /sitemap.xml has no such nginx location block, so the route is the
+// real thing — cached, because a crawler fetches it far more often than the
+// scrapers change what is in it.
+Route::get('robots.txt', [SeoController::class, 'robots'])->name('seo.robots');
+Route::get('sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap');
 
 // Signed email reaction URL — no auth required, signature validates identity.
 // GET only renders a confirmation page; the POST on the same URI does the write,

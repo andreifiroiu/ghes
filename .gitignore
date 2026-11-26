@@ -13,6 +13,10 @@
 /.zed
 /auth.json
 /node_modules
+# Written per host by `php artisan seo:publish-robots` from that host's .env,
+# so nginx serves it as a 200. Committing it would ship one host's policy to
+# every other one — including `Disallow: /` onto production.
+/public/robots.txt
 /public/build
 /public/hot
 /public/storage

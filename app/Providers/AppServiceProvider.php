@@ -9,6 +9,8 @@ use App\Models\PersonalAccessToken;
 use App\Services\Anthropic\AnthropicClient;
 use App\Services\Notification\ExpoPushSender;
 use App\Services\Scraping\ScraperOrchestrator;
+use App\Services\Seo\RobotsTxt;
+use App\Services\Seo\SeoManager;
 use GuzzleHttp\Client as GuzzleClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -37,6 +39,18 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ScraperOrchestrator::class, fn ($app) => new ScraperOrchestrator($app));
+
+        // One page's metadata, shared between the controller that sets it and
+        // the root Blade view that prints it. `scoped` rather than `singleton`
+        // so a queue worker or an Octane request cannot carry one page's title
+        // into the next; SeoDefaults forgets it per request as well, which is
+        // what makes the test client's shared container safe.
+        $this->app->scoped(SeoManager::class);
+
+        // Built from config rather than autowired — it takes three scalars.
+        // `bind` and not `scoped`: a test that changes the robots config and
+        // re-hits the route must get a policy built from the new values.
+        $this->app->bind(RobotsTxt::class, fn (): RobotsTxt => RobotsTxt::fromConfig());
 
         // The native push channel. Swapping to FCM/APNs directly is a new
         // implementation bound here, not a change to the dispatcher.

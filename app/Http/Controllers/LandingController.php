@@ -7,6 +7,8 @@ namespace App\Http\Controllers;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use App\Models\ScraperRun;
+use App\Services\Seo\SeoManager;
+use App\Services\Seo\StructuredData;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
@@ -29,17 +31,37 @@ class LandingController extends Controller
      */
     private const CACHE_TTL_SECONDS = 600;
 
+    public function __construct(
+        private readonly SeoManager $seo,
+        private readonly StructuredData $structuredData,
+    ) {}
+
     public function index(): Response|RedirectResponse
     {
         if (auth()->check()) {
             return redirect()->route('dashboard');
         }
 
-        return Inertia::render('Landing', Cache::remember(
+        $payload = Cache::remember(
             'landing:payload',
             self::CACHE_TTL_SECONDS,
             fn (): array => $this->payload(),
-        ));
+        );
+
+        // The home page keeps the configured default title and description
+        // verbatim — the default is already written for exactly this page, and
+        // SeoManager suppresses the title suffix for that case. Only the
+        // canonical and the WebSite node are added.
+        //
+        // Deliberately not interpolating the live event count into the
+        // description: it changes every ten minutes with the cache, Google
+        // shows whatever it last crawled, and a snippet advertising a number
+        // that is months stale is worse than one that never claimed it.
+        $this->seo
+            ->canonical(route('home'))
+            ->jsonLd('website', $this->structuredData->website());
+
+        return Inertia::render('Landing', $payload);
     }
 
     /**
